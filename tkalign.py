@@ -46,6 +46,7 @@ if __name__=='__main__':
     save_folder=f'{hutils.intermediates_path}/tkalign_corrs'
     hutils.mkdir(save_folder)
 
+
     print(hutils.memused())
     c=hutils.clock()
 
@@ -59,7 +60,7 @@ if __name__=='__main__':
     load_file=False    
     get_offdiag_blocks=True #pre-emptively calculate and cache aligned_blocks (faster but more RAM)
     
-    to_plot=False
+    to_plot=True
     save_plots=False
     plot_type={True:'save_as_html', False:'open_in_browser'}[save_plots]
     p=hutils.surfplot(hutils.results_path,plot_type=plot_type)
@@ -89,7 +90,7 @@ if __name__=='__main__':
     get_similarity_pairwise=False #correlations bw nxD*nxR (matched), and nyD*(all possible nyDs)
     get_similarity_average=True #correlation between mean(nxD*nxR(matched)), and nyD*(all possible nyDs)
     howtoalign='RDRT' #'RDRT','RD', 'no_align'
-    
+
     align_nparcs=utils.extract_nparcs(alignfile)
     align_labels=hutils.Schaefer(align_nparcs)
     align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
