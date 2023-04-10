@@ -41,12 +41,6 @@ if __name__=='__main__':
     from tkalign_utils import values2ranks as ranks, regress as reg, identifiability as ident, count_negs
     from joblib import Parallel, delayed
 
-    ### SETTABLE PARAMETERS ###
-    resultsfileprefix=ospath(f'{hutils.results_path}/r{hutils.datetime_for_filename()}_')
-    save_folder=f'{hutils.intermediates_path}/tkalign_corrs'
-    hutils.mkdir(save_folder)
-
-
     print(hutils.memused())
     c=hutils.clock()
 
@@ -55,14 +49,13 @@ if __name__=='__main__':
         pre_hrc_fwhm=5 #smoothing kernel (mm) for high-res connectomes. Default 3
         post_hrc_fwhm=5 #smoothing kernel after alignment. Default 3
 
-        save_file=False
+        save_file=True
         load_file=False    
         get_offdiag_blocks=True #pre-emptively calculate and cache aligned_blocks (faster but more RAM)
         
         to_plot=True
-        save_plots=False
+        save_plots=True
         plot_type={True:'save_as_html', False:'open_in_browser'}[save_plots]
-        p=hutils.surfplot(hutils.results_path,plot_type=plot_type)
 
         import socket
         hostname=socket.gethostname()
@@ -105,8 +98,15 @@ if __name__=='__main__':
         alignfile_nsubs=utils.extract_nsubs(alignfile)
         subs['aligner'] = [hutils.subs[i] for i in range(alignfile_nsubs)]
 
-        #save_path=ospath(f"{save_folder}/corrs_{len(subs['test'])}s_{tckfile[:-4]}_{pre_hrc_fwhm}{post_hrc_fwhm}mm_{align_nparcs}p_{nblocks}b_{block_choice[0:2]}_{howtoalign}_{corr_args[0][0:4]}_{corr_args[1][0:3]}.npy")
-        save_path=ospath(f"{save_folder}/corrs_r{hutils.datetime_for_filename()}.npy")
+
+        datetime=f'r{hutils.datetime_for_filename()}'
+        print(datetime)
+        results_subfolder=ospath(f'{hutils.results_path}/{datetime}')
+        hutils.mkdir(results_subfolder)
+        p=hutils.surfplot(results_subfolder,plot_type=plot_type)
+        save_folder=f'{hutils.intermediates_path}/tkalign_corrs'
+        hutils.mkdir(save_folder)
+        save_path=ospath(f"{save_folder}/corrs_{datetime}.npy")
 
         aligned_method = 'template' if (('temp' in alignfile) or ('Temp' in alignfile)) else 'pairwise'
         if aligned_method=='pairwise': 
@@ -430,7 +430,6 @@ if __name__=='__main__':
         def plot_parc(data,savename=None):
             """Given colour data for each parcel, plot this on hcp_utils viewer"""
             data=np.array(data)
-            savename=f'r{hutils.datetime_for_filename()}_{savename}'
             p.plot(data @ align_parc_matrix,savename=savename)
 
         if to_plot and ident_grouped_type=='perparcel':
@@ -492,19 +491,22 @@ if __name__=='__main__':
 
         if get_similarity_pairwise:
             plots_pairwise(show_same_aligner)
-            if to_plot and save_plots: plt.savefig(f'{resultsfileprefix}pair')
+            if to_plot and save_plots: plt.savefig(f'{results_subfolder}/pair')
         if get_similarity_average:
             plots_average()
-            if to_plot and save_plots: plt.savefig(f'{resultsfileprefix}av')
+            if to_plot and save_plots: plt.savefig(f'{results_subfolder}/av')
         if to_plot: plt.show()
         hutils.getloadavg()
         print(hutils.memused())
 
 
-    all_subs_inds = [{'temp': range(2), 'test': range(8,10)},\
-        {'temp': range(3,5), 'test': range(2)}]
-    nblocks=2 #how many (parcel x parcel) blocks to examine
+    nblocks=5 #how many (parcel x parcel) blocks to examine
     alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
 
-    for subs_inds in all_subs_inds:
+    for test in [range(0,5),range(5,10)]:
+        aligner_nsubs = utils.extract_nsubs(alignfile)
+        temp = [i for i in range(aligner_nsubs) if i not in test]
+        subs_inds={'temp': temp, 'test': test}
+        print('')
+        print(subs_inds['test'])
         func(subs_inds,nblocks,alignfile)
