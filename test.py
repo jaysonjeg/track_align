@@ -12,6 +12,24 @@ from scipy.stats import ttest_1samp
 import matplotlib.pyplot as plt
 
 
+def func():
+
+    if True:
+        string='34'
+    
+    print(eval(string))
+
+    if True:
+
+        def subfunc(x):
+            print(eval(x))
+
+        if True:
+            subfunc(string)
+
+func()
+
+'''
 z1= hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/0-50_rest_0-10.npy')
 z2= hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/0-50_rest_40-50.npy')
 
@@ -81,3 +99,4 @@ print(np.corrcoef(a1nN,a2nN))
 plt.scatter(a1nN,a2nN)
 plt.show()
 """
+'''
