@@ -1,0 +1,34 @@
+certifi==2021.5.30
+charset-normalizer==2.0.12
+Connectome-Spatial-Smoothing==0.1.3
+cycler @ file:///tmp/build/80754af9/cycler_1637851556182/work
+Cython @ file:///tmp/build/80754af9/cython_1626256602391/work
+fmralign==0.0.2a0
+gdist==2.1.0
+h5py @ file:///tmp/build/80754af9/h5py_1593454121459/work
+hcp-utils==0.1.0
+idna==3.4
+joblib==1.1.1
+kiwisolver @ file:///tmp/build/80754af9/kiwisolver_1612282412546/work
+lxml==4.9.2
+matplotlib==3.1.3
+mkl-random==1.1.0
+mkl-service==2.3.0
+nibabel==3.2.2
+nilearn==0.6.2
+numpy==1.19.5
+packaging==21.3
+pandas==1.1.5
+POT==0.5.1
+pyparsing==3.0.9
+python-dateutil @ file:///tmp/build/80754af9/python-dateutil_1626374649649/work
+pytz==2022.7.1
+requests==2.27.1
+scikit-learn==0.24.2
+scipy==1.5.4
+six @ file:///tmp/build/80754af9/six_1644875935023/work
+sklearn==0.0.post1
+threadpoolctl==3.1.0
+tornado==5.0.1
+tvb-gdist==2.2
+urllib3==1.26.14
