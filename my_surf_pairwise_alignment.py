@@ -1,6 +1,7 @@
-from nilearn import signal
 import numpy as np
-from fmralignbenchmarkmockup.fmralignbench.surf_pairwise_alignment import fit_parcellation
+import sys
+sys.path.append('../dependencies/fmralign-benchmark')
+from fmralignbench.surf_pairwise_alignment import fit_parcellation
 from fmralign._utils import piecewise_transform
 from sklearn.base import BaseEstimator, TransformerMixin
 import warnings

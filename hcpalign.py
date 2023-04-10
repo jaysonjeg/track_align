@@ -3,17 +3,14 @@ if __name__=='__main__':
     import nibabel as nib
     nib.imageglobals.logger.level = 40  #suppress pixdim error msg
     import hcp_utils as hcp
-    import pandas as pd, numpy as np
-    import sys, os
-    sys.path.insert(0,'./fmralignbenchmarkmockup')
-    from fmralignbenchmarkmockup.fmralignbench import utils
+    import numpy as np
+    import os
     from sklearn.svm import LinearSVC
     
     import hcpalign_utils as hutils
     from hcpalign_utils import ospath
     from Connectome_Spatial_Smoothing import CSS as css
     from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
-    from my_intra_subject_alignment import MyIntraSubjectAlignment
     from joblib import Parallel, delayed
     from sklearn.model_selection import KFold
     import psutil
@@ -367,13 +364,13 @@ if __name__=='__main__':
     resultsfilepath=ospath(f'{results_path}/r{hutils.datetime_for_filename()}.txt')
     with open(resultsfilepath,'w') as resultsfile:
         t=hutils.cprint(resultsfile) 
-        for method in ['pairwise']:
+        for method in ['template']:
             for pairwise_method in ['scaled_orthogonal']:
-                for n_subs in [20]:
+                for n_subs in [3]:
                     print(f'{method} - {pairwise_method} - nsubs{n_subs}')
                     c=hutils.clock()            
                     print(hutils.memused())   
-                    x=func(c,t=t,n_subs=n_subs,n_movies=4,n_rests=1,nparcs=100,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=True,load_pickle=True,return_nalign=False,return_aligner=False,n_jobs=+1)
+                    x=func(c,t=t,n_subs=n_subs,n_movies=1,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=False,load_pickle=False,return_nalign=False,return_aligner=False,n_jobs=+1)
                     print(hutils.memused())
                     hutils.getloadavg()
                     t.print('')  

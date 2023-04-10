@@ -151,9 +151,6 @@ def fix(datarow,nyR_nonscrambled):
     return newdatarow  
 
 def subtract_nonscrambled_from_a(a_original):
-    #Haven't adjusted this for aligned_method=='pairwise'
-    """
-    """
     n_subs=a_original.shape[0]
     a=np.copy(a_original)
     nparcs=a.shape[-1]
@@ -162,7 +159,7 @@ def subtract_nonscrambled_from_a(a_original):
             for nblock in range(nparcs):
                 a[nD,:,nblock]=fix(a[nD,:,nblock],nD)
         elif a.ndim==4: #from ident_grouped_type=='perparcel'
-            for i,j in itertools.product(range(nparcs),range(nparcs)):
+            for i,j in itertools.product(range(a.shape[-2]),range(a.shape[-1])):
                 if not(np.isnan(a[0,1,i,j])):
                     a[nD,:,i,j] = fix(a[nD,:,i,j],nD)
     return a
