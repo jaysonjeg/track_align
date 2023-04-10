@@ -49,8 +49,8 @@ if __name__=='__main__':
     print(hutils.memused())
     c=hutils.clock()
 
-    subs_inds={'temp': range(0,5), 'test': range(5,10)}
-    nblocks=20 #how many (parcel x parcel) blocks to examine
+    subs_inds={'temp': range(3), 'test': range(3,5)}
+    nblocks=2 #how many (parcel x parcel) blocks to examine
     pre_hrc_fwhm=5 #smoothing kernel (mm) for high-res connectomes. Default 3
     post_hrc_fwhm=5 #smoothing kernel after alignment. Default 3
     alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
@@ -63,7 +63,7 @@ if __name__=='__main__':
     get_offdiag_blocks=True #pre-emptively calculate and cache aligned_blocks (faster but more RAM)
     
     to_plot=True
-    save_plots=True
+    save_plots=False
     plot_type={True:'save_as_html', False:'open_in_browser'}[save_plots]
     p=hutils.surfplot(hutils.results_path,plot_type=plot_type)
 
@@ -79,7 +79,7 @@ if __name__=='__main__':
     """
     We can either go with the largest n parcel x parcel blocks, for intra-parcel and inter-parcel blocks separately, OR alternatively we can pick a single parcel and consider all the blocks involving that parcel, ie all the links between that parcel and every other parcel. For the latter option, doing type_rowcol='row' and 'col' are relevant as comparing the two infers directionality
     """
-    block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
+    block_choice='maxhpmult' #'largest', 'fromsourcevertex', 'all','maxhpmult'
     parcel_pair_type='o' #'o' for inter-parcel connections or 'i' for intra-parcel connections
 
     if block_choice=='fromsourcevertex': type_rowcol = 'col'
@@ -101,7 +101,9 @@ if __name__=='__main__':
     aligned_negs='abs' #options 'abs' (default), 'zero' (performance slightly worse), 'leave'. What to do with negative values in R matrix. 'abs' to use absolute value. 'zero' to make it zero. 'leave' to leave as is.
     show_same_aligner=False #plots show nxR==nyR (both aligned by same aligner). Default False
 
-    save_path=ospath(f"{save_folder}/corrs_{len(subs['test'])}s_{tckfile[:-4]}_{pre_hrc_fwhm}{post_hrc_fwhm}mm_{align_nparcs}p_{nblocks}b_{block_choice[0:2]}_{howtoalign}_{corr_args[0][0:4]}_{corr_args[1][0:3]}.npy")
+    #save_path=ospath(f"{save_folder}/corrs_{len(subs['test'])}s_{tckfile[:-4]}_{pre_hrc_fwhm}{post_hrc_fwhm}mm_{align_nparcs}p_{nblocks}b_{block_choice[0:2]}_{howtoalign}_{corr_args[0][0:4]}_{corr_args[1][0:3]}.npy")
+
+    save_path=ospath(f"{save_folder}/corrs_r{hutils.datetime_for_filename()}.npy")
 
     aligned_method = 'template' if (('temp' in alignfile) or ('Temp' in alignfile)) else 'pairwise'
     if aligned_method=='pairwise': 
@@ -280,7 +282,8 @@ if __name__=='__main__':
                         yield Xs,Ys    
                 temp=Parallel(n_jobs=-1,prefer='threads')(delayed(correlate_blocks)(*args) for args in yield_aligned_blocks())
                 f=np.reshape(np.array(temp,dtype=np.float32),(len(subs['test']),len(subs['test']),len(subs['test']),blocks.shape[1]))  
-                f[np.eye(f.shape[0],dtype=bool),:,:]=np.nan #set diagonals in dims 0 and 1 to np.nan             
+                f[np.eye(f.shape[0],dtype=bool),:,:]=np.nan #set diagonals in dims 0 and 1 to np.nan  
+        else: f=None           
 
         
         if get_similarity_average:
@@ -289,8 +292,8 @@ if __name__=='__main__':
             for nyD in range(len(subs['test'])):
                 for nyR in range(len(subs['test'])):
                     a[nyD,nyR,:]=correlate(aligned_method,nyD,nyR,blocks)
+        else: a=None
 
-        #del hr, fa #XXX
     if save_file:
         np.save(save_path,{'blocks':blocks,'f':f,'a':a})
 
@@ -364,7 +367,19 @@ if __name__=='__main__':
 
     if get_similarity_average:    
         if ident_grouped_type=='perparcel':
-            a=np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc
+            a2=np.zeros(( a.shape[:-1] + (nparcs,nparcs)) , dtype=np.float32)
+            a2[:]=np.nan
+            for n in range(blocks.shape[1]):
+                i=blocks[0,n]
+                j=blocks[1,n]
+                a2[:,:,i,j]=a[:,:,n]
+            a=a2
+            del a2
+            """
+            Now a is n_subs_test * n_subs_test * nparcs * nparcs. If i=1, j=171 is in 'blocks', then a[any,any,1,171] is non-nan
+            """     
+            #a=np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc
+
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore",category=RuntimeWarning)
