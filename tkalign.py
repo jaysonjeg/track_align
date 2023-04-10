@@ -364,20 +364,7 @@ if __name__=='__main__':
 
     if get_similarity_average:    
         if ident_grouped_type=='perparcel':
-            
-            a2=np.zeros(( a.shape[:-1] + (nparcs,nparcs)) , dtype=np.float32)
-            a2[:]=np.nan
-            for n in range(blocks.shape[1]):
-                i=blocks[0,n]
-                j=blocks[1,n]
-                a2[:,:,i,j]=a[:,:,n]
-            a=a2
-            del a2
-            """
-            Now a is n_subs_test * n_subs_test * nparcs * nparcs. If i=1, j=171 is in 'blocks', then a[any,any,1,171] is non-nan
-            """
-            
-            #a3=np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc
+            a=np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore",category=RuntimeWarning)
@@ -408,17 +395,7 @@ if __name__=='__main__':
             #mai, maoi and maroi and maoi will be shape=(nparcs)
             anN= [count_negs(an[:,:,i,:]) for i in range(nparcs)]
             arnN=[count_negs(arn[:,:,i,:]) for i in range(nparcs)]            
-
-
-        """
-        print(an[:,:,0,1])
-        print(man[0,1,2])
-        print(ao[:,0,4,1])
-        print(arn[0,1,2,1])
-        print(maro[1,1,:5])
-        print(anN[0:5])
-        """
-        
+       
         print(f'\n av grouped {ident_grouped_type}: ', end="")
         for string in ['mai','maoi','maroi']:
             print(f"{string} {eval(f'{string}.mean()'):.0f}, ", end="")
