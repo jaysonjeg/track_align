@@ -501,8 +501,10 @@ if __name__=='__main__':
         print(hutils.memused())
 
 
-    subs_inds={'temp': range(2), 'test': range(8,10)}
+    all_subs_inds = [{'temp': range(2), 'test': range(8,10)},\
+        {'temp': range(3,5), 'test': range(2)}]
     nblocks=2 #how many (parcel x parcel) blocks to examine
     alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
 
-    func(subs_inds,nblocks,alignfile)
+    for subs_inds in all_subs_inds:
+        func(subs_inds,nblocks,alignfile)
