@@ -8,6 +8,15 @@ import matplotlib.pyplot as plt
 import warnings
 import itertools
 
+def extract_nsubs(string):
+    pattern=r'hcpalign\w*_(\d+)-\d+-\d+_TF_0_0_0_\w*'
+    match=re.search(pattern,string)
+    if match:
+        return int(match.group(1))
+    else:
+        return None
+
+
 def extract_nparcs(string):
     pattern = r'_FFF_S(.*?)_False'
     match = re.search(pattern, string)

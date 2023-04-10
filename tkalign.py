@@ -49,20 +49,17 @@ if __name__=='__main__':
     print(hutils.memused())
     c=hutils.clock()
 
-    subs_inds={'temp': range(3), 'test': range(3,5)}
+    subs_inds={'temp': range(2), 'test': range(8,10)}
     nblocks=2 #how many (parcel x parcel) blocks to examine
     pre_hrc_fwhm=5 #smoothing kernel (mm) for high-res connectomes. Default 3
     post_hrc_fwhm=5 #smoothing kernel after alignment. Default 3
     alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
 
-    groups=['temp','test']
-    subs = {group: [hutils.subs[i] for i in subs_inds[group]] for group in groups}
-    align_nparcs=utils.extract_nparcs(alignfile)
     save_file=False
     load_file=False    
     get_offdiag_blocks=True #pre-emptively calculate and cache aligned_blocks (faster but more RAM)
     
-    to_plot=True
+    to_plot=False
     save_plots=False
     plot_type={True:'save_as_html', False:'open_in_browser'}[save_plots]
     p=hutils.surfplot(hutils.results_path,plot_type=plot_type)
@@ -92,6 +89,8 @@ if __name__=='__main__':
     get_similarity_pairwise=False #correlations bw nxD*nxR (matched), and nyD*(all possible nyDs)
     get_similarity_average=True #correlation between mean(nxD*nxR(matched)), and nyD*(all possible nyDs)
     howtoalign='RDRT' #'RDRT','RD', 'no_align'
+    
+    align_nparcs=utils.extract_nparcs(alignfile)
     align_labels=hutils.Schaefer(align_nparcs)
     align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
     
@@ -101,8 +100,12 @@ if __name__=='__main__':
     aligned_negs='abs' #options 'abs' (default), 'zero' (performance slightly worse), 'leave'. What to do with negative values in R matrix. 'abs' to use absolute value. 'zero' to make it zero. 'leave' to leave as is.
     show_same_aligner=False #plots show nxR==nyR (both aligned by same aligner). Default False
 
-    #save_path=ospath(f"{save_folder}/corrs_{len(subs['test'])}s_{tckfile[:-4]}_{pre_hrc_fwhm}{post_hrc_fwhm}mm_{align_nparcs}p_{nblocks}b_{block_choice[0:2]}_{howtoalign}_{corr_args[0][0:4]}_{corr_args[1][0:3]}.npy")
+    groups=['temp','test']
+    subs = {group: [hutils.subs[i] for i in subs_inds[group]] for group in groups}
+    alignfile_nsubs=utils.extract_nsubs(alignfile)
+    subs['aligner'] = [hutils.subs[i] for i in range(alignfile_nsubs)]
 
+    #save_path=ospath(f"{save_folder}/corrs_{len(subs['test'])}s_{tckfile[:-4]}_{pre_hrc_fwhm}{post_hrc_fwhm}mm_{align_nparcs}p_{nblocks}b_{block_choice[0:2]}_{howtoalign}_{corr_args[0][0:4]}_{corr_args[1][0:3]}.npy")
     save_path=ospath(f"{save_folder}/corrs_r{hutils.datetime_for_filename()}.npy")
 
     aligned_method = 'template' if (('temp' in alignfile) or ('Temp' in alignfile)) else 'pairwise'
@@ -118,15 +121,16 @@ if __name__=='__main__':
         blocks,f,a = utils.load_f_and_a(save_path)
     else:
         #Get high-res connectomes
-        print(f'{c.time()}: Get highres connectomes',end=", ")
-
-        hr = {group : hutils.get_highres_connectomes(c,subs[group],tckfile,MSMAll=MSMAll,sift2=sift2,prefer='threads',n_jobs=-1) for group in groups} 
-        print(f'{c.time()}: Downsample', end=", ")   
-
-        hp=[css.downsample_high_resolution_structural_connectivity_to_atlas(hrs, align_parc_matrix) for hrs in hr['temp']] #most connected parcel pairs are determined from template subjects
+        print(f'{c.time()}: Get highres connectomes and downsample',end=", ")
+        par_prefr_hrc='threads'
+        hr_for_hp = hutils.get_highres_connectomes(c,subs['aligner'],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefr_hrc,n_jobs=-1)
+        hp=[css.downsample_high_resolution_structural_connectivity_to_atlas(hrs, align_parc_matrix) for hrs in hr_for_hp] #most connected parcel pairs are determined from template subjects
+        del hr_for_hp
         hps,hpsx,hpsxa = utils.get_hps(hp)
-        print(f'{c.time()}: Reorder', end=", ")
 
+        hr = {group : hutils.get_highres_connectomes(c,subs[group],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefr_hrc,n_jobs=-1) for group in groups} 
+
+        print(f'{c.time()}: Reorder', end=", ")
         hr = {group: [array[sorter[:,None],sorter] for array in hr[group]] for group in groups}
 
         smoother=sparse.load_npz(ospath(f'{hutils.intermediates_path}/smoothers/100610_{pre_hrc_fwhm}_0.01.npz')).astype(np.float32)[sorter[:,None],sorter]   
