@@ -112,7 +112,6 @@ ancxDT=tstat(ancxD) #important
 
 #similarity between (0,5) and (5,10)
 print(np.corrcoef(adnN)) #RD: count_negs for each parcel, averaged across sub-pairs
-print(np.corrcoef(adT)) #RD: t-statistic for each parcel, calculated with all sub-pairs
 print(np.corrcoef(anND)) #count_negs(RD) - count_negs(RT)
 print(np.corrcoef(axDT)) #t-stat for RD-RT difference, calc. for each subpair*block
 

@@ -44,17 +44,15 @@ if __name__=='__main__':
     print(hutils.memused())
     c=hutils.clock()
 
-    def func(subs_inds,nblocks,alignfile):
+    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots):
+
+        if howtoalign!='RDRT':
+            print(f'howtoalign is {howtoalign}')
 
         pre_hrc_fwhm=5 #smoothing kernel (mm) for high-res connectomes. Default 3
         post_hrc_fwhm=5 #smoothing kernel after alignment. Default 3
 
-        save_file=False
-        load_file=False    
         get_offdiag_blocks=True #pre-emptively calculate and cache aligned_blocks (faster but more RAM)
-        
-        to_plot=False
-        save_plots=False
         plot_type={True:'save_as_html', False:'open_in_browser'}[save_plots]
 
         import socket
@@ -69,7 +67,6 @@ if __name__=='__main__':
         """
         We can either go with the largest n parcel x parcel blocks, for intra-parcel and inter-parcel blocks separately, OR alternatively we can pick a single parcel and consider all the blocks involving that parcel, ie all the links between that parcel and every other parcel. For the latter option, doing type_rowcol='row' and 'col' are relevant as comparing the two infers directionality
         """
-        block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
         parcel_pair_type='o' #'o' for inter-parcel connections or 'i' for intra-parcel connections
 
         if block_choice=='fromsourcevertex': type_rowcol = 'col'
@@ -81,7 +78,6 @@ if __name__=='__main__':
 
         get_similarity_pairwise=False #correlations bw nxD*nxR (matched), and nyD*(all possible nyDs)
         get_similarity_average=True #correlation between mean(nxD*nxR(matched)), and nyD*(all possible nyDs)
-        howtoalign='RDRT' #'RDRT','RD', 'no_align'
 
         align_nparcs=utils.extract_nparcs(alignfile)
         align_labels=hutils.Schaefer(align_nparcs)
@@ -177,7 +173,7 @@ if __name__=='__main__':
                 Rj=np.eye(D.shape[1],dtype=np.float32)                       
                 if howtoalign in ['RD','RDRT']:
                     Ri=get_aligner_parcel(group,key,i)
-                if howtoalign=='RDRT':
+                if howtoalign in ['RDRT','RT']:
                     Rj=get_aligner_parcel(group,key,j)
                 if post_hrc_fwhm:
                     pre=post_skernel[slices[i],slices[i]]
@@ -495,11 +491,19 @@ if __name__=='__main__':
 
     nblocks=5 #how many (parcel x parcel) blocks to examine
     alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
+    block_choice='maxhpmult' #'largest', 'fromsourcevertex', 'all','maxhpmult'
+    save_file=False
+    load_file=False    
+    to_plot=False
+    save_plots=False
 
-    for test in [range(0,5),range(5,10)]:
-        aligner_nsubs = utils.extract_nsubs(alignfile)
-        temp = [i for i in range(aligner_nsubs) if i not in test]
-        subs_inds={'temp': temp, 'test': test}
-        print('')
-        print(subs_inds['test'])
-        func(subs_inds,nblocks,alignfile)
+
+    for howtoalign in ['RDRT','RD','RT']: #'RDRT','RD', 'RT', 'no_align'
+        for test in [range(0,5)]:
+            aligner_nsubs = utils.extract_nsubs(alignfile)
+            temp = [i for i in range(aligner_nsubs) if i not in test]
+            subs_inds={'temp': temp, 'test': test}
+
+            print('')
+            print(f"{subs_inds['test']} - {howtoalign}")
+            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots)

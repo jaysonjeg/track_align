@@ -40,7 +40,7 @@ def count_negs_for_each_parc(a):
 
 zs=[f'0-50_rest_{string}.npy' for string in ['0-10','10-20','20-30','30-40','40-50']]
 
-zs = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/{i}') for i in zs]
+zs = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/maxhpmult/{i}') for i in zs]
 
 a = [get_a(i) for i in zs]
 
@@ -65,7 +65,7 @@ print(np.corrcoef(anN))
 
 
 #Plot spatial distribution of struct-func linkage
-p=hutils.surfplot(hutils.results_path,plot_type='save_as_html')
+p=hutils.surfplot(hutils.results_path,plot_type='open_in_browser')
 align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
 ancN_cortex = ancN @ align_parc_matrix
 p.plot(ancN_cortex,savename='ancN',vmin = min(ancN_cortex))
