@@ -788,6 +788,20 @@ class surfplot():
         elif self.plot_type=='open_in_browser':
             view.open_in_browser()
 
+def plot_parc(p,align_parc_matrix,data,savename=None):
+    """
+    Given colour data for each parcel, plot this on hcp_utils viewer
+    p is an instance of class surfplot
+    align_parc_matrix can be derived from function Schaefermatrix
+    data is a (59412) length list or array
+    """
+    data=np.array(data)
+    p.plot(data @ align_parc_matrix,savename=savename)
+    
+def plot_parc_multi(p,align_parc_matrix,strings,values):
+    for string,value in zip(strings,values):
+        plot_parc(p,align_parc_matrix,value,string)
+
 
 def do_plot_impulse_responses(p,plot_prefix,aligner,method,lowdim_vertices):
     """

@@ -49,12 +49,12 @@ if __name__=='__main__':
         pre_hrc_fwhm=5 #smoothing kernel (mm) for high-res connectomes. Default 3
         post_hrc_fwhm=5 #smoothing kernel after alignment. Default 3
 
-        save_file=True
+        save_file=False
         load_file=False    
         get_offdiag_blocks=True #pre-emptively calculate and cache aligned_blocks (faster but more RAM)
         
-        to_plot=True
-        save_plots=True
+        to_plot=False
+        save_plots=False
         plot_type={True:'save_as_html', False:'open_in_browser'}[save_plots]
 
         import socket
@@ -69,7 +69,7 @@ if __name__=='__main__':
         """
         We can either go with the largest n parcel x parcel blocks, for intra-parcel and inter-parcel blocks separately, OR alternatively we can pick a single parcel and consider all the blocks involving that parcel, ie all the links between that parcel and every other parcel. For the latter option, doing type_rowcol='row' and 'col' are relevant as comparing the two infers directionality
         """
-        block_choice='maxhpmult' #'largest', 'fromsourcevertex', 'all','maxhpmult'
+        block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
         parcel_pair_type='o' #'o' for inter-parcel connections or 'i' for intra-parcel connections
 
         if block_choice=='fromsourcevertex': type_rowcol = 'col'
@@ -143,7 +143,7 @@ if __name__=='__main__':
             if block_choice=='largest': 
                 blocks=utils.get_blocks_largest(nblocks,parcel_pair_type,hps,hpsx)
             elif block_choice=='fromsourcevertex':
-                blocks=utils.get_blocks_source(align_labels,hpsxa,nblocks,nparcs)
+                blocks=utils.get_blocks_source(align_labels,hpsxa,nblocks,nparcs,type_rowcol)
             elif block_choice=='all':
                 blocks=utils.get_blocks_all()
             elif block_choice=='maxhpmult':
@@ -427,27 +427,20 @@ if __name__=='__main__':
             print('')
 
         print(f'{c.time()}: Calculations done')
-        def plot_parc(data,savename=None):
-            """Given colour data for each parcel, plot this on hcp_utils viewer"""
-            data=np.array(data)
-            p.plot(data @ align_parc_matrix,savename=savename)
-
         if to_plot and ident_grouped_type=='perparcel':
-            def plot_parc_multi(strings,values):
-                for string,value in zip(strings,values):
-                    plot_parc(value,string)
+
 
             if get_similarity_pairwise:
-                plot_parc_multi(['mfxomi','fxoMmi'],[mfxomi,fxoMmi])
+                hutils.plot_parc_multi(p,align_parc_matrix,['mfxomi','fxoMmi'],[mfxomi,fxoMmi])
             if get_similarity_average:
-                plot_parc_multi(['mai','maoi','maroi','anN','arnN'],[mai,maoi,maroi,anN,arnN])
+                hutils.plot_parc_multi(p,align_parc_matrix,['mai','maoi','maroi','anN','arnN'],[mai,maoi,maroi,anN,arnN])
 
             parc_sizes=np.array(align_parc_matrix.sum(axis=1)).squeeze()
-            plot_parc(parc_sizes,'parc_sizes') #confounder
+            hutils.plot_parc(p,align_parc_matrix,parc_sizes,'parc_sizes') #confounder
             if 'all_aligners' in locals(): #confounder
                 scales = np.vstack( [[all_aligners.estimators[i].fit_[nparc].scale for nparc in range(nparcs)] for i in subs_inds['test']] )   
                 scales_mean=scales.mean(axis=0)    
-                plot_parc(scales_mean,'scales')        
+                hutils.plot_parc(p,align_parc_matrix,scales_mean,'scales')        
 
         def plots_average():
             
