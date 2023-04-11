@@ -53,13 +53,14 @@ def tstat(a):
         t,p=ttest_1samp(a[i,:],0)
         array.append(t)
     return array
-def trinarize(li,cutoff):
+def trinarize(mylist,cutoff):
     """
     Given a list li, convert values above 'cutoff' to 1, values below -cutoff to -1, and all other values to 0
     """
+    li=np.copy(mylist)
     greater=li>cutoff
     lesser=li<-cutoff
-    neither= -cutoff < li and li < cutoff
+    neither= np.logical_not(np.logical_or(greater,lesser))
     li[greater]=1
     li[lesser]=-1
     li[neither]=0
@@ -159,61 +160,6 @@ tm_2=trinarize(tm,2)
 
 p=hutils.surfplot(hutils.results_path,plot_type='open_in_browser')
 align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
-p.plot(tm,savename='tm')
-p.plot(tm_1p5,savename='tm_1p5')
-p.plot(tm_2,savename='tm_2')
-
-'''
-
-
-#Plot spatial distribution of struct-func linkage
-p=hutils.surfplot(hutils.results_path,plot_type='save_as_html')
-align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
-ancN_cortex = ancN @ align_parc_matrix
-p.plot(ancN_cortex,savename='ancN',vmin = min(ancN_cortex))
-p.vmin=None
-p.plot([-i for i in ancm] @ align_parc_matrix,savename='-ancm')
-p.plot([-i for i in anct] @ align_parc_matrix,savename='-anct')
-
-#Plot parcel sizes as # of vertices (?confounder)
-parc_sizes=np.array(align_parc_matrix.sum(axis=1)).squeeze()
-parc_sizes[0]=parc_sizes.mean()
-p.plot(parc_sizes @ align_parc_matrix, savename='parc_sizes')
-
-#Plot aligner scale factor (?confounder)
-alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
-aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
-all_aligners = pickle.load( open( ospath(aligner_file), "rb" ))
-scales = np.vstack( [[all_aligners.estimators[i].fit_[nparc].scale for nparc in range(nparcs)] for i in range(len(all_aligners.estimators))] )   
-scales_mean=scales.mean(axis=0)    
-log_scales_mean=np.log10(scales_mean)
-log_scales_mean_adj = log_scales_mean - log_scales_mean.min()
-p.plot(scales_mean @ align_parc_matrix, savename='scales_mean')  
-p.plot(log_scales_mean_adj @ align_parc_matrix, savename='log_scales_mean_adj')  
-
-#Plot vertex areas (?confounder)
-path='D:\\FORSTORAGE\\Data\\Project_Hyperalignment\\old_intermediates\\vertex_areas\\vert_area_100610_white.npy'
-vertex_areas=np.load(path)
-total_vertex_areas_parc = align_parc_matrix @ vertex_areas 
-mean_vert_areas = total_vertex_areas_parc / parc_sizes
-p.plot(vertex_areas,savename='vertex_areas')
-
-#Plot mesh SFM
-path='D:\\FORSTORAGE\\Data\\Project_Hyperalignment\\old_intermediates\\SFM\\SFM_white_sub100610.pickle'
-import pickle
-sfms=pickle.load(open(path,"rb"))[0]
-curv_av=[np.trace(i) for i in sfms]
-curv_av_abs=np.abs(curv_av)
-curv_gauss=[np.linalg.det(i) for i in sfms]
-p.plot(curv_av_abs,'curv_av_abs')
-curv_av_parc = ( align_parc_matrix @ curv_av ) / parc_sizes
-curv_av_abs_parc = ( align_parc_matrix @ curv_av_abs ) / parc_sizes
-
-#Are spatial variations in SC-func linkage associated with these confounders?
-print(f'Corr between ancN and scales_mean is {np.corrcoef(ancN,scales_mean)[0,1]}')
-print(f'Corr between ancN and parc_sizes is {np.corrcoef(ancN,parc_sizes)[0,1]}')
-print(f'Corr between ancN and mean_vert_areas is {np.corrcoef(ancN,mean_vert_areas)[0,1]}')
-print(f'Corr between ancN and total_parcel_area is {np.corrcoef(ancN,total_vertex_areas_parc)[0,1]}')
-print(f'Corr between ancN and average curvature is {np.corrcoef(ancN,curv_av_parc)[0,1]}')
-print(f'Corr between ancN and abs-value of average curvature is {np.corrcoef(ancN,curv_av_abs_parc)[0,1]}')
-'''
+p.plot(tm @ align_parc_matrix ,savename='tm')
+p.plot(tm_1p5 @ align_parc_matrix,savename='tm_1p5')
+p.plot(tm_2 @ align_parc_matrix,savename='tm_2')
