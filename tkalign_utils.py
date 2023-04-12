@@ -263,7 +263,6 @@ def values2ranks(x,axis=2,kind='quicksort'):
     return x2+1 #increment rank 0 to 1
 
 def prep(y,include_axis_2=True):
-
     x=y.ravel()
     s0,s1,s2=y.shape[0],y.shape[1],y.shape[2]
     if include_axis_2:

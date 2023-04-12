@@ -44,7 +44,7 @@ if __name__=='__main__':
     print(hutils.memused())
     c=hutils.clock()
 
-    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots):
+    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,tckfile=None):
         print(hutils.memused())
         if howtoalign!='RDRT':
             print(f'howtoalign is {howtoalign}')
@@ -55,12 +55,13 @@ if __name__=='__main__':
         get_offdiag_blocks=True #pre-emptively calculate and cache aligned_blocks (faster but more RAM)
         plot_type={True:'save_as_html', False:'open_in_browser'}[save_plots]
 
-        import socket
-        hostname=socket.gethostname()
-        if hostname=='DESKTOP-EGSQF3A': #home pc
-            tckfile= 'tracks_5M_sift1M_200k.tck' #'tracks_5M_sift1M_200k.tck','tracks_5M.tck' 
-        else: #service workbench
-            tckfile='tracks_5M_1M_end.tck'
+        if tckfile is None:
+            import socket
+            hostname=socket.gethostname()
+            if hostname=='DESKTOP-EGSQF3A': #home pc
+                tckfile= 'tracks_5M_sift1M_200k.tck' #'tracks_5M_sift1M_200k.tck','tracks_5M.tck' 
+            else: #service workbench
+                tckfile='tracks_5M_1M_end.tck'
 
         sift2=not('sift' in tckfile) #default True
         MSMAll=False
@@ -120,12 +121,10 @@ if __name__=='__main__':
         else:
             #Get high-res connectomes
             print(f'{c.time()}: Get highres connectomes and downsample',end=", ")
-            par_prefr_hrc='threads'
+            par_prefr_hrc='threads'        
             hr_for_hp = hutils.get_highres_connectomes(c,subs['aligner'],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefr_hrc,n_jobs=-1)
             hp=[css.downsample_high_resolution_structural_connectivity_to_atlas(hrs, align_parc_matrix) for hrs in hr_for_hp] #most connected parcel pairs are determined from template subjects
-            print(hutils.memused())
             del hr_for_hp
-            print(hutils.memused())
             hps,hpsx,hpsxa = utils.get_hps(hp)
 
             hr = {group : hutils.get_highres_connectomes(c,subs[group],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefr_hrc,n_jobs=-1) for group in groups} 
@@ -137,7 +136,7 @@ if __name__=='__main__':
 
             print(f'{c.time()}: Smooth hrc', end=", ")
             hr={group : hutils.smooth_highres_connectomes(hr[group],smoother) for group in groups}
-
+            print(hutils.memused())
 
             print(f'{c.time()}: GetBlocks', end=", ")       
             if block_choice=='largest': 
@@ -164,10 +163,6 @@ if __name__=='__main__':
                 all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) 
                 allowed_keys = [f'{i}-{j}' for i in subs['test'] for j in subs['temp'] if i!=j] #only aligners which transform test subjects to template subjects
                 fa={'test':{key:value for key,value in all_aligners.items() if key in allowed_keys}}
-
-
-            print(hutils.memused())
-
 
             def get_aligner_parcel(group,key,i):
                 #group is 'temp' or 'test'
@@ -262,8 +257,7 @@ if __name__=='__main__':
 
             Pairwise:
             Subject nxD's diffusion map compared to subject nyD's diffusion map (aligned via nY->nX aligner)
-            """
-            print(hutils.memused())            
+            """          
             if get_similarity_pairwise:
                 print(f'{c.time()}: GetSimilarity (pair)',end=", ")
                 #store correlation for each block in each subject-pair 
@@ -405,6 +399,7 @@ if __name__=='__main__':
             
                 mao=np.nanmean(ao,axis=-1) #mean along blocks
                 maro=np.nanmean(aro,axis=-1)
+                mar=np.nanmean(ar,axis=-1)
 
             if not(ident_grouped_type=='perparcel'):
                 ai=ident(a)
@@ -455,12 +450,22 @@ if __name__=='__main__':
                 print(f'AV {count_negs(man):.1f}% of sub-pairs (mean across blocks)')    
             
             print(f'AV {count_negs(an):.1f}% of (sub-pairs)*blocks')
+
+
+            arnm=np.nanmean(arn,axis=(0,1)) #mean across subject-pairs
+            marn=np.nanmean(arn,axis=-1) #mean across blocks
+            print(f'AV {count_negs(arnm):.1f}% of blocks (mean across sub-pairs) R')
+            print(f'AV {count_negs(marn):.1f}% of sub-pairs (mean across blocks) R')    
+            print(f'AV {count_negs(arn):.1f}% of (sub-pairs)*blocks R')
+
+
             #print(f'Identifiability with mean template: {mai:.1f}%, per block average {ai.mean():.1f}')
             #print(f'reg: Identifiability with mean template: {mari:.1f}%, per block average {ari.mean():.1f}')
             if not(ident_grouped_type=='perparcel'):
-                fig,axs=plt.subplots(2)
+                fig,axs=plt.subplots(3)
                 utils.plot_id(axs[0],mao,title='mao')
                 utils.plot_id(axs[1],maro,title='maro')
+                utils.plot_id(axs[2],mar,title='mar')
                 plt.subplots_adjust(hspace=0.5) 
                 fig.suptitle(f'Similarity average', fontsize=16)
 
@@ -502,10 +507,10 @@ if __name__=='__main__':
     nblocks=100 #how many (parcel x parcel) blocks to examine
     alignfile = 'hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False'
     block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
-    save_file=True
-    load_file=False    
+    save_file=False
+    load_file=True    
     to_plot=True
-    save_plots=True
+    save_plots=False
 
 
     for howtoalign in ['RDRT']: #'RDRT','RD', 'RT', 'no_align'
@@ -516,4 +521,4 @@ if __name__=='__main__':
 
             print('')
             print(f"{subs_inds['test']} - {howtoalign}")
-            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots)
+            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,tckfile='tracks_5M_1M_end.tck')

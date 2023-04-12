@@ -20,21 +20,23 @@ def get_a(z):
     b,f,a=utils.load_f_and_a(z)
     return a
 def reshape(a):
-    if type(a)==list:
+    if a.ndim==1:
         return np.transpose(np.reshape(a,(nblocks,nparcs)))
-    else:
+    elif a.ndim==3:
         return np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc
+
         
 def removenans(arr):
     arr = arr[~np.isnan(arr)]
-    return arr
+    return np.array(arr)
 def count_negs_for_each_parc(a):
     if a.ndim==4:
-        return [utils.count_negs(a[:,:,i,:]) for i in range(a.shape[2])]    
+        out= [utils.count_negs(a[:,:,i,:]) for i in range(a.shape[2])]    
     elif a.ndim==3:
-        return [utils.count_negs(a[:,:,i]) for i in range(a.shape[2])]
+        out= [utils.count_negs(a[:,:,i]) for i in range(a.shape[2])]
     elif a.ndim==2:
-        return [utils.count_negs(a[i,:]) for i in range(a.shape[0])]
+        out= [utils.count_negs(a[i,:]) for i in range(a.shape[0])]
+    return np.array(out)
 def minus(a,b):
     #subtract corresponding elements in two lists
     return [i-j for i,j in zip(a,b)]
@@ -52,7 +54,12 @@ def tstat(a):
     for i in range(a.shape[0]):
         t,p=ttest_1samp(a[i,:],0)
         array.append(t)
-    return array
+    return np.array(array)
+def corr(x):
+    #Correlations between columns in x, averaged across all pairs of columns (ignoring corr between a col and itself)
+    values = np.corrcoef(x)
+    non_ones = values!=1
+    return np.mean(values[non_ones])
 def trinarize(mylist,cutoff):
     """
     Given a list li, convert values above 'cutoff' to 1, values below -cutoff to -1, and all other values to 0
@@ -99,16 +106,21 @@ adncx=get_vals(adnc)
 atncx=get_vals(atnc)
 abncx=get_vals(abnc)
 
-#count_negs, averaged across subject-pairs
+#count_negs, averaged across subject-pairs, for each block
 adnN=[count_negs_for_each_parc(i) for i in adx]
 atnN=[count_negs_for_each_parc(i) for i in atx]
 abnN=[count_negs_for_each_parc(i) for i in abx]
+
+#for each parc
+adnrN=[count_negs_for_each_parc(reshape(i)) for i in adn]
+atnrN=[count_negs_for_each_parc(reshape(i)) for i in atn]
+abnrN=[count_negs_for_each_parc(reshape(i)) for i in abn]
 adncN = count_negs_for_each_parc(adncx)
 atncN = count_negs_for_each_parc(atncx)
 abncN = count_negs_for_each_parc(abncx)
 
-anND=[minus(a,b) for a,b in zip(adnN,atnN)] #RD-RT difference for count_negs (av across sub-pairs)
-ancND=minus(adncN,atncN) #important
+anND=[a-b for a,b in zip(adnN,atnN)] #RD-RT difference for count_negs (av across sub-pairs)
+ancND=adncN-atncN #important
 
 axD = [a-b for a,b in zip(adx,atx)] #RD-RT difference for each subjectpair*block values
 ancxD=adncx-atncx 
@@ -118,10 +130,18 @@ ancxDT=tstat(ancxD) #important
 
 ##### Use correlations to find if repeated runs are similar ######
 
+
 #similarity between (0,5) and (5,10)
-print(np.corrcoef(adnN)) #RD: count_negs for each parcel, averaged across sub-pairs
-print(np.corrcoef(anND)) #count_negs(RD) - count_negs(RT)
-print(np.corrcoef(axDT)) #t-stat for RD-RT difference, calc. for each subpair*block
+print(corr(adnN)) #RD: count_negs for each block, summed across sub-pairs
+print(corr(atnN))
+print(corr(abnN))
+
+print(corr(adnrN)) #count_negs for each parc, summed across blocks and sub-pairs
+print(corr(atnrN))
+print(corr(abnrN))
+
+print(corr(anND)) #count_negs(RD) - count_negs(RT)
+print(corr(axDT)) #t-stat for RD-RT difference, calc. for each subpair*block
 
 #similarity between RD and RT
 print([np.corrcoef(adnN[i],atnN[i])[0,1] for i in range(len(strings))]) 

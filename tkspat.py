@@ -37,6 +37,11 @@ def tstat(a):
     return array
 def count_negs_for_each_parc(a):
     return [utils.count_negs(a[:,:,i,:]) for i in range(nparcs)]
+def corr(x):
+    #Correlations between columns in x, averaged across all pairs of columns (ignoring corr between a col and itself)
+    values = np.corrcoef(x)
+    non_ones = values!=1
+    return np.mean(values[non_ones])
 
 zs=[f'0-50_rest_{string}.npy' for string in ['0-10','10-20','20-30','30-40','40-50']]
 
@@ -44,7 +49,8 @@ zs = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/maxhpmult/{i}') 
 
 a = [get_a(i) for i in zs]
 
-an=[utils.subtract_nonscrambled_from_a(reshape(i)) for i in a]
+an=[reshape(utils.subtract_nonscrambled_from_a(i)) for i in a]
+
 anc=np.concatenate(an,axis=0) 
 
 ax=[get_vals(i) for i in an]
@@ -58,6 +64,7 @@ ancm=np.mean(ancx,axis=-1)
 
 anN=[count_negs_for_each_parc(i) for i in an]
 ancN = count_negs_for_each_parc(anc)
+
 
 print(np.corrcoef(at))
 print(np.corrcoef(am))
@@ -86,7 +93,6 @@ scales = np.vstack( [[all_aligners.estimators[i].fit_[nparc].scale for nparc in 
 scales_mean=scales.mean(axis=0)    
 log_scales_mean=np.log10(scales_mean)
 log_scales_mean_adj = log_scales_mean - log_scales_mean.min()
-p.plot(scales_mean @ align_parc_matrix, savename='scales_mean')  
 p.plot(log_scales_mean_adj @ align_parc_matrix, savename='log_scales_mean_adj')  
 
 #Plot vertex areas (?confounder)
@@ -94,18 +100,21 @@ path='D:\\FORSTORAGE\\Data\\Project_Hyperalignment\\old_intermediates\\vertex_ar
 vertex_areas=np.load(path)
 total_vertex_areas_parc = align_parc_matrix @ vertex_areas 
 mean_vert_areas = total_vertex_areas_parc / parc_sizes
-p.plot(vertex_areas,savename='vertex_areas')
+p.plot(mean_vert_areas @ align_parc_matrix,'mean_vert_areas_parc')
+p.plot(total_vertex_areas_parc @ align_parc_matrix,'total_vertex_areas_parc')
 
 #Plot mesh SFM
+
 path='D:\\FORSTORAGE\\Data\\Project_Hyperalignment\\old_intermediates\\SFM\\SFM_white_sub100610.pickle'
 import pickle
 sfms=pickle.load(open(path,"rb"))[0]
 curv_av=[np.trace(i) for i in sfms]
 curv_av_abs=np.abs(curv_av)
 curv_gauss=[np.linalg.det(i) for i in sfms]
-p.plot(curv_av_abs,'curv_av_abs')
+#p.plot(curv_av_abs,'curv_av_abs')
 curv_av_parc = ( align_parc_matrix @ curv_av ) / parc_sizes
 curv_av_abs_parc = ( align_parc_matrix @ curv_av_abs ) / parc_sizes
+
 
 #Are spatial variations in SC-func linkage associated with these confounders?
 print(f'Corr between ancN and scales_mean is {np.corrcoef(ancN,scales_mean)[0,1]}')
