@@ -23,9 +23,7 @@ def reshape(a):
     if a.ndim==1:
         return np.transpose(np.reshape(a,(nblocks,nparcs)))
     elif a.ndim==3:
-        return np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc
-
-        
+        return np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc    
 def removenans(arr):
     arr = arr[~np.isnan(arr)]
     return np.array(arr)
@@ -33,9 +31,9 @@ def count_negs_for_each_parc(a):
     if a.ndim==4:
         out= [utils.count_negs(a[:,:,i,:]) for i in range(a.shape[2])]    
     elif a.ndim==3:
-        out= [utils.count_negs(a[:,:,i]) for i in range(a.shape[2])]
+        out= [utils.count_negs(a[:,:,i]) for i in range(a.shape[-1])]
     elif a.ndim==2:
-        out= [utils.count_negs(a[i,:]) for i in range(a.shape[0])]
+        out= [utils.count_negs(a[:,i]) for i in range(a.shape[-1])]
     return np.array(out)
 def minus(a,b):
     #subtract corresponding elements in two lists
@@ -48,11 +46,13 @@ def get_vals(a):
         elif a.ndim==3:
             values = removenans(a[:,:,i])
         array.append(values)
-    return np.array(array)
+    output = np.array(array).T
+    assert(output.ndim==2)
+    return output
 def tstat(a):
     array=[]
-    for i in range(a.shape[0]):
-        t,p=ttest_1samp(a[i,:],0)
+    for i in range(a.shape[1]):
+        t,p=ttest_1samp(a[:,i],0)
         array.append(t)
     return np.array(array)
 def corr(x):
