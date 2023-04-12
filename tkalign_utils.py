@@ -41,7 +41,6 @@ def makesorter(labels):
     return sorter,unsorter,labelslice
 
 def load_f_and_a(save_path):
-    print(f"Loading from {save_path}")
     temp=np.load(save_path,allow_pickle=True)
     blocks=temp[()]['blocks']
     f=temp[()]['f']

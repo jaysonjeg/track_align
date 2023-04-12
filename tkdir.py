@@ -72,33 +72,40 @@ def trinarize(mylist,cutoff):
 strings=['0-10','10-20','20-30','30-40','40-50']
 zd=[f'0-50_rest_{string}_RD.npy' for string in strings]
 zt=[f'0-50_rest_{string}_RT.npy' for string in strings]
-zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zd]
-zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zt]
+zb=[f'0-50_rest_{string}.npy' for string in strings]
+zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zd] #RD
+zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zt] #RT
+zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/maxhpmult/{i}') for i in zb] #RDRT
 ad = [get_a(i) for i in zd]
 at = [get_a(i) for i in zt]
+ab = [get_a(i) for i in zb]
 blocks,_,_=utils.load_f_and_a(zd[0]) #get blocks
-
-
 
 ##### Get the outcome measures ######
 
 #subtract nonscrambled
 adn=[utils.subtract_nonscrambled_from_a(i) for i in ad]
 atn=[utils.subtract_nonscrambled_from_a(i) for i in at]
+abn=[utils.subtract_nonscrambled_from_a(i) for i in ab]
 adnc=np.concatenate(adn,axis=0) 
 atnc=np.concatenate(atn,axis=0) 
+abnc=np.concatenate(abn,axis=0) 
 
 #remove the nans
 adx=[get_vals(i) for i in adn]
 atx=[get_vals(i) for i in atn]
+abx=[get_vals(i) for i in abn]
 adncx=get_vals(adnc)
 atncx=get_vals(atnc)
+abncx=get_vals(abnc)
 
 #count_negs, averaged across subject-pairs
 adnN=[count_negs_for_each_parc(i) for i in adx]
 atnN=[count_negs_for_each_parc(i) for i in atx]
+abnN=[count_negs_for_each_parc(i) for i in abx]
 adncN = count_negs_for_each_parc(adncx)
 atncN = count_negs_for_each_parc(atncx)
+abncN = count_negs_for_each_parc(abncx)
 
 anND=[minus(a,b) for a,b in zip(adnN,atnN)] #RD-RT difference for count_negs (av across sub-pairs)
 ancND=minus(adncN,atncN) #important
@@ -147,7 +154,7 @@ plt.show()
 """
 
 ##### Plot on the brain where the directional connections are ######
-
+"""
 #The 2 outcome measures
 ancNDr=reshape(ancND)
 ancxDTr=reshape(ancxDT)
@@ -163,3 +170,4 @@ align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
 p.plot(tm @ align_parc_matrix ,savename='tm')
 p.plot(tm_1p5 @ align_parc_matrix,savename='tm_1p5')
 p.plot(tm_2 @ align_parc_matrix,savename='tm_2')
+"""

@@ -45,7 +45,7 @@ if __name__=='__main__':
     c=hutils.clock()
 
     def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots):
-
+        print(hutils.memused())
         if howtoalign!='RDRT':
             print(f'howtoalign is {howtoalign}')
 
@@ -95,14 +95,15 @@ if __name__=='__main__':
         subs['aligner'] = [hutils.subs[i] for i in range(alignfile_nsubs)]
 
 
-        datetime=f'r{hutils.datetime_for_filename()}'
-        print(datetime)
-        results_subfolder=ospath(f'{hutils.results_path}/{datetime}')
+        #save_prefix = f'r{hutils.datetime_for_filename()}'
+        save_prefix = f"corrs_0-{alignfile_nsubs}_{len(subs['temp'])}s_{min(subs_inds['test'])}-{max(subs_inds['test'])}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{align_nparcs}p_{nblocks}b_{block_choice[0:2]}_{howtoalign}"
+        results_subfolder=ospath(f'{hutils.results_path}/{save_prefix}')
         hutils.mkdir(results_subfolder)
         p=hutils.surfplot(results_subfolder,plot_type=plot_type)
         save_folder=f'{hutils.intermediates_path}/tkalign_corrs'
         hutils.mkdir(save_folder)
-        save_path=ospath(f"{save_folder}/corrs_{datetime}.npy")
+        save_path=ospath(f"{save_folder}/{save_prefix}.npy")
+
 
         aligned_method = 'template' if (('temp' in alignfile) or ('Temp' in alignfile)) else 'pairwise'
         if aligned_method=='pairwise': 
@@ -114,6 +115,7 @@ if __name__=='__main__':
         post_skernel=sparse.load_npz(ospath(f'{hutils.intermediates_path}/smoothers/100610_{post_hrc_fwhm}_0.01.npz'))[sorter[:,None],sorter]
 
         if load_file and os.path.exists(save_path):
+            print('loading f and a')
             blocks,f,a = utils.load_f_and_a(save_path)
         else:
             #Get high-res connectomes
@@ -121,7 +123,9 @@ if __name__=='__main__':
             par_prefr_hrc='threads'
             hr_for_hp = hutils.get_highres_connectomes(c,subs['aligner'],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefr_hrc,n_jobs=-1)
             hp=[css.downsample_high_resolution_structural_connectivity_to_atlas(hrs, align_parc_matrix) for hrs in hr_for_hp] #most connected parcel pairs are determined from template subjects
+            print(hutils.memused())
             del hr_for_hp
+            print(hutils.memused())
             hps,hpsx,hpsxa = utils.get_hps(hp)
 
             hr = {group : hutils.get_highres_connectomes(c,subs[group],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefr_hrc,n_jobs=-1) for group in groups} 
@@ -145,6 +149,7 @@ if __name__=='__main__':
             elif block_choice=='maxhpmult':
                 blocks=utils.get_blocks_maxhpmult(nblocks,hpsxa,nparcs)
 
+            print(hutils.memused())
             ### Get func aligners ###
             print(f'{c.time()}: GetAligners', end=", ")
             aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
@@ -159,6 +164,10 @@ if __name__=='__main__':
                 all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) 
                 allowed_keys = [f'{i}-{j}' for i in subs['test'] for j in subs['temp'] if i!=j] #only aligners which transform test subjects to template subjects
                 fa={'test':{key:value for key,value in all_aligners.items() if key in allowed_keys}}
+
+
+            print(hutils.memused())
+
 
             def get_aligner_parcel(group,key,i):
                 #group is 'temp' or 'test'
@@ -202,6 +211,7 @@ if __name__=='__main__':
             aligned_blocks={}
             if aligned_method=='template':
                 for group in groups:
+                    print(hutils.memused())
                     print(f'{c.time()}: GetAlignedBlocks{group}', end=", ")
                     temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args(howtoalign,group,get_offdiag_blocks=get_offdiag_blocks_all[group]))
                     if group=='test':
@@ -253,7 +263,7 @@ if __name__=='__main__':
             Pairwise:
             Subject nxD's diffusion map compared to subject nyD's diffusion map (aligned via nY->nX aligner)
             """
-            
+            print(hutils.memused())            
             if get_similarity_pairwise:
                 print(f'{c.time()}: GetSimilarity (pair)',end=", ")
                 #store correlation for each block in each subject-pair 
@@ -489,17 +499,17 @@ if __name__=='__main__':
         print(hutils.memused())
 
 
-    nblocks=5 #how many (parcel x parcel) blocks to examine
-    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
-    block_choice='maxhpmult' #'largest', 'fromsourcevertex', 'all','maxhpmult'
-    save_file=False
+    nblocks=100 #how many (parcel x parcel) blocks to examine
+    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False'
+    block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
+    save_file=True
     load_file=False    
-    to_plot=False
-    save_plots=False
+    to_plot=True
+    save_plots=True
 
 
-    for howtoalign in ['RDRT','RD','RT']: #'RDRT','RD', 'RT', 'no_align'
-        for test in [range(0,5)]:
+    for howtoalign in ['RDRT']: #'RDRT','RD', 'RT', 'no_align'
+        for test in [range(0,10),range(10,20),range(20,30),range(30,40),range(40,50)]:
             aligner_nsubs = utils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]
             subs_inds={'temp': temp, 'test': test}
