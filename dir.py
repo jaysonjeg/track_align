@@ -8,7 +8,8 @@ Given outputs of tkalign.py using 'RD' and 'RT', try to compute directionality
 
 import hcpalign_utils as hutils
 import matplotlib.pyplot as plt
-import tkalign_utils as tutils, dir_utils as dutils
+import tkalign_utils as tutils
+from dir_utils import *
 import numpy as np
 from scipy.stats import ttest_1samp, ttest_rel
 import matplotlib.pyplot as plt
@@ -19,8 +20,6 @@ align_nparcs=300
 nparcs=301
 nblocks=5
 n=4 #decimal places for answers
-
-##### Functions ######
 
 ##### Initial preparations ######
 

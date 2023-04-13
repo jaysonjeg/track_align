@@ -37,7 +37,7 @@ if __name__=='__main__':
     from scipy import sparse
     import hcpalign_utils as hutils
     from hcpalign_utils import ospath
-    import matplotlib.pyplot as plt, tkalign_utils as utils
+    import matplotlib.pyplot as plt, tkalign_utils as tutils
     from tkalign_utils import values2ranks as ranks, regress as reg, identifiability as ident, count_negs
     from joblib import Parallel, delayed
 
@@ -80,7 +80,7 @@ if __name__=='__main__':
         get_similarity_pairwise=False #correlations bw nxD*nxR (matched), and nyD*(all possible nyDs)
         get_similarity_average=True #correlation between mean(nxD*nxR(matched)), and nyD*(all possible nyDs)
 
-        align_nparcs=utils.extract_nparcs(alignfile)
+        align_nparcs=tutils.extract_nparcs(alignfile)
         align_labels=hutils.Schaefer(align_nparcs)
         align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
         
@@ -92,7 +92,7 @@ if __name__=='__main__':
 
         groups=['temp','test']
         subs = {group: [hutils.subs[i] for i in subs_inds[group]] for group in groups}
-        alignfile_nsubs=utils.extract_nsubs(alignfile)
+        alignfile_nsubs=tutils.extract_nsubs(alignfile)
         subs['aligner'] = [hutils.subs[i] for i in range(alignfile_nsubs)]
 
 
@@ -112,12 +112,12 @@ if __name__=='__main__':
             get_similarity_average=False
             assert( set(subs['temp']).isdisjoint(subs['test']) )
         nparcs=align_parc_matrix.shape[0]
-        sorter,unsorter,slices=utils.makesorter(align_labels) # Sort vertices by parcel membership, for speed
+        sorter,unsorter,slices=tutils.makesorter(align_labels) # Sort vertices by parcel membership, for speed
         post_skernel=sparse.load_npz(ospath(f'{hutils.intermediates_path}/smoothers/100610_{post_hrc_fwhm}_0.01.npz'))[sorter[:,None],sorter]
 
         if load_file and os.path.exists(save_path):
             print('loading f and a')
-            blocks,f,a = utils.load_f_and_a(save_path)
+            blocks,f,a = tutils.load_f_and_a(save_path)
         else:
             #Get high-res connectomes
             print(f'{c.time()}: Get highres connectomes and downsample',end=", ")
@@ -125,7 +125,7 @@ if __name__=='__main__':
             hr_for_hp = hutils.get_highres_connectomes(c,subs['aligner'],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefr_hrc,n_jobs=-1)
             hp=[css.downsample_high_resolution_structural_connectivity_to_atlas(hrs, align_parc_matrix) for hrs in hr_for_hp] #most connected parcel pairs are determined from template subjects
             del hr_for_hp
-            hps,hpsx,hpsxa = utils.get_hps(hp)
+            hps,hpsx,hpsxa = tutils.get_hps(hp)
 
             hr = {group : hutils.get_highres_connectomes(c,subs[group],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefr_hrc,n_jobs=-1) for group in groups} 
 
@@ -140,13 +140,13 @@ if __name__=='__main__':
 
             print(f'{c.time()}: GetBlocks', end=", ")       
             if block_choice=='largest': 
-                blocks=utils.get_blocks_largest(nblocks,parcel_pair_type,hps,hpsx)
+                blocks=tutils.get_blocks_largest(nblocks,parcel_pair_type,hps,hpsx)
             elif block_choice=='fromsourcevertex':
-                blocks=utils.get_blocks_source(align_labels,hpsxa,nblocks,nparcs,type_rowcol)
+                blocks=tutils.get_blocks_source(align_labels,hpsxa,nblocks,nparcs,type_rowcol)
             elif block_choice=='all':
-                blocks=utils.get_blocks_all()
+                blocks=tutils.get_blocks_all()
             elif block_choice=='maxhpmult':
-                blocks=utils.get_blocks_maxhpmult(nblocks,hpsxa,nparcs)
+                blocks=tutils.get_blocks_maxhpmult(nblocks,hpsxa,nparcs)
 
             print(hutils.memused())
             ### Get func aligners ###
@@ -157,7 +157,7 @@ if __name__=='__main__':
                 fa={}
                 for group in groups:
                     all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) #load each time because func(i) will modify arrays in all_aligners            
-                    func = lambda nsub: utils.aligner2sparse(all_aligners.estimators[nsub],slices,fa_sparse=fa_sparse,aligned_descale=aligned_descale,aligned_negs=aligned_negs)
+                    func = lambda nsub: tutils.aligner2sparse(all_aligners.estimators[nsub],slices,fa_sparse=fa_sparse,aligned_descale=aligned_descale,aligned_negs=aligned_negs)
                     fa[group] = [func(i) for i in subs_inds[group]]
             elif aligned_method=='pairwise':          
                 all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) 
@@ -190,7 +190,7 @@ if __name__=='__main__':
                 n_subs=len(subs[group])
                 for nD,nR in itertools.product(range(n_subs),range(n_subs)):
                     if get_offdiag_blocks or (nD==nR):
-                        key = utils.get_key(aligned_method,subs[group],nD,nR)
+                        key = tutils.get_key(aligned_method,subs[group],nD,nR)
                         for n in range(blocks.shape[1]):
                             yield get_vals(howtoalign,group,nD,key,n)
             def get_aligned_block(i,j,D,Ri,Rj,pre,post):
@@ -303,8 +303,8 @@ if __name__=='__main__':
 
         print(f'{c.time()}: Calculations',end='')
         if get_similarity_pairwise:   
-            fn=utils.subtract_nonscrambled_from_z(f) #4-dim array with elements [nxD,nyD,nyR,nblock]. Nonscrambled elements set to nan
-            fn2=utils.unaligned_to_nan(fn,subs['test'],subs['temp']) #Set elements where X and Y are aligned with same aligner to nan. Size (nxD,nyD,nyR,block) = (3,3,3,200)
+            fn=tutils.subtract_nonscrambled_from_z(f) #4-dim array with elements [nxD,nyD,nyR,nblock]. Nonscrambled elements set to nan
+            fn2=tutils.unaligned_to_nan(fn,subs['test'],subs['temp']) #Set elements where X and Y are aligned with same aligner to nan. Size (nxD,nyD,nyR,block) = (3,3,3,200)
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore",category=RuntimeWarning)
@@ -322,12 +322,12 @@ if __name__=='__main__':
                     f=f2
                     del f2
 
-                fx=utils.unaligned_to_nan(f,subs['test'],subs['temp'])
+                fx=tutils.unaligned_to_nan(f,subs['test'],subs['temp'])
 
                 #Average across blocks. Ignore nans. That means blocks with no connections in one of the subject pairs. 3-dim array with elements [nxD, nyD, nyR]
                 mf=np.nanmean(f,axis=3) #size (nxD,nyD,nyR)=(3,3,3)
                 mfn=np.nanmean(fn,axis=3)
-                m_unscram_ranks=utils.get_unscram_ranks(ranks(mf),aligned_method) 
+                m_unscram_ranks=tutils.get_unscram_ranks(ranks(mf),aligned_method) 
 
 
                 mean0 = lambda array: np.nanmean(array,axis=0)
@@ -387,14 +387,14 @@ if __name__=='__main__':
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore",category=RuntimeWarning)
-                an=utils.subtract_nonscrambled_from_a(a)
+                an=tutils.subtract_nonscrambled_from_a(a)
                 anm=np.nanmean(an,axis=(0,1)) #mean across subject-pairs
                 man=np.nanmean(an,axis=-1) #mean across blocks
                 ma=np.nanmean(a,axis=-1) #nsubs*nsubs*nparcs
 
                 ao=ranks(a,axis=1) #values to ranks along nyR axis
                 ar=reg(a)   
-                arn=utils.subtract_nonscrambled_from_a(ar)
+                arn=tutils.subtract_nonscrambled_from_a(ar)
                 aro=ranks(ar,axis=1) 
             
                 mao=np.nanmean(ao,axis=-1) #mean along blocks
@@ -462,10 +462,12 @@ if __name__=='__main__':
             #print(f'Identifiability with mean template: {mai:.1f}%, per block average {ai.mean():.1f}')
             #print(f'reg: Identifiability with mean template: {mari:.1f}%, per block average {ari.mean():.1f}')
             if not(ident_grouped_type=='perparcel'):
-                fig,axs=plt.subplots(3)
-                utils.plot_id(axs[0],mao,title='mao')
-                utils.plot_id(axs[1],maro,title='maro')
-                utils.plot_id(axs[2],mar,title='mar')
+                fig,axs=plt.subplots(5)
+                tutils.plot_id(axs[0],mao,title='mao')
+                tutils.plot_id(axs[1],maro,title='maro')
+                tutils.plot_id(axs[2],ma,title='ma')
+                tutils.plot_id(axs[3],mar,title='mar')
+                tutils.plot_id(axs[4],a[:,:,0],title='a_block0')
                 plt.subplots_adjust(hspace=0.5) 
                 fig.suptitle(f'Similarity average', fontsize=16)
 
@@ -481,15 +483,15 @@ if __name__=='__main__':
             #print(f'Identifiability with pairs {mfomi:.1f}%, per block average {fmri.mean():.1f}%')
             if not(ident_grouped_type=='perparcel'):
                 fig,axs=plt.subplots(5)
-                utils.plotter(axs[0],mf,aligned_method,show_same_aligner,'m',subs['test'],subs['temp'])
-                utils.plot_id(axs[1],mfom,title='mfom: pairwise')
-                utils.plot_id(axs[2],mfxmr,title='mfxmr: pairwise')
-                utils.plot_id(axs[3],fxoMm,title='fxoMm: pairwise') 
+                tutils.plotter(axs[0],mf,aligned_method,show_same_aligner,'m',subs['test'],subs['temp'])
+                tutils.plot_id(axs[1],mfom,title='mfom: pairwise')
+                tutils.plot_id(axs[2],mfxmr,title='mfxmr: pairwise')
+                tutils.plot_id(axs[3],fxoMm,title='fxoMm: pairwise') 
                 axs[4].hist(fnmm)
                 axs[4].set_title('Distribution of scrambled minus nonscrambled \nacross blocks')
                 #axs[0].hist(m_unscram_ranks)
                 #axs[0].set_title('m: Rank order of unscrambled \namong scrambled: Bigger is better')
-                #utils.plotter(axis_mn,mfn,aligned_method,show_same_aligner,'mfn',,subs_test,subs_temp,drawhorzline=True)    
+                #tutils.plotter(axis_mn,mfn,aligned_method,show_same_aligner,'mfn',,subs_test,subs_temp,drawhorzline=True)    
                 plt.subplots_adjust(hspace=0.5)
                 fig.suptitle(f'Similarity pairwise', fontsize=16)
 
@@ -504,21 +506,22 @@ if __name__=='__main__':
         print(hutils.memused())
 
 
-    nblocks=100 #how many (parcel x parcel) blocks to examine
-    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False'
+    nblocks=5 #how many (parcel x parcel) blocks to examine
+    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False_template5'
     block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
     save_file=False
-    load_file=True    
+    load_file=False    
     to_plot=True
     save_plots=False
 
 
     for howtoalign in ['RDRT']: #'RDRT','RD', 'RT', 'no_align'
-        for test in [range(0,10),range(10,20),range(20,30),range(30,40),range(40,50)]:
-            aligner_nsubs = utils.extract_nsubs(alignfile)
+        for test in [range(2,7)]:
+            aligner_nsubs = tutils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]
+            temp=[7,8,9]
             subs_inds={'temp': temp, 'test': test}
 
             print('')
             print(f"{subs_inds['test']} - {howtoalign}")
-            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,tckfile='tracks_5M_1M_end.tck')
+            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots)

@@ -366,11 +366,11 @@ if __name__=='__main__':
         t=hutils.cprint(resultsfile) 
         for method in ['template']:
             for pairwise_method in ['scaled_orthogonal']:
-                for n_subs in [3]:
+                for n_subs in [10]:
                     print(f'{method} - {pairwise_method} - nsubs{n_subs}')
                     c=hutils.clock()            
                     print(hutils.memused())   
-                    x=func(c,t=t,n_subs=n_subs,n_movies=1,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=False,load_pickle=False,return_nalign=False,return_aligner=False,n_jobs=+1)
+                    x=func(c,t=t,n_subs=n_subs,n_movies=4,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=True,load_pickle=False,return_nalign=False,return_aligner=False,n_jobs=+1,args_template={'n_iter':2,'scale':False,'method':1,'nsubsfortemplate':range(5)})
                     print(hutils.memused())
                     hutils.getloadavg()
                     t.print('')  

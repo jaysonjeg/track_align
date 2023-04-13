@@ -3,6 +3,7 @@ Utility functions for tkdir.py
 """
 
 
+
 def pr(value, string=None):
     if string is None:
         print(f'{value:.{n}f}')

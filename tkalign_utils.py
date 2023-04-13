@@ -1,7 +1,6 @@
 import re
 import numpy as np
-from Connectome_Spatial_Smoothing import CSS as css
-from scipy import sparse, stats
+from scipy import sparse
 import hcpalign_utils as hutils
 from hcpalign_utils import memused, sizeof, ospath
 import matplotlib.pyplot as plt
@@ -387,11 +386,15 @@ def plot_id(axis,x,title='title'):
     n_subs = x.shape[0]
     for nyD in range(n_subs):
         for nyR in range(n_subs):
-            if nyD==nyR: marker='r'
+            if nyD==nyR: 
+                #marker_color='r'
+                marker_color=colors[nyR%len(colors)]
+                marker_size=40
             else:
-                #marker='b'
-                marker=colors[nyR%len(colors)]
-            axis.scatter(nyD+1, x[nyD, nyR], s=20, c=marker)
+                #marker_color='b'
+                marker_color=colors[nyR%len(colors)]
+                marker_size=20
+            axis.scatter(nyD+1, x[nyD, nyR], s=marker_size, c=marker_color)
     axis.set_title(title)          
     axis.get_xaxis().set_ticks([])
     axis.set_xlabel('Subjects (connectome)')

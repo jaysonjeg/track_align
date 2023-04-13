@@ -777,6 +777,11 @@ class surfplot():
         """
         if vmin is not None: self.vmin=vmin
         if vmax is not None: self.vmax=vmax
+        if np.min(data)<0: 
+            self.cmap='bwr'
+        else: 
+            self.cmap='inferno'
+            self.vmin=np.min(data)
         if self.mesh[0].shape[0] > 59412: #if using full 64,983-vertex mesh
             new_data = hcp.cortex_data(data)
         else:
@@ -787,6 +792,7 @@ class surfplot():
             view.save_as_html(ospath('{}/{}.html'.format(self.figpath,savename)))
         elif self.plot_type=='open_in_browser':
             view.open_in_browser()
+        self.vmin=None
 
 def plot_parc(p,align_parc_matrix,data,savename=None):
     """

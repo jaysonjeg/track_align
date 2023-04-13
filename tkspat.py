@@ -3,7 +3,7 @@ from Connectome_Spatial_Smoothing import CSS as css
 from scipy import sparse
 import hcpalign_utils as hutils
 from hcpalign_utils import sizeof, ospath
-import matplotlib.pyplot as plt, hcp_utils as hcp, tkalign_utils as utils
+import matplotlib.pyplot as plt, hcp_utils as hcp, tkalign_utils as tutils
 from tkalign_utils import full, values2ranks as ranks, regress as reg, identifiability as ident
 from joblib import Parallel, delayed
 import numpy as np
@@ -16,7 +16,7 @@ nparcs=301
 nblocks=5
 
 def get_a(z):
-    b,f,a=utils.load_f_and_a(z)
+    b,f,a=tutils.load_f_and_a(z)
     return a
 def reshape(a):
     return np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc
@@ -36,7 +36,7 @@ def tstat(a):
         array.append(t)
     return array
 def count_negs_for_each_parc(a):
-    return [utils.count_negs(a[:,:,i,:]) for i in range(nparcs)]
+    return [tutils.count_negs(a[:,:,i,:]) for i in range(nparcs)]
 def corr(x):
     #Correlations between columns in x, averaged across all pairs of columns (ignoring corr between a col and itself)
     values = np.corrcoef(x)
@@ -49,7 +49,7 @@ zs = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/maxhpmult/{i}') 
 
 a = [get_a(i) for i in zs]
 
-an=[reshape(utils.subtract_nonscrambled_from_a(i)) for i in a]
+an=[reshape(tutils.subtract_nonscrambled_from_a(i)) for i in a]
 
 anc=np.concatenate(an,axis=0) 
 
