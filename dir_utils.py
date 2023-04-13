@@ -1,8 +1,17 @@
 """
 Utility functions for tkdir.py
 """
+import hcpalign_utils as hutils
+import tkalign_utils as tutils
+import numpy as np
+import pickle
 
 
+align_nparcs=300
+align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
+nparcs=301
+nblocks=5
+n=4 #decimal places for answers
 
 def pr(value, string=None):
     if string is None:
@@ -49,7 +58,9 @@ def get_vals(a):
 def corr(x):
     #Correlations between columns in x, averaged across all pairs of columns (ignoring corr between a col and itself)
     values = np.corrcoef(x)
-    non_ones = values!=1
+    ones = np.ones(values.shape)
+    non_ones = ~(np.isclose(values,ones))
+    #non_ones = values!=1
     return np.mean(values[non_ones])
 def OLS(Y,X):
     #Y is array(n,1). X is array of regressors (n,nregressor). Outputs R
@@ -70,3 +81,29 @@ def trinarize(mylist,cutoff):
     li[lesser]=-1
     li[neither]=0
     return li
+
+### Get confounders ###
+
+def get_nverts_parc():
+    #number of vertices in each parcel
+    nverts_parc=np.array(align_parc_matrix.sum(axis=1)).squeeze()
+    nverts_parc[0]=nverts_parc.mean()
+    return nverts_parc
+
+def get_aligner_scale_factor():
+    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
+    aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
+    all_aligners = pickle.load( open( hutils.ospath(aligner_file), "rb" ))
+    scales = np.vstack( [[all_aligners.estimators[i].fit_[nparc].scale for nparc in range(nparcs)] for i in range(len(all_aligners.estimators))] )   
+    scales_mean=scales.mean(axis=0)    
+    log_scales_mean=np.log10(scales_mean)
+    log_scales_mean_adj = log_scales_mean - log_scales_mean.min()
+    return scales_mean,log_scales_mean_adj
+
+def get_vertex_areas():
+    path='D:\\FORSTORAGE\\Data\\Project_Hyperalignment\\old_intermediates\\vertex_areas\\vert_area_100610_white.npy'
+    vertex_areas=np.load(path)
+    total_areas_parc = align_parc_matrix @ vertex_areas 
+    mean_vert_areas_parc = total_areas_parc / get_nverts_parc()
+    return total_areas_parc , mean_vert_areas_parc 
+ 

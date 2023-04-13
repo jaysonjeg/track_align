@@ -14,14 +14,8 @@ import numpy as np
 from scipy.stats import ttest_1samp, ttest_rel
 import matplotlib.pyplot as plt
 
-##### Global variables ######
 
-align_nparcs=300
-nparcs=301
-nblocks=5
-n=4 #decimal places for answers
-
-##### Initial preparations ######
+##### INITIAL PREPARATIONS ######
 
 strings=['0-10','10-20','20-30','30-40','40-50']
 zd=[f'0-50_rest_{string}_RD.npy' for string in strings]
@@ -35,7 +29,12 @@ t = [get_a(i) for i in zt]
 b = [get_a(i) for i in zb]
 blocks,_,_=tutils.load_f_and_a(zd[0]) #get blocks
 
-##### Get the outcome measures ######
+##### GET OUTCOME MEASURES ######
+
+#Get confounders
+nverts_parc = get_nverts_parc()
+scales_mean,log_scales_mean_adj = get_aligner_scale_factor()
+total_areas_parc , mean_vert_areas_parc = get_vertex_areas()
 
 #subtract nonscrambled
 dn=[tutils.subtract_nonscrambled_from_a(i) for i in d] #'n' means per fold
@@ -93,7 +92,8 @@ cedr=reshape(ced) #important
 cxdtr=reshape(cxdt) #important
 cxdTr=reshape(cxdT)
 
-
+#### PRINT SOME OUTPUTS ####
+print('\n### Correlations between blocks belonging to same parcel ###')
 pr(corr(cedr.T),'do blocks belonging to a common parcel have similar RD-RT diff in counts?')
 pr(corr(cxdtr.T), 'do blocks belonging to a common parcel have similar t-stat for RD-RT diff?')
 pr(corr(dcxtr.T), 'do blocks belonging to a common parcel have similar t-stat for RD?')
@@ -101,23 +101,21 @@ pr(corr(tcxtr.T), 'do blocks belonging to a common parcel have similar t-stat fo
 pr(corr(bcxtr.T), 'do blocks belonging to a common parcel have similar t-stat for RDRT?')
 
 
-##### Use correlations to find if repeated runs are similar ######
-print('### Correlation between 5 folds ###')
+print('\n### Correlation between 5 folds ###')
 print('Counts for each block, summed across sub-pairs: RD, RT, RDRT')
 pr(corr(dne)) 
 pr(corr(tne))
 pr(corr(bne))
-
 print('Counts for each parc, summed across sub-pairs and blocks: RD, RT, RDRT')
 pr(corr(dnre)) 
 pr(corr(tnre))
 pr(corr(bnre))
-
 pr(corr(ned),'counts(RD) - counts(RT), for each block') 
 pr(corr(nred),'counts(RD) - counts(RT), for each parc') 
 pr(corr(nxdt),'t-stat for RD-RT diff, calc. for each block') 
 
-print('\n### Correlations between RD, RT, and RDRT')
+
+print('\n### Correlations between RD, RT, and RDRT ###')
 print('dce vs tce vs bce: counts, across blocks')
 print(np.corrcoef([dce,tce,bce]))
 print('OLS of bce, predicted by dce and tce')
@@ -131,7 +129,14 @@ print(np.corrcoef([dcxt,tcxt,bcxt]))
 print("\nSimilarity between RD and RT (in counts for each block)")
 print([f"{np.corrcoef(dne[i],tne[i])[0,1]:.{n}f}" for i in range(len(strings))]) 
 
-##### Compare with null models ######
+#Are spatial variations in SC-func linkage associated with these confounders?
+print(f'\nCorrelation between bcre and () is ()')
+print(f'aligner scale (mean), {np.corrcoef(bcre,scales_mean)[0,1]}')
+print(f'no of vertices in the parcel, {np.corrcoef(bcre,nverts_parc)[0,1]}')
+print(f'mean vert area in the parcel, {np.corrcoef(bcre,mean_vert_areas_parc)[0,1]}')
+print(f'total parcel area, {np.corrcoef(bcre,total_areas_parc)[0,1]}')
+
+##### GET NULL MODELS ######
 
 #Compare ced with null model. Cutoffs: loose: |values| > 5, tight: |values| > 10
 """
@@ -157,9 +162,11 @@ plt.hist(cxdt,10,color='r',alpha=0.3)
 plt.show()
 """
 
-##### Plots on the brain ######
+##### PLOTS ######
 p=hutils.surfplot(hutils.results_path,plot_type='open_in_browser')
 align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
+
+### Plot non-directional stuff ###
 
 #counts, for each parc
 p.plot(dcre@align_parc_matrix,'dcre') 
@@ -171,15 +178,18 @@ p.plot(-dcxtr.mean(axis=1) @ align_parc_matrix, 'dcxtrm')  #compare to tkspat.py
 p.plot(-tcxtr.mean(axis=1) @ align_parc_matrix, 'tcxtrm')
 p.plot(-bcxtr.mean(axis=1) @ align_parc_matrix, 'bcxtrm')
 
-##### Plot on the brain where the directional connections are ######
+### Plot directional stuff ###
 
 p.plot(cxdtr.mean(axis=1) @ align_parc_matrix ,savename='cxdtrm')
-p.plot(cxdTr.mean(axis=1) @ align_parc_matrix ,savename='cxdTrm')
+#p.plot(cxdTr.mean(axis=1) @ align_parc_matrix ,savename='cxdTrm')
 
 #Let's focus on cxdtr
-t=cxdtr
-tm=t.mean(axis=1)
-tm_1p5=trinarize(tm,1.5)
-tm_2=trinarize(tm,2)
-#p.plot(tm_1p5 @ align_parc_matrix,savename='tm_1p5')
-#p.plot(tm_2 @ align_parc_matrix,savename='tm_2')
+tm=cxdtr.mean(axis=1)
+#p.plot(trinarize(tm,1.5) @ align_parc_matrix,savename='tm_1p5')
+#p.plot(trinarize(tm,2) @ align_parc_matrix,savename='tm_2')
+
+### Plot confounders ###
+p.plot(nverts_parc @ align_parc_matrix, savename='nverts_parc')
+p.plot(log_scales_mean_adj @ align_parc_matrix, savename='log_scales_mean_adj') 
+p.plot(mean_vert_areas_parc @ align_parc_matrix,'mean_vert_areas_parc')
+p.plot(total_areas_parc @ align_parc_matrix,'total_areas_parc')

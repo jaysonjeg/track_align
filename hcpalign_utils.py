@@ -779,15 +779,17 @@ class surfplot():
         if vmax is not None: self.vmax=vmax
         if np.min(data)<0: 
             self.cmap='bwr'
+            symmetric_cmap=True
         else: 
             self.cmap='inferno'
             self.vmin=np.min(data)
+            symmetric_cmap=False
         if self.mesh[0].shape[0] > 59412: #if using full 64,983-vertex mesh
             new_data = hcp.cortex_data(data)
         else:
             new_data = data
         
-        view=plotting.view_surf(self.mesh,new_data,cmap=self.cmap,vmin=self.vmin,vmax=self.vmax,symmetric_cmap=False)  
+        view=plotting.view_surf(self.mesh,new_data,cmap=self.cmap,vmin=self.vmin,vmax=self.vmax,symmetric_cmap=symmetric_cmap)  
         if self.plot_type=='save_as_html':
             view.save_as_html(ospath('{}/{}.html'.format(self.figpath,savename)))
         elif self.plot_type=='open_in_browser':
