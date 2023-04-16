@@ -99,7 +99,7 @@ if __name__=='__main__':
         #save_prefix = f'r{hutils.datetime_for_filename()}'
         save_prefix = f"corrs_0-{alignfile_nsubs}_{len(subs['temp'])}s_{min(subs_inds['test'])}-{max(subs_inds['test'])}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{align_nparcs}p_{nblocks}b_{block_choice[0:2]}_{howtoalign}"
         results_subfolder=ospath(f'{hutils.results_path}/{save_prefix}')
-        hutils.mkdir(results_subfolder)
+        if to_plot and save_plots: hutils.mkdir(results_subfolder)
         p=hutils.surfplot(results_subfolder,plot_type=plot_type)
         save_folder=f'{hutils.intermediates_path}/tkalign_corrs'
         hutils.mkdir(save_folder)
@@ -135,7 +135,6 @@ if __name__=='__main__':
 
             print(f'{c.time()}: Smooth hrc', end=", ")
             hr={group : hutils.smooth_highres_connectomes(hr[group],smoother) for group in groups}
-            print(hutils.memused())
 
             print(f'{c.time()}: GetBlocks', end=", ")       
             if block_choice=='largest': 
@@ -147,7 +146,6 @@ if __name__=='__main__':
             elif block_choice=='maxhpmult':
                 blocks=tutils.get_blocks_maxhpmult(nblocks,hpsxa,nparcs)
 
-            print(hutils.memused())
             ### Get func aligners ###
             print(f'{c.time()}: GetAligners', end=", ")
             aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
@@ -172,11 +170,15 @@ if __name__=='__main__':
             def get_vals(howtoalign,group,nD,key,n):
                 i,j=blocks[0,n],blocks[1,n]
                 D=hr[group][nD][slices[i],slices[j]] 
-                Ri=np.eye(D.shape[0],dtype=np.float32)
-                Rj=np.eye(D.shape[1],dtype=np.float32)                       
-                if howtoalign in ['RD','RDRT']:
+                if '+' in howtoalign: #the other end will be self-aligned
+                    Ri=get_aligner_parcel(group,nD,i)
+                    Rj=get_aligner_parcel(group,nD,j)
+                else:
+                    Ri=np.eye(D.shape[0],dtype=np.float32)
+                    Rj=np.eye(D.shape[1],dtype=np.float32)   
+                if howtoalign in ['RD','RD+','RDRT']:
                     Ri=get_aligner_parcel(group,key,i)
-                if howtoalign in ['RDRT','RT']:
+                if howtoalign in ['RT','RT+','RDRT']:
                     Rj=get_aligner_parcel(group,key,j)
                 if post_hrc_fwhm:
                     pre=post_skernel[slices[i],slices[i]]
@@ -205,12 +207,10 @@ if __name__=='__main__':
             aligned_blocks={}
             if aligned_method=='template':
                 for group in groups:
-                    print(hutils.memused())
                     print(f'{c.time()}: GetAlignedBlocks{group}', end=", ")
                     temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args(howtoalign,group,get_offdiag_blocks=get_offdiag_blocks_all[group]))
                     if group=='test':
                         aligned_blocks['test']=np.reshape(np.array(temp,dtype=object),(len(subs['test']),len(subs['test']),blocks.shape[1]))
-
                     elif group=='temp':
                         aligned_blocks['temp']=np.reshape(np.array(temp,dtype=object),(len(subs['temp']),blocks.shape[1]))
                         aligned_blocks_template_mean = np.mean(aligned_blocks['temp'],axis=0) 
@@ -395,7 +395,10 @@ if __name__=='__main__':
                 ar=reg(a)   
                 arn=tutils.subtract_nonscrambled_from_a(ar)
                 aro=ranks(ar,axis=1) 
-            
+
+                arnm=np.nanmean(arn,axis=(0,1)) #mean across subject-pairs
+                marn=np.nanmean(arn,axis=-1) #mean across blocks
+
                 mao=np.nanmean(ao,axis=-1) #mean along blocks
                 maro=np.nanmean(aro,axis=-1)
                 mar=np.nanmean(ar,axis=-1)
@@ -443,19 +446,16 @@ if __name__=='__main__':
                 hutils.plot_parc(p,align_parc_matrix,scales_mean,'scales')        
 
         def plots_average():
-            
+            """
             if not(ident_grouped_type=='perparcel'):
                 print(f'AV {count_negs(anm):.1f}% of blocks (mean across sub-pairs)')
-                print(f'AV {count_negs(man):.1f}% of sub-pairs (mean across blocks)')    
-            
+                print(f'AV {count_negs(man):.1f}% of sub-pairs (mean across blocks)')      
             print(f'AV {count_negs(an):.1f}% of (sub-pairs)*blocks')
-
-
-            arnm=np.nanmean(arn,axis=(0,1)) #mean across subject-pairs
-            marn=np.nanmean(arn,axis=-1) #mean across blocks
-            print(f'AV {count_negs(arnm):.1f}% of blocks (mean across sub-pairs) R')
-            print(f'AV {count_negs(marn):.1f}% of sub-pairs (mean across blocks) R')    
-            print(f'AV {count_negs(arn):.1f}% of (sub-pairs)*blocks R')
+            """
+            if not(ident_grouped_type=='perparcel'):
+                print(f'AV R {count_negs(arnm):.1f}% of blocks (mean across sub-pairs)')
+                print(f'AV R {count_negs(marn):.1f}% of sub-pairs (mean across blocks)')    
+            print(f'AV R {count_negs(arn):.1f}% of (sub-pairs)*blocks')
 
 
             #print(f'Identifiability with mean template: {mai:.1f}%, per block average {ai.mean():.1f}')
@@ -506,16 +506,16 @@ if __name__=='__main__':
 
 
     nblocks=5 #how many (parcel x parcel) blocks to examine
-    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_5-4-7_TF_0_0_0_FFF_S300_False'
+    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
     block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
     save_file=False
     load_file=False    
-    to_plot=True
+    to_plot=False
     save_plots=False
 
 
-    for howtoalign in ['RDRT']: #'RDRT','RD', 'RT', 'no_align'
-        for test in [range(0,3)]:
+    for howtoalign in ['RDRT','RD','RD+','RT','RT+']: #'RDRT','RD', 'RT', 'no_align'
+        for test in [range(0,5)]:
             aligner_nsubs = tutils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]
             subs_inds={'temp': temp, 'test': test}

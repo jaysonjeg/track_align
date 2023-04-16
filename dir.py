@@ -16,11 +16,17 @@ import matplotlib.pyplot as plt
 
 
 ##### INITIAL PREPARATIONS ######
-
+nsubs=50
 strings=['0-10','10-20','20-30','30-40','40-50']
-zd=[f'0-50_rest_{string}_RD.npy' for string in strings]
-zt=[f'0-50_rest_{string}_RT.npy' for string in strings]
-zb=[f'0-50_rest_{string}.npy' for string in strings]
+
+"""
+nsubs=10
+strings=['0-5','5-10']
+"""
+
+zd=[f'0-{nsubs}_rest_{string}_RD.npy' for string in strings]
+zt=[f'0-{nsubs}_rest_{string}_RT.npy' for string in strings]
+zb=[f'0-{nsubs}_rest_{string}.npy' for string in strings]
 zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zd] #RD
 zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zt] #RT
 zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/maxhpmult/{i}') for i in zb] #RDRT
@@ -131,7 +137,7 @@ print("\nSimilarity between RD and RT (in counts for each block)")
 print([f"{np.corrcoef(dne[i],tne[i])[0,1]:.{n}f}" for i in range(len(strings))]) 
 
 #Are spatial variations in SC-func linkage associated with these confounders?
-print(f'\nCorrelation between bcre and () is ()')
+print(f'\n#### Correlation between bcre and () is () ####')
 print(f'aligner scale (mean), {np.corrcoef(bcre,scales_mean)[0,1]}')
 print(f'no of vertices in the parcel, {np.corrcoef(bcre,nverts_parc)[0,1]}')
 print(f'mean vert area in the parcel, {np.corrcoef(bcre,mean_vert_areas_parc)[0,1]}')
@@ -191,8 +197,10 @@ tm=cxdtr.mean(axis=1)
 #p.plot(trinarize(tm,2) @ align_parc_matrix,savename='tm_2')
 
 ### Plot confounders ###
+"""
 p.plot(nverts_parc @ align_parc_matrix, savename='nverts_parc')
 p.plot(log_scales_mean_adj @ align_parc_matrix, savename='log_scales_mean_adj') 
 p.plot(mean_vert_areas_parc @ align_parc_matrix,'mean_vert_areas_parc')
 p.plot(total_areas_parc @ align_parc_matrix,'total_areas_parc')
 p.plot(mean_strengths_50subs @ align_parc_matrix,'mean_node_strength')
+"""
