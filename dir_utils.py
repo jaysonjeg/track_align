@@ -107,3 +107,8 @@ def get_vertex_areas():
     mean_vert_areas_parc = total_areas_parc / get_nverts_parc()
     return total_areas_parc , mean_vert_areas_parc 
  
+def get_mean_strengths():
+    path='D:\\FORSTORAGE\\Data\\Project_Hyperalignment\\AWS_studies\\files0\\intermediates\\mean_strengths_S300_50subs.npy'
+    with open(path,'rb') as f:
+        mean_strengths_50subs = np.load(f)
+    return mean_strengths_50subs

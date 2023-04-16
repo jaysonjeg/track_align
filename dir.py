@@ -35,6 +35,7 @@ blocks,_,_=tutils.load_f_and_a(zd[0]) #get blocks
 nverts_parc = get_nverts_parc()
 scales_mean,log_scales_mean_adj = get_aligner_scale_factor()
 total_areas_parc , mean_vert_areas_parc = get_vertex_areas()
+mean_strengths_50subs = get_mean_strengths()
 
 #subtract nonscrambled
 dn=[tutils.subtract_nonscrambled_from_a(i) for i in d] #'n' means per fold
@@ -135,6 +136,7 @@ print(f'aligner scale (mean), {np.corrcoef(bcre,scales_mean)[0,1]}')
 print(f'no of vertices in the parcel, {np.corrcoef(bcre,nverts_parc)[0,1]}')
 print(f'mean vert area in the parcel, {np.corrcoef(bcre,mean_vert_areas_parc)[0,1]}')
 print(f'total parcel area, {np.corrcoef(bcre,total_areas_parc)[0,1]}')
+print(f'mean node strength in parcel, {np.corrcoef(bcre,mean_strengths_50subs)[0,1]}')
 
 ##### GET NULL MODELS ######
 
@@ -193,3 +195,4 @@ p.plot(nverts_parc @ align_parc_matrix, savename='nverts_parc')
 p.plot(log_scales_mean_adj @ align_parc_matrix, savename='log_scales_mean_adj') 
 p.plot(mean_vert_areas_parc @ align_parc_matrix,'mean_vert_areas_parc')
 p.plot(total_areas_parc @ align_parc_matrix,'total_areas_parc')
+p.plot(mean_strengths_50subs @ align_parc_matrix,'mean_node_strength')

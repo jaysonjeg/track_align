@@ -126,7 +126,6 @@ if __name__=='__main__':
             hp=[css.downsample_high_resolution_structural_connectivity_to_atlas(hrs, align_parc_matrix) for hrs in hr_for_hp] #most connected parcel pairs are determined from template subjects
             del hr_for_hp
             hps,hpsx,hpsxa = tutils.get_hps(hp)
-
             hr = {group : hutils.get_highres_connectomes(c,subs[group],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefr_hrc,n_jobs=-1) for group in groups} 
 
             print(f'{c.time()}: Reorder', end=", ")
@@ -507,7 +506,7 @@ if __name__=='__main__':
 
 
     nblocks=5 #how many (parcel x parcel) blocks to examine
-    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False_template5'
+    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_5-4-7_TF_0_0_0_FFF_S300_False'
     block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
     save_file=False
     load_file=False    
@@ -516,10 +515,9 @@ if __name__=='__main__':
 
 
     for howtoalign in ['RDRT']: #'RDRT','RD', 'RT', 'no_align'
-        for test in [range(2,7)]:
+        for test in [range(0,3)]:
             aligner_nsubs = tutils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]
-            temp=[7,8,9]
             subs_inds={'temp': temp, 'test': test}
 
             print('')
