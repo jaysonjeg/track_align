@@ -506,16 +506,16 @@ if __name__=='__main__':
         print(hutils.memused())
 
 
-    nblocks=5 #how many (parcel x parcel) blocks to examine
-    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False'
-    block_choice='maxhpmult' #'largest', 'fromsourcevertex', 'all','maxhpmult'
+    nblocks=100 #how many (parcel x parcel) blocks to examine
+    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_niter1'
+    block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
     save_file=True
     load_file=False    
     to_plot=True
     save_plots=True
 
 
-    for howtoalign in ['RD+','RT+']: #'RDRT','RD','RD+','RT','RT+'
+    for howtoalign in ['RDRT']: #'RDRT','RD','RD+','RT','RT+'
         for test in [range(0,10),range(10,20),range(20,30),range(30,40),range(40,50)]:
             aligner_nsubs = tutils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]

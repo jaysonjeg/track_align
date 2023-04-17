@@ -767,7 +767,7 @@ class surfplot():
         self.vmax=vmax
         self.cmap=cmap
         self.plot_type=plot_type
-    def plot(self,data,savename=None,vmin=None,vmax=None):
+    def plot(self,data,savename=None,vmin=None,vmax=None,cmap=None):
         from nilearn import plotting
         """
         if data.shape[0]<59412: #fill missing data
@@ -784,6 +784,8 @@ class surfplot():
             self.cmap='inferno'
             self.vmin=np.min(data)
             symmetric_cmap=False
+        if cmap is not None:
+            self.cmap=cmap
         if self.mesh[0].shape[0] > 59412: #if using full 64,983-vertex mesh
             new_data = hcp.cortex_data(data)
         else:
