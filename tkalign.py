@@ -168,6 +168,7 @@ if __name__=='__main__':
                 else:
                     return fa[group][key].fit_[i].R    
             def get_vals(howtoalign,group,nD,key,n):
+                #if group=='temp': howtoalign='RDRT' #RDRT to make template hrc with RDRT, or equals howtoalign
                 i,j=blocks[0,n],blocks[1,n]
                 D=hr[group][nD][slices[i],slices[j]] 
                 if '+' in howtoalign: #the other end will be self-aligned
@@ -506,16 +507,16 @@ if __name__=='__main__':
 
 
     nblocks=5 #how many (parcel x parcel) blocks to examine
-    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
-    block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
-    save_file=False
+    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False'
+    block_choice='maxhpmult' #'largest', 'fromsourcevertex', 'all','maxhpmult'
+    save_file=True
     load_file=False    
-    to_plot=False
-    save_plots=False
+    to_plot=True
+    save_plots=True
 
 
-    for howtoalign in ['RDRT','RD','RD+','RT','RT+']: #'RDRT','RD', 'RT', 'no_align'
-        for test in [range(0,5)]:
+    for howtoalign in ['RD+','RT+']: #'RDRT','RD','RD+','RT','RT+'
+        for test in [range(0,10),range(10,20),range(20,30),range(30,40),range(40,50)]:
             aligner_nsubs = tutils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]
             subs_inds={'temp': temp, 'test': test}

@@ -24,12 +24,25 @@ nsubs=10
 strings=['0-5','5-10']
 """
 
+zb=[f'0-{nsubs}_rest_{string}.npy' for string in strings]
+zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/maxhpmult/{i}') for i in zb] #RDRT
+
+#For RD and RT
+"""
 zd=[f'0-{nsubs}_rest_{string}_RD.npy' for string in strings]
 zt=[f'0-{nsubs}_rest_{string}_RT.npy' for string in strings]
-zb=[f'0-{nsubs}_rest_{string}.npy' for string in strings]
 zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zd] #RD
 zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zt] #RT
-zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/maxhpmult/{i}') for i in zb] #RDRT
+"""
+#For RD+ and RT+
+
+strings=['0-9','10-19','20-29','30-39','40-49']
+zd=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RD+.npy' for string in strings]
+zt=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RT+.npy' for string in strings]
+zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/{i}') for i in zd] #RD
+zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/{i}') for i in zt] #RT
+
+
 d = [get_a(i) for i in zd]
 t = [get_a(i) for i in zt]
 b = [get_a(i) for i in zb]
@@ -75,6 +88,7 @@ dcre = count(reshape(dc))
 tcre = count(reshape(tc))
 bcre = count(reshape(bc))
 
+#dnxt=[ttest_1samp(i,0,axis=0) for i in dnx]
 dcxt=ttest_1samp(dcx,0,axis=0)[0]
 tcxt=ttest_1samp(tcx,0,axis=0)[0]
 bcxt=ttest_1samp(bcx,0,axis=0)[0]
@@ -125,8 +139,11 @@ pr(corr(nxdt),'t-stat for RD-RT diff, calc. for each block')
 print('\n### Correlations between RD, RT, and RDRT ###')
 print('dce vs tce vs bce: counts, across blocks')
 print(np.corrcoef([dce,tce,bce]))
+model=OLS (bce ,[ dce,tce ] )
 print('OLS of bce, predicted by dce and tce')
-OLS (bce , np.column_stack((dce, tce, np.ones(len(dce)))) )
+print("R-squared: {:.3f}".format(model.rsquared))
+print("R: {:.3f}".format(np.sqrt(model.rsquared)))
+
 print('dcre vs tcre vs bcre: counts, across parcs')
 print(np.corrcoef([dcre,tcre,bcre]))
 print('dcxt vs tcxt vs bcxt: t-scores, across blocks')

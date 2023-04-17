@@ -66,9 +66,9 @@ def OLS(Y,X):
     #Y is array(n,1). X is array of regressors (n,nregressor). Outputs R
     #e.g. X = np.column_stack((dce, tce, np.ones(len(dce))))
     import statsmodels.api as sm
+    X =  np.column_stack((X[0], X[1], np.ones(len(X[0]))))
     model = sm.OLS(Y, X).fit()
-    print("R-squared: {:.3f}".format(model.rsquared))
-    print("R: {:.3f}".format(np.sqrt(model.rsquared)))
+    return model
 def trinarize(mylist,cutoff):
     """
     Given a list li, convert values above 'cutoff' to 1, values below -cutoff to -1, and all other values to 0
