@@ -16,32 +16,56 @@ import matplotlib.pyplot as plt
 
 
 ##### INITIAL PREPARATIONS ######
+show_dir=False
 nsubs=50
-strings=['0-10','10-20','20-30','30-40','40-50']
 
 """
 nsubs=10
 strings=['0-5','5-10']
 """
 
+#for niter2
+"""
+strings=['0-10','10-20','20-30','30-40','40-50']
 zb=[f'0-{nsubs}_rest_{string}.npy' for string in strings]
 zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/maxhpmult/{i}') for i in zb] #RDRT
+"""
+
+#for niter1 (default)
+
+strings=['0-9','10-19','20-29','30-39','40-49']
+zb=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RDRT.npy' for string in strings]
+zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1/{i}') for i in zb] #RDRT
+
 
 #For RD and RT
 """
+strings=['0-10','10-20','20-30','30-40','40-50']
 zd=[f'0-{nsubs}_rest_{string}_RD.npy' for string in strings]
 zt=[f'0-{nsubs}_rest_{string}_RT.npy' for string in strings]
 zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zd] #RD
 zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zt] #RT
 """
-#For RD+ and RT+
+
+#For RD+ and RT+ (default)
 
 strings=['0-9','10-19','20-29','30-39','40-49']
 zd=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RD+.npy' for string in strings]
 zt=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RT+.npy' for string in strings]
-zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/{i}') for i in zd] #RD
-zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/{i}') for i in zt] #RT
+zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zd] #RD
+zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zt] #RT
 
+
+#for niter1 smoothing 3,3, RDRT and RD+/RT+
+"""
+strings=['0-9','10-19','20-29','30-39','40-49']
+zb=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_3mm_3mm_300p_5b_ma_RDRT.npy' for string in strings]
+zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1/{i}') for i in zb] #RDRT
+zd=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_3mm_3mm_300p_5b_ma_RD+.npy' for string in strings]
+zt=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_3mm_3mm_300p_5b_ma_RT+.npy' for string in strings]
+zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1/{i}') for i in zd] #RD
+zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1/{i}') for i in zt] #RT
+"""
 
 d = [get_a(i) for i in zd]
 t = [get_a(i) for i in zt]
@@ -115,25 +139,30 @@ cxdTr=reshape(cxdT)
 
 #### PRINT SOME OUTPUTS ####
 print('\n### Correlations between blocks belonging to same parcel ###')
-pr(corr(cedr.T),'do blocks belonging to a common parcel have similar RD-RT diff in counts?')
-pr(corr(cxdtr.T), 'do blocks belonging to a common parcel have similar t-stat for RD-RT diff?')
-pr(corr(dcxtr.T), 'do blocks belonging to a common parcel have similar t-stat for RD?')
-pr(corr(tcxtr.T), 'do blocks belonging to a common parcel have similar t-stat for RT?')
+if show_dir:
+    pr(corr(cedr.T),'do blocks belonging to a common parcel have similar RD-RT diff in counts?')
+    pr(corr(cxdtr.T), 'do blocks belonging to a common parcel have similar t-stat for RD-RT diff?')
+    pr(corr(dcxtr.T), 'do blocks belonging to a common parcel have similar t-stat for RD?')
+    pr(corr(tcxtr.T), 'do blocks belonging to a common parcel have similar t-stat for RT?')
+
 pr(corr(bcxtr.T), 'do blocks belonging to a common parcel have similar t-stat for RDRT?')
 
 
 print('\n### Correlation between 5 folds ###')
 print('Counts for each block, summed across sub-pairs: RD, RT, RDRT')
-pr(corr(dne)) 
-pr(corr(tne))
-pr(corr(bne))
+if show_dir:
+    pr(corr(dne),'RD') 
+    pr(corr(tne),'RT')
+pr(corr(bne),'RDRT')
 print('Counts for each parc, summed across sub-pairs and blocks: RD, RT, RDRT')
-pr(corr(dnre)) 
-pr(corr(tnre))
-pr(corr(bnre))
-pr(corr(ned),'counts(RD) - counts(RT), for each block') 
-pr(corr(nred),'counts(RD) - counts(RT), for each parc') 
-pr(corr(nxdt),'t-stat for RD-RT diff, calc. for each block') 
+if show_dir:
+    pr(corr(dnre),'RD') 
+    pr(corr(tnre),'RT')
+pr(corr(bnre),'RDRT')
+if show_dir:
+    pr(corr(ned),'counts(RD) - counts(RT), for each block') 
+    pr(corr(nred),'counts(RD) - counts(RT), for each parc') 
+    pr(corr(nxdt),'t-stat for RD-RT diff, calc. for each block') 
 
 
 print('\n### Correlations between RD, RT, and RDRT ###')
@@ -150,8 +179,10 @@ print('dcxt vs tcxt vs bcxt: t-scores, across blocks')
 print(np.corrcoef([dcxt,tcxt,bcxt])) 
 
 #similarity between RD and RT
-print("\nSimilarity between RD and RT (in counts for each block)")
-print([f"{np.corrcoef(dne[i],tne[i])[0,1]:.{n}f}" for i in range(len(strings))]) 
+if show_dir:
+    print("\nSimilarity between RD and RT (in counts for each block)")
+    print([f"{np.corrcoef(dne[i],tne[i])[0,1]:.{n}f}" for i in range(len(strings))]) 
+
 
 #Are spatial variations in SC-func linkage associated with these confounders?
 print(f'\n#### Correlation between bcre and () is () ####')
@@ -195,19 +226,20 @@ align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
 ### Plot non-directional stuff ###
 
 #counts, for each parc
-p.plot(dcre@align_parc_matrix,'dcre') 
-p.plot(tcre@align_parc_matrix,'tcre')
+if show_dir:
+    p.plot(dcre@align_parc_matrix,'dcre') 
+    p.plot(tcre@align_parc_matrix,'tcre')
 p.plot(bcre@align_parc_matrix,'bcre')
 
 #t-stat (mean across blocks), for each parc
-p.plot(-dcxtr.mean(axis=1) @ align_parc_matrix, 'dcxtrm')  #compare to tkspat.py, line p.plot([-i for i in anct] @ align_parc_matrix,savename='-anct')
-p.plot(-tcxtr.mean(axis=1) @ align_parc_matrix, 'tcxtrm')
+if show_dir:
+    p.plot(-dcxtr.mean(axis=1) @ align_parc_matrix, 'dcxtrm')  #compare to tkspat.py, line p.plot([-i for i in anct] @ align_parc_matrix,savename='-anct')
+    p.plot(-tcxtr.mean(axis=1) @ align_parc_matrix, 'tcxtrm')
 p.plot(-bcxtr.mean(axis=1) @ align_parc_matrix, 'bcxtrm')
 
 ### Plot directional stuff ###
-
-p.plot(cxdtr.mean(axis=1) @ align_parc_matrix ,savename='cxdtrm')
-#p.plot(cxdTr.mean(axis=1) @ align_parc_matrix ,savename='cxdTrm')
+if show_dir:
+    p.plot(cxdtr.mean(axis=1) @ align_parc_matrix ,savename='cxdtrm')
 
 #Let's focus on cxdtr
 tm=cxdtr.mean(axis=1)

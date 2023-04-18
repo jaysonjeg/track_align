@@ -49,8 +49,8 @@ if __name__=='__main__':
         if howtoalign!='RDRT':
             print(f'howtoalign is {howtoalign}')
 
-        pre_hrc_fwhm=5 #smoothing kernel (mm) for high-res connectomes. Default 3
-        post_hrc_fwhm=5 #smoothing kernel after alignment. Default 3
+        pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
+        post_hrc_fwhm=3 #smoothing kernel after alignment. Default 3
 
         get_offdiag_blocks=True #pre-emptively calculate and cache aligned_blocks (faster but more RAM)
         plot_type={True:'save_as_html', False:'open_in_browser'}[save_plots]
@@ -433,7 +433,6 @@ if __name__=='__main__':
         print(f'{c.time()}: Calculations done')
         if to_plot and ident_grouped_type=='perparcel':
 
-
             if get_similarity_pairwise:
                 hutils.plot_parc_multi(p,align_parc_matrix,['mfxomi','fxoMmi'],[mfxomi,fxoMmi])
             if get_similarity_average:
@@ -462,12 +461,13 @@ if __name__=='__main__':
             #print(f'Identifiability with mean template: {mai:.1f}%, per block average {ai.mean():.1f}')
             #print(f'reg: Identifiability with mean template: {mari:.1f}%, per block average {ari.mean():.1f}')
             if not(ident_grouped_type=='perparcel'):
-                fig,axs=plt.subplots(5)
-                tutils.plot_id(axs[0],mao,title='mao')
-                tutils.plot_id(axs[1],maro,title='maro')
-                tutils.plot_id(axs[2],ma,title='ma')
-                tutils.plot_id(axs[3],mar,title='mar')
-                tutils.plot_id(axs[4],a[:,:,0],title='a_block0')
+                fig,axs=plt.subplots(4)
+                #tutils.plot_id(axs[0],mao,title='mao')
+                #tutils.plot_id(axs[1],maro,title='maro')
+                tutils.plot_id(axs[0],ma,title='ma')
+                tutils.plot_id(axs[1],mar,title='mar')
+                tutils.plot_id(axs[2],a[:,:,0],title='a_block0')
+                tutils.plot_id(axs[3],ar[:,:,0],title='ar_block0')
                 plt.subplots_adjust(hspace=0.5) 
                 fig.suptitle(f'Similarity average', fontsize=16)
 
@@ -506,16 +506,16 @@ if __name__=='__main__':
         print(hutils.memused())
 
 
-    nblocks=100 #how many (parcel x parcel) blocks to examine
+    nblocks=5 #how many (parcel x parcel) blocks to examine
     alignfile = 'hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_niter1'
-    block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
-    save_file=True
-    load_file=False    
+    block_choice='maxhpmult' #'largest', 'fromsourcevertex', 'all','maxhpmult'
+    save_file=True  
+    load_file=False
     to_plot=True
     save_plots=True
 
 
-    for howtoalign in ['RDRT']: #'RDRT','RD','RD+','RT','RT+'
+    for howtoalign in ['RD+','RT+','RDRT',]: #'RDRT','RD','RD+','RT','RT+'
         for test in [range(0,10),range(10,20),range(20,30),range(30,40),range(40,50)]:
             aligner_nsubs = tutils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]
@@ -523,4 +523,4 @@ if __name__=='__main__':
 
             print('')
             print(f"{subs_inds['test']} - {howtoalign}")
-            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots)
+            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots) #tckfile='tracks_5M_1M_end.tck'

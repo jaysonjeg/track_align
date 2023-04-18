@@ -279,7 +279,7 @@ def prep(y,include_axis_2=True):
                     X[num,s0+s1+k]=1
                 num += 1
     return X,x
-def regress(y,include_axis_2=True):
+def regress(y,include_axis_2=False):
     #Linear regression where each dimension of y is a different categorical variable, and the elements in y are the values of the single dependent variable. Returns beta weights and residuals
     
     if y.ndim==2:
