@@ -12,11 +12,20 @@ class MySurfacePairwiseAlignment(BaseEstimator, TransformerMixin):
     Inputs:
     vertices: e.g. hcp.struct.cortex
     """
-    def __init__(self, alignment_method, clustering, n_jobs=1, verbose=0):
+    def __init__(self, alignment_method, clustering, n_jobs=1, verbose=0,reg=0):
+        """
+        reg is regularization parameter
+        reg ranges from 0 to 1. Bigger values are more regularization. 
+        Suggest values between 0.05 (1/20) and 0.2 (1/5)
+        if reg==0, then in function fit, Y is just Y (default: no regularization)
+        if reg==1, then Y = X (maximum regularization)
+        if reg==0.2, then Y is the weighted average (0.2*X + 0.8+Y)
+        """
         self.alignment_method = alignment_method
         self.clustering = clustering
         self.n_jobs = n_jobs
         self.verbose = verbose
+        self.reg=reg
             
     def fit(self, X, Y):
         """Fit data X and Y and learn transformation to map X to Y
@@ -37,6 +46,9 @@ class MySurfacePairwiseAlignment(BaseEstimator, TransformerMixin):
         nVerticesInLargestCluster = Counter(self.clustering)[0]
         if ntimepoints < nVerticesInLargestCluster:
             warnings.warn(f'UserWarning: ntimepoints {ntimepoints} < nVerticesInLargestCluster {nVerticesInLargestCluster}')
+
+        if self.reg:
+            Y = np.average([X,Y],axis=0,weights=[self.reg,1-self.reg])
 
         self.labels_, self.fit_ = fit_parcellation(
             X, Y, self.alignment_method, self.clustering, self.n_jobs, self.verbose)
@@ -105,8 +117,8 @@ class LowDimSurfacePairwiseAlignment(MySurfacePairwiseAlignment):
     Because this muddles up vertices across multiple parcels, we then treat the whole brain as a single parcel
     """
 
-    def __init__(self, alignment_method, clustering='kmeans', n_jobs=1, verbose=0, n_components=60,whiten=False,lowdim_method='pca'):
-        super().__init__(alignment_method=alignment_method, clustering=clustering, n_jobs=n_jobs, verbose=verbose)
+    def __init__(self, alignment_method, clustering='kmeans', n_jobs=1, verbose=0, reg=0, n_components=60,whiten=False,lowdim_method='pca'):
+        super().__init__(alignment_method=alignment_method, clustering=clustering, n_jobs=n_jobs, verbose=verbose,reg=reg)
         
         self.n_components=n_components
         self.whiten=whiten
@@ -121,7 +133,9 @@ class LowDimSurfacePairwiseAlignment(MySurfacePairwiseAlignment):
         nVerticesInLargestCluster = Counter(self.clustering)[0]
         if ntimepoints < nVerticesInLargestCluster:
             warnings.warn(f'UserWarning: ntimepoints {ntimepoints} < nVerticesInLargestCluster {nVerticesInLargestCluster}')
-            
+
+        if self.reg:
+            Y = np.average([X,Y],axis=0,weights=[self.reg,1-self.reg])           
             
         from sklearn.decomposition import PCA,FastICA
         

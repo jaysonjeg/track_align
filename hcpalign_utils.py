@@ -827,7 +827,7 @@ def do_plot_impulse_responses(p,plot_prefix,aligner,method,lowdim_vertices):
     lowdim_vertices can be 'true' or 'false'
     """
     verticesx=[1,2,3,4,5,6,7,8,29696+1,29696+2,29696+3,29696+4,29696+5,29696+6,29696+7,29696+8]
-    for radius in [0,2]:
+    for radius in [2]: #default [0,2]
         s=surfgeoroi(verticesx,radius)
         t=aligner.transform(s[None,:])[0]  
         if method=='template' and lowdim_vertices==True:

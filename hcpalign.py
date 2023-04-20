@@ -28,7 +28,8 @@ if __name__=='__main__':
         args_diffusion={'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':16000 , 'smooth_circular':True , 'fwhm_circ':3 , 'smooth_gyral':False , 'fwhm_x':3 , 'fwhm_y':3 , 'interp_from_gyri':False , 'use_gyral_mask':False},\
         args_FC={'targets_nparcs':300,'parcellation':'Schaefer'},\
         args_template={'n_iter':2,'scale':False,'method':1,'nsubsfortemplate':'all'},\
-        args_maxcorr={'max_dist':10,'typeof':3}):
+        args_maxcorr={'max_dist':10,'typeof':3},\
+        reg=0):
         """
         c: a hcpalign_utils.clock object
         t: If a hcpalign_utils.cprint object is given here, will print to both console and text file 
@@ -71,6 +72,7 @@ if __name__=='__main__':
             scale: True of False for scale_template
             method: 1, 2, or 3 
             nsubsfortemplate: 'all' or an iterable, e.g. [0,2,4], or range(3)
+        reg: regularization parameter for MySurfPairwiseAlignment: default 0
         """
         
         if t is not None:
@@ -122,6 +124,8 @@ if __name__=='__main__':
             save_suffix=f"{save_suffix}_template{len(args_template['nsubsfortemplate'])}"
         if not(args_template['n_iter']==2):
             save_suffix=f"{save_suffix}_niter{args_template['n_iter']}"
+        if reg:
+            save_suffix=f"{save_suffix}_reg{reg}"
         
         hutils.mkdir(f'{intermediates_path}/alignpickles')
         save_pickle_filename=ospath(f'{intermediates_path}/alignpickles/hcpalign_{save_suffix}.p')                          
@@ -244,9 +248,9 @@ if __name__=='__main__':
                     if pairwise_method=='maxcorr':                          
                         aligner=hutils.maxcorr(dists=dists,max_dist=max_dist,typeof=typeof)
                     elif lowdim_vertices: 
-                        aligner=LowDimSurfacePairwiseAlignment(alignment_method=pairwise_method, clustering=clustering,n_jobs=n_jobs,n_components=lowdim_ncomponents,lowdim_method=lowdim_method)
+                        aligner=LowDimSurfacePairwiseAlignment(alignment_method=pairwise_method, clustering=clustering,n_jobs=n_jobs,reg=reg,n_components=lowdim_ncomponents,lowdim_method=lowdim_method)
                     else: 
-                        aligner=MySurfacePairwiseAlignment(alignment_method=pairwise_method, clustering=clustering,n_jobs=n_jobs)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads
+                        aligner=MySurfacePairwiseAlignment(alignment_method=pairwise_method, clustering=clustering,n_jobs=n_jobs,reg=reg)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads
                     return aligner
                 def fit_aligner(source_align, target_align, absValueOfAligner, descale_aligner,aligner):
                     aligner.fit(source_align, target_align)
@@ -295,47 +299,48 @@ if __name__=='__main__':
         ###TEMPLATE ALIGNMENT###           
             if use_saved_aligner:
                 print('loading aligner')
-                aligner = pickle.load(open(ospath(save_pickle_filename), "rb" ))
+                aligners = pickle.load(open(ospath(save_pickle_filename), "rb" ))
             else:       
                 from my_template_alignment import MyTemplateAlignment, LowDimTemplateAlignment            
-                if lowdim_vertices: aligner=LowDimTemplateAlignment(pairwise_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],n_components=lowdim_ncomponents,lowdim_method=lowdim_method,scale_template=args_template['scale'],template_method=args_template['method'])
-                else: aligner=MyTemplateAlignment(pairwise_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],scale_template=args_template['scale'],template_method=args_template['method'])
-                print(hutils.memused()) #XXX 
+                if lowdim_vertices: aligners=LowDimTemplateAlignment(pairwise_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],n_components=lowdim_ncomponents,lowdim_method=lowdim_method,scale_template=args_template['scale'],template_method=args_template['method'],reg=reg)
+                else: aligners=MyTemplateAlignment(pairwise_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],scale_template=args_template['scale'],template_method=args_template['method'],reg=reg)
+                print(hutils.memused()) 
                 if args_template['nsubsfortemplate']=='all':
-                    aligner.fit(nalign) 
+                    aligners.fit(nalign) 
                 else:
-                    aligner.fit([nalign[i] for i in args_template['nsubsfortemplate']])
+                    aligners.fit([nalign[i] for i in args_template['nsubsfortemplate']])
                     print(f'{c.time()}: Fitting rest of imgs to template')
-                    aligner.fit_to_template(nalign)
+                    aligners.fit_to_template(nalign)
                 print(hutils.memused()) #XXX
                 if absValueOfAligner:
-                    [aligner.estimators[j].absValue() for j in range(len(aligner.estimators))]
+                    [aligners.estimators[j].absValue() for j in range(len(aligners.estimators))]
                 if descale_aligner:
-                    [aligner.estimators[j].descale() for j in range(len(aligner.estimators))]
+                    [aligners.estimators[j].descale() for j in range(len(aligners.estimators))]
                 print('{} Template align done'.format(c.time())) 
                 if return_aligner: 
                     print(hutils.memused())
-                    return aligner
+                    return aligners
                 if save_pickle: 
                     print('saving aligner')
-                    pickle.dump(aligner,open(save_pickle_filename,"wb"))
+                    pickle.dump(aligners,open(save_pickle_filename,"wb"))
                 
             #Taligner.estimators is list(nsubs) of SurfacePairwiseAlignments, from each subj to template       
-            ntasks_aligned=[post_decode_smooth(aligner.transform(ntasks[i],i)) for i in range(len(ntasks))]
+            ntasks_aligned=[post_decode_smooth(aligners.transform(ntasks[i],i)) for i in range(len(ntasks))]
             if plot_any:
-                plot_prefix = f"sub0_to_template"
                 if plot_impulse_response:
                     source=0 #aligner for plot is sub 0 to template
-                    pairwise_aligner_for_plot = aligner.estimators[source] 
+                    aligner = aligners.estimators[source] 
+                    hutils.do_plot_impulse_responses(p,'',aligner,method,lowdim_vertices)
+                    assert(0) #XXXXX
                 if plot_contrast_maps:
                     for i in range(1):
                         for contrast in [3]: #Visualise predicted contrast map   
-                            p.plot(ntasks[i][contrast,:],'{}_Con{}_sub{}'.format(plot_prefix,contrast,i))
-                            p.plot(ntasks_aligned[i][contrast,:],'{}_Con{}_subTemplate_from_sub{}'.format(plot_prefix,contrast,i))
+                            p.plot(ntasks[i][contrast,:],'Con{}_sub{}'.format(contrast,i))
+                            p.plot(ntasks_aligned[i][contrast,:],'_Con{}_subTemplate_from_sub{}'.format(contrast,i))
                 if plot_scales:
-                    p.plot(aligner.estimators[source].get_spatial_map_of_scale(),f"{plot_prefix}_scale") 
+                    p.plot(aligners.estimators[source].get_spatial_map_of_scale(),f"scale") 
 
-            del aligner
+            del aligners
             print('{} Template transform done'.format(c.time()))
             hutils.getloadavg()
            
@@ -370,7 +375,7 @@ if __name__=='__main__':
         print('Mean classification accuracy {:.2f}'.format(np.mean([np.mean(i) for i in classification_scores])))
         
         if plot_any and plot_impulse_response and method != 'anat': 
-            hutils.do_plot_impulse_responses(p,plot_prefix,pairwise_aligner_for_plot,method,lowdim_vertices)
+            hutils.do_plot_impulse_responses(p,'',aligner,method,lowdim_vertices)
         
         print(hutils.memused())
         return classification_scores
@@ -383,11 +388,11 @@ if __name__=='__main__':
         t=hutils.cprint(resultsfile) 
         for method in ['template']:
             for pairwise_method in ['scaled_orthogonal']:
-                for n_subs in [10]:
+                for n_subs in [3]:
                     print(f'{method} - {pairwise_method} - nsubs{n_subs}')
                     c=hutils.clock()            
                     print(hutils.memused())   
-                    func(c,t=t,n_subs=n_subs,n_movies=4,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=False,load_pickle=True,return_nalign=False,return_aligner=False,n_jobs=+1,args_template={'n_iter':2,'scale':False,'method':1,'nsubsfortemplate':'all'},plot_any=True, plot_impulse_response=True, plot_contrast_maps=True, plot_scales=False)
+                    func(c,t=t,n_subs=n_subs,n_movies=1,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=True,load_pickle=False,return_nalign=False,return_aligner=False,n_jobs=+1,args_template={'n_iter':1,'scale':False,'method':1,'nsubsfortemplate':'all'},plot_any=True, plot_impulse_response=True, plot_contrast_maps=True,reg=0.5)
                     print(hutils.memused())
                     hutils.getloadavg()
                     t.print('')  

@@ -8,7 +8,6 @@ from nilearn.image import index_img, concat_imgs, load_img
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from fmralign.pairwise_alignment import PairwiseAlignment
 from joblib import Parallel,delayed
-#from hcpalign_utils import MySurfacePairwiseAlignment
 from my_surf_pairwise_alignment import MySurfacePairwiseAlignment
 from hcpalign_utils import now
 
@@ -47,19 +46,19 @@ def _rescaled_euclidean_mean(imgs, scale_average=False):
 
 def _align_images_to_template(imgs, template, alignment_method,
                                clustering, n_bags,
-                              memory, memory_level, n_jobs, verbose):
+                              memory, memory_level, n_jobs, verbose,reg):
     '''Convenience function : for a list of images, return the list
     of estimators (PairwiseAlignment instances) aligning each of them to a
     common target, the template. All arguments are used in PairwiseAlignment
     '''
    
-    def _align_one_image_to_template(img2,alignment_method2,clustering2,n_jobs2,template2):
-        piecewise_estimator= MySurfacePairwiseAlignment(alignment_method2, clustering2, n_jobs=n_jobs2)
+    def _align_one_image_to_template(img2,alignment_method2,clustering2,n_jobs2,template2,reg):
+        piecewise_estimator= MySurfacePairwiseAlignment(alignment_method2, clustering2, n_jobs=n_jobs2,reg=reg)
         piecewise_estimator.fit(img2, template2) 
         #print(f'within align_one_img {memused()}')
         return piecewise_estimator
 
-    piecewise_estimators = Parallel(n_jobs=-1)(delayed(_align_one_image_to_template)(img,alignment_method,clustering,n_jobs,template) for img in imgs)       
+    piecewise_estimators = Parallel(n_jobs=-1)(delayed(_align_one_image_to_template)(img,alignment_method,clustering,n_jobs,template,reg) for img in imgs)       
     aligned_imgs = [piecewise_estimators[i].transform(imgs[i]) for i in range(len(imgs))] 
 
     
@@ -68,7 +67,7 @@ def _align_images_to_template(imgs, template, alignment_method,
 
 def _create_template(imgs, n_iter, scale_template, alignment_method,
                      clustering, n_bags, memory, memory_level,
-                     n_jobs, verbose,template_method):
+                     n_jobs, verbose,template_method,reg):
     '''Create template through alternate minimization.  Compute iteratively :
         * T minimizing sum(||R_i X_i-T||) which is the mean of aligned images (RX_i)
         * align initial images to new template T
@@ -93,18 +92,28 @@ def _create_template(imgs, n_iter, scale_template, alignment_method,
         -------
         template: list of 3D Niimgs of length (n_sample)
             Models the barycenter of input imgs
-
     '''
+
+    intrinsic_reg = 1/len(imgs) #the regularization that is implicit in aligning to a group mean. This was not written with Haxby method 1 in mind...
+    if reg == 0 or reg==intrinsic_reg:
+        adjusted_reg=0
+    elif intrinsic_reg > reg:
+        print('1 / len(imgs) is greater than reg. Set reg to to larger values or else to zero')
+        assert(0)
+    else:
+        adjusted_reg = reg - intrinsic_reg 
+    print(f'Reg is {reg}. Intrinsic reg is {intrinsic_reg:.3f}. Adjusted reg is {adjusted_reg:.3f}')
 
     aligned_imgs = imgs
     piecewise_estimators=[]
     for iter in range(n_iter):
         print("Template alignment iteration {}/{}".format(iter+1,n_iter))        
         if iter==0 and template_method != 1: #Haxby method
+            assert(reg==0) #Haxby method not tested/fixed for regularization
             aligned_imgs=[imgs[0]] 
             current_template = imgs[0]
             for i in range(1,len(imgs)):
-                piecewise_estimator= MySurfacePairwiseAlignment(alignment_method, clustering, n_jobs=n_jobs)
+                piecewise_estimator= MySurfacePairwiseAlignment(alignment_method, clustering, n_jobs=n_jobs,reg=reg)
                 piecewise_estimator.fit(imgs[i], current_template)
                 new_img = piecewise_estimator.transform(imgs[i])
                 aligned_imgs.append(new_img)
@@ -114,7 +123,8 @@ def _create_template(imgs, n_iter, scale_template, alignment_method,
                     current_template = _rescaled_euclidean_mean([current_template, new_img],scale_template)  
         template = _rescaled_euclidean_mean(
         aligned_imgs, scale_template)
-        aligned_imgs,piecewise_estimators = _align_images_to_template(imgs, template, alignment_method, clustering, n_bags, memory, memory_level,n_jobs, verbose)
+
+        aligned_imgs,piecewise_estimators = _align_images_to_template(imgs, template, alignment_method, clustering, n_bags, memory, memory_level,n_jobs, verbose,adjusted_reg)
     return template, piecewise_estimators
 
 '''
@@ -188,7 +198,7 @@ class MyTemplateAlignment(BaseEstimator, TransformerMixin):
                  n_iter=2, save_template=None, n_bags=1,
                  target_affine=None, target_shape=None,
                  memory=Memory(cachedir=None), memory_level=0,
-                 n_jobs=1, verbose=0,template_method=1):
+                 n_jobs=1, verbose=0,template_method=1,reg=0):
         '''
         Parameterss
         ----------
@@ -254,12 +264,13 @@ class MyTemplateAlignment(BaseEstimator, TransformerMixin):
         self.n_jobs = n_jobs
         self.verbose = verbose
         self.template_method=template_method
+        self.reg=reg
     
     def fit_to_template(self,imgs):
         """
         Fit new imgs to pre-calculated template
         """
-        _,self.estimators = _align_images_to_template(imgs, self.template, self.alignment_method, self.clustering, self.n_bags, self.memory, self.memory_level,self.n_jobs, self.verbose)
+        _,self.estimators = _align_images_to_template(imgs, self.template, self.alignment_method, self.clustering, self.n_bags, self.memory, self.memory_level,self.n_jobs, self.verbose,self.reg)
     
     def fit(self, imgs):
         """
@@ -288,7 +299,7 @@ class MyTemplateAlignment(BaseEstimator, TransformerMixin):
                              self.alignment_method,
                              self.clustering, self.n_bags,
                              self.memory, self.memory_level,
-                             self.n_jobs, self.verbose,self.template_method)
+                             self.n_jobs, self.verbose,self.template_method,self.reg)
         if self.save_template is not None:
             self.template.to_filename(self.save_template)
 
@@ -367,27 +378,28 @@ class LowDimTemplateAlignment(MyTemplateAlignment):
                  target_affine=None, target_shape=None,
                  memory=Memory(cachedir=None), memory_level=0,
                  n_jobs=1, verbose=0,
-                 n_components=20,whiten=True,lowdim_method='pca'):
+                 n_components=20,whiten=True,lowdim_method='pca',reg=0):
                                  
         super().__init__(alignment_method=alignment_method,
                  clustering=clustering, scale_template=scale_template,
                  n_iter=n_iter, save_template=save_template, n_bags=n_bags,
                  target_affine=target_affine, target_shape=target_shape,
                  memory=memory, memory_level=memory_level,
-                 n_jobs=n_jobs, verbose=verbose)
+                 n_jobs=n_jobs, verbose=verbose,reg=reg)
 
         self.n_components=n_components
         self.whiten=whiten
         self.clustering=np.ones(n_components)
+        self.lowdim_method=lowdim_method
 
     def fit(self, imgs):
         # Assume imgs is a list (nsubjects) of arrays(nvols,ngrayordinates)
         #assert(imgs[0].shape[1]==self.clustering.shape[0])      
             
         from sklearn.decomposition import PCA, FastICA
-        if lowdim_method=='pca':
+        if self.lowdim_method=='pca':
             self.pcas=[PCA(n_components=self.n_components,whiten=self.whiten) for img in imgs]  
-        elif lowdim_method=='ica':
+        elif self.lowdim_method=='ica':
             self.pcas=[FastICA(n_components=self.n_components,max_iter=100000) for img in imgs]    
         lowdim_imgs=[pca.fit_transform(img) for pca,img in zip(self.pcas,imgs)]    
         
@@ -398,7 +410,7 @@ class LowDimTemplateAlignment(MyTemplateAlignment):
                              self.alignment_method,
                              self.clustering, self.n_bags,
                              self.memory, self.memory_level,
-                             self.n_jobs, self.verbose)
+                             self.n_jobs, self.verbose,self.reg)
         if self.save_template is not None:
             self.template.to_filename(self.save_template)
             
