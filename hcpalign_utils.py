@@ -756,7 +756,7 @@ class surfplot():
     """
     import hcp_utils as hcp
     from pathlib import Path
-    def __init__(self, figpath,mesh=hcp.mesh.midthickness,vmin=None,vmax=None,cmap='inferno',plot_type='save_as_html'):
+    def __init__(self, figpath,mesh=hcp.mesh.midthickness,vmin=None,vmax=None,cmap='inferno',symmetric_cmap=True,plot_type='open_in_browser'):
         self.mesh=mesh
         self.figpath=figpath
         if plot_type=='save_as_html':
@@ -766,8 +766,9 @@ class surfplot():
         self.vmin=vmin
         self.vmax=vmax
         self.cmap=cmap
+        self.symmetric_cmap=symmetric_cmap
         self.plot_type=plot_type
-    def plot(self,data,savename=None,vmin=None,vmax=None,cmap=None):
+    def plot(self,data,savename=None,vmin=None,vmax=None,cmap=None,symmetric_cmap=None):
         from nilearn import plotting
         """
         if data.shape[0]<59412: #fill missing data
@@ -775,28 +776,32 @@ class surfplot():
             ones[0:data.shape[0]]=data
             data=ones
         """
+        if np.min(data)<0: 
+            self.symmetric_cmap=True
+        else: 
+            self.vmin=np.min(data)
+            self.symmetric_cmap=False
+
+        if symmetric_cmap is not None: self.symmetric_cmap=symmetric_cmap
+        if self.symmetric_cmap==True: self.cmap='bwr'
+        elif self.symmetric_cmap==False: self.cmap='inferno'
+        if cmap is not None: self.cmap=cmap
         if vmin is not None: self.vmin=vmin
         if vmax is not None: self.vmax=vmax
-        if np.min(data)<0: 
-            self.cmap='bwr'
-            symmetric_cmap=True
-        else: 
-            self.cmap='inferno'
-            self.vmin=np.min(data)
-            symmetric_cmap=False
-        if cmap is not None:
-            self.cmap=cmap
+
+
         if self.mesh[0].shape[0] > 59412: #if using full 64,983-vertex mesh
             new_data = hcp.cortex_data(data)
         else:
             new_data = data
         
-        view=plotting.view_surf(self.mesh,new_data,cmap=self.cmap,vmin=self.vmin,vmax=self.vmax,symmetric_cmap=symmetric_cmap)  
+        view=plotting.view_surf(self.mesh,new_data,cmap=self.cmap,vmin=self.vmin,vmax=self.vmax,symmetric_cmap=self.symmetric_cmap)  
         if self.plot_type=='save_as_html':
             view.save_as_html(ospath('{}/{}.html'.format(self.figpath,savename)))
         elif self.plot_type=='open_in_browser':
             view.open_in_browser()
         self.vmin=None
+
 
 def plot_parc(p,align_parc_matrix,data,savename=None):
     """
@@ -822,13 +827,13 @@ def do_plot_impulse_responses(p,plot_prefix,aligner,method,lowdim_vertices):
     lowdim_vertices can be 'true' or 'false'
     """
     verticesx=[1,2,3,4,5,6,7,8,29696+1,29696+2,29696+3,29696+4,29696+5,29696+6,29696+7,29696+8]
-    for radius in [0,2,np.inf]:
+    for radius in [0,2]:
         s=surfgeoroi(verticesx,radius)
         t=aligner.transform(s[None,:])[0]  
         if method=='template' and lowdim_vertices==True:
             t=aligner.pcas[1].inverse_transform(aligner.transform(s[None,:],0))      
-        p.plot(s, f"{plot_prefix}_roi_source{radius}")
-        p.plot(np.squeeze(t),f"{plot_prefix}_roi_target{radius}")
+        p.plot(s, f"{plot_prefix}_roi_source{radius}",symmetric_cmap=True)
+        p.plot(np.squeeze(t),f"{plot_prefix}_roi_target{radius}",symmetric_cmap=True)
 
 
 

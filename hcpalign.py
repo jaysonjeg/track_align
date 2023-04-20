@@ -127,7 +127,7 @@ if __name__=='__main__':
         save_pickle_filename=ospath(f'{intermediates_path}/alignpickles/hcpalign_{save_suffix}.p')                          
         if plot_any:
             plot_dir=f'/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/figures/hcpalign/{save_suffix}'
-            p=hutils.surfplot(plot_dir)
+            p=hutils.surfplot(plot_dir,plot_type='open_in_browser')
 
         decode_preproc=hutils.make_preproc(decode_fwhm,decode_clean,standardize,detrend,low_pass,high_pass,t_r)       
         post_decode_smooth=hutils.make_smoother_100610(post_decode_fwhm)
@@ -149,7 +149,6 @@ if __name__=='__main__':
         hutils.mkdir(f'{intermediates_path}/hcp_timeseries')
         hutils.mkdir(f'{intermediates_path}/hcp_tasklabels')
         hutils.mkdir(f'{intermediates_path}/hcp_taskcontrasts')
-
         use_saved_aligner=load_pickle and os.path.exists(ospath(save_pickle_filename))
         if not(use_saved_aligner):
             if method=="anat":
@@ -329,11 +328,13 @@ if __name__=='__main__':
                     source=0 #aligner for plot is sub 0 to template
                     pairwise_aligner_for_plot = aligner.estimators[source] 
                 if plot_contrast_maps:
-                    for contrast in [0,11]: #Visualise predicted contrast map   
-                        p.plot(ntasks[source][contrast,:],'{}_Con{}_sub{}'.format(plot_prefix,contrast,source))
-                        p.plot(ntasks_aligned[source][contrast,:],'{}_Con{}_subTemplate_from_sub{}'.format(plot_prefix,contrast,source))
+                    for i in range(1):
+                        for contrast in [3]: #Visualise predicted contrast map   
+                            p.plot(ntasks[i][contrast,:],'{}_Con{}_sub{}'.format(plot_prefix,contrast,i))
+                            p.plot(ntasks_aligned[i][contrast,:],'{}_Con{}_subTemplate_from_sub{}'.format(plot_prefix,contrast,i))
                 if plot_scales:
-                    p.plot(aligner.estimators[source].get_spatial_map_of_scale(),f"{plot_prefix}_scale")
+                    p.plot(aligner.estimators[source].get_spatial_map_of_scale(),f"{plot_prefix}_scale") 
+
             del aligner
             print('{} Template transform done'.format(c.time()))
             hutils.getloadavg()
@@ -342,19 +343,35 @@ if __name__=='__main__':
             ntasks_aligned=[post_decode_smooth(ntask) for ntask in ntasks]
         del nalign
 
-        if method in ['template','anat']:           
+        if method in ['template','anat']: 
+            
             X=np.vstack(ntasks_aligned)
             y=np.hstack(nlabels)
             num_of_tasks=ntasks_aligned[0].shape[0]
             subjects=np.hstack([np.tile([i],num_of_tasks) for i in range(n_subs)])
             from sklearn.model_selection import GroupKFold,cross_val_score, GridSearchCV
             gkf=GroupKFold(n_splits=n_splits)       
-            classification_scores=cross_val_score(classifier,X,y,groups=subjects,cv=gkf,n_jobs=-1)           
+            classification_scores=cross_val_score(classifier,X,y,groups=subjects,cv=gkf,n_jobs=-1)       
+
+            """
+            #To see accuracy for subsets of subjects
+            for gp in [range(0,5),range(5,10)]:
+                X=np.vstack([ntasks_aligned[i] for i in gp])
+                y=np.hstack([nlabels[i] for i in gp])
+                num_of_tasks=ntasks_aligned[0].shape[0]
+                subjects=np.hstack([np.tile([i],num_of_tasks) for i in range(len(gp))])
+                from sklearn.model_selection import GroupKFold,cross_val_score, GridSearchCV
+                gkf=GroupKFold(n_splits=n_splits)       
+                classification_scores=cross_val_score(classifier,X,y,groups=subjects,cv=gkf,n_jobs=-1) 
+                print('Mean classification accuracy {:.2f}'.format(np.mean([np.mean(i) for i in classification_scores])))  
+            """
+
         print(f'{c.time()} Classifications done')
         print('Mean classification accuracy {:.2f}'.format(np.mean([np.mean(i) for i in classification_scores])))
-
+        
         if plot_any and plot_impulse_response and method != 'anat': 
             hutils.do_plot_impulse_responses(p,plot_prefix,pairwise_aligner_for_plot,method,lowdim_vertices)
+        
         print(hutils.memused())
         return classification_scores
 
@@ -366,15 +383,13 @@ if __name__=='__main__':
         t=hutils.cprint(resultsfile) 
         for method in ['template']:
             for pairwise_method in ['scaled_orthogonal']:
-                for n_subs in [100]:
+                for n_subs in [10]:
                     print(f'{method} - {pairwise_method} - nsubs{n_subs}')
                     c=hutils.clock()            
                     print(hutils.memused())   
-                    x=func(c,t=t,n_subs=n_subs,n_movies=4,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=True,load_pickle=True,return_nalign=False,return_aligner=False,n_jobs=+1,args_template={'n_iter':2,'scale':False,'method':1,'nsubsfortemplate':'all'})
+                    func(c,t=t,n_subs=n_subs,n_movies=4,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=False,load_pickle=True,return_nalign=False,return_aligner=False,n_jobs=+1,args_template={'n_iter':2,'scale':False,'method':1,'nsubsfortemplate':'all'},plot_any=True, plot_impulse_response=True, plot_contrast_maps=True, plot_scales=False)
                     print(hutils.memused())
                     hutils.getloadavg()
                     t.print('')  
-
-
 
     print('\a') #beep sounds 
