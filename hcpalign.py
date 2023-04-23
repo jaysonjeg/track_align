@@ -386,15 +386,15 @@ if __name__=='__main__':
     resultsfilepath=ospath(f'{results_path}/r{hutils.datetime_for_filename()}.txt')
     with open(resultsfilepath,'w') as resultsfile:
         t=hutils.cprint(resultsfile) 
-        for method in ['template']:
-            for pairwise_method in ['scaled_orthogonal']:
-                for n_subs in [3]:
-                    print(f'{method} - {pairwise_method} - nsubs{n_subs}')
-                    c=hutils.clock()            
-                    print(hutils.memused())   
-                    func(c,t=t,n_subs=n_subs,n_movies=1,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=True,load_pickle=False,return_nalign=False,return_aligner=False,n_jobs=+1,args_template={'n_iter':1,'scale':False,'method':1,'nsubsfortemplate':'all'},plot_any=True, plot_impulse_response=True, plot_contrast_maps=True,reg=0.5)
-                    print(hutils.memused())
-                    hutils.getloadavg()
-                    t.print('')  
+        for pairwise_method in ['scaled_orthogonal']:
+            for method in ['template']:
+                for n_subs in [10]:
+                    for reg in [0,0.2,0.3,0.5,0.7]:
+                        print(f'{method} - {pairwise_method} - nsubs{n_subs} - reg {reg}')
+                        c=hutils.clock()            
+                        print(hutils.memused())   
+                        func(c,t=t,n_subs=n_subs,n_movies=4,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=True,load_pickle=False,return_nalign=False,return_aligner=False,n_jobs=+1,args_template={'n_iter':1,'scale':False,'method':1,'nsubsfortemplate':'all'},plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
+                        print(hutils.memused())
+                        t.print('')  
 
     print('\a') #beep sounds 

@@ -44,13 +44,10 @@ if __name__=='__main__':
     print(hutils.memused())
     c=hutils.clock()
 
-    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,tckfile=None):
+    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,pre_hrc_fwhm,post_hrc_fwhm,tckfile=None):
         print(hutils.memused())
         if howtoalign!='RDRT':
             print(f'howtoalign is {howtoalign}')
-
-        pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
-        post_hrc_fwhm=3 #smoothing kernel after alignment. Default 3
 
         get_offdiag_blocks=True #pre-emptively calculate and cache aligned_blocks (faster but more RAM)
         plot_type={True:'save_as_html', False:'open_in_browser'}[save_plots]
@@ -171,7 +168,7 @@ if __name__=='__main__':
                 #if group=='temp': howtoalign='RDRT' #RDRT to make template hrc with RDRT, or equals howtoalign
                 i,j=blocks[0,n],blocks[1,n]
                 D=hr[group][nD][slices[i],slices[j]] 
-                if '+' in howtoalign: #the other end will be self-aligned
+                if howtoalign is not None and '+' in howtoalign: #the other end will be self-aligned
                     Ri=get_aligner_parcel(group,nD,i)
                     Rj=get_aligner_parcel(group,nD,j)
                 else:
@@ -506,21 +503,23 @@ if __name__=='__main__':
         print(hutils.memused())
 
 
-    nblocks=5 #how many (parcel x parcel) blocks to examine
-    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_niter1'
-    block_choice='maxhpmult' #'largest', 'fromsourcevertex', 'all','maxhpmult'
-    save_file=True  
+    nblocks=10 #how many (parcel x parcel) blocks to examine
+    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False_niter1_reg0.5'
+    block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
+    save_file=False  
     load_file=False
     to_plot=True
-    save_plots=True
+    save_plots=False
 
+    pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
+    post_hrc_fwhm=3 #smoothing kernel after alignment. Default 3
 
-    for howtoalign in ['RD+','RT+','RDRT',]: #'RDRT','RD','RD+','RT','RT+'
-        for test in [range(0,10),range(10,20),range(20,30),range(30,40),range(40,50)]:
+    for howtoalign in ['RDRT']: #'RDRT','RD','RD+','RT','RT+'
+        for test in [range(0,5)]:
             aligner_nsubs = tutils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]
             subs_inds={'temp': temp, 'test': test}
 
             print('')
             print(f"{subs_inds['test']} - {howtoalign}")
-            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots) #tckfile='tracks_5M_1M_end.tck'
+            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,pre_hrc_fwhm,post_hrc_fwhm) #tckfile='tracks_5M_1M_end.tck'
