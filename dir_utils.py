@@ -5,6 +5,7 @@ import hcpalign_utils as hutils
 import tkalign_utils as tutils
 import numpy as np
 import pickle
+import itertools
 
 
 align_nparcs=300
@@ -84,14 +85,49 @@ def trinarize(mylist,cutoff):
 
 ### Get confounders ###
 
+
 def get_nverts_parc():
     #number of vertices in each parcel
     nverts_parc=np.array(align_parc_matrix.sum(axis=1)).squeeze()
     nverts_parc[0]=nverts_parc.mean()
     return nverts_parc
 
-def get_aligner_scale_factor():
-    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
+def get_aligner_variability(alignfile):
+    aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
+    all_aligners = pickle.load( open( hutils.ospath(aligner_file), "rb" ))
+    nparcs = len(all_aligners.estimators[0].fit_)
+    nsubjectpairs = len([i for i in itertools.combinations(range(len(all_aligners.estimators)),2)])
+    values = np.zeros((nparcs,nsubjectpairs))
+    #normalize all the arrays inside
+    for nparc in range(nparcs):
+        for i in range(len(all_aligners.estimators)):
+            norm = np.linalg.norm(all_aligners.estimators[i].fit_[nparc].R)
+            array = all_aligners.estimators[i].fit_[nparc].R
+            all_aligners.estimators[i].fit_[nparc].R = array / norm
+    #get norms of differences for all subject pairs
+    for nparc in range(nparcs):
+        count=-1
+        for i,j in itertools.combinations(range(len(all_aligners.estimators)),2):
+            count +=1
+            array_i = all_aligners.estimators[i].fit_[nparc].R
+            array_j = all_aligners.estimators[j].fit_[nparc].R
+            values[nparc,count] = np.linalg.norm(array_i - array_j)
+    Y =  values.mean(axis=1)
+
+    #regress out impact of parcel area, on these topographic variability
+    total_areas_parc , _ =  get_vertex_areas() 
+    from sklearn.linear_model import LinearRegression
+    from sklearn.preprocessing import PolynomialFeatures
+    poly = PolynomialFeatures(degree=2)
+    regressors = poly.fit_transform(total_areas_parc.reshape(-1,1))
+    model = LinearRegression().fit(regressors, Y)
+    Y_pred = model.predict(regressors)
+    residuals = Y - Y_pred
+    return residuals
+
+
+
+def get_aligner_scale_factor(alignfile):
     aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
     all_aligners = pickle.load( open( hutils.ospath(aligner_file), "rb" ))
     scales = np.vstack( [[all_aligners.estimators[i].fit_[nparc].scale for nparc in range(nparcs)] for i in range(len(all_aligners.estimators))] )   

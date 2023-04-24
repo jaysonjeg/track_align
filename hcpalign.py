@@ -27,7 +27,7 @@ if __name__=='__main__':
         plot_any=False, plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_nalign=False,return_aligner=False,\
         args_diffusion={'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':16000 , 'smooth_circular':True , 'fwhm_circ':3 , 'smooth_gyral':False , 'fwhm_x':3 , 'fwhm_y':3 , 'interp_from_gyri':False , 'use_gyral_mask':False},\
         args_FC={'targets_nparcs':300,'parcellation':'Schaefer'},\
-        args_template={'n_iter':2,'scale':False,'method':1,'nsubsfortemplate':'all'},\
+        args_template={'n_iter':2,'scale':False,'method':1,'nsubsfortemplate':'all','pca_template': False},\
         args_maxcorr={'max_dist':10,'typeof':3},\
         reg=0):
         """
@@ -72,6 +72,7 @@ if __name__=='__main__':
             scale: True of False for scale_template
             method: 1, 2, or 3 
             nsubsfortemplate: 'all' or an iterable, e.g. [0,2,4], or range(3)
+            pca_template: True to use new PCA-derived template
         reg: regularization parameter for MySurfPairwiseAlignment: default 0
         """
         
@@ -126,6 +127,8 @@ if __name__=='__main__':
             save_suffix=f"{save_suffix}_niter{args_template['n_iter']}"
         if not (args_template['method']==1):
             save_suffix=f"{save_suffix}_meth{args_template['method']}"
+        if args_template['pca_template']==True:
+            save_suffix=f"{save_suffix}_pcatemp"
         if reg:
             save_suffix=f"{save_suffix}_reg{reg}"
         
@@ -303,16 +306,24 @@ if __name__=='__main__':
                 print('loading aligner')
                 aligners = pickle.load(open(ospath(save_pickle_filename), "rb" ))
             else:       
-                from my_template_alignment import MyTemplateAlignment, LowDimTemplateAlignment            
+                from my_template_alignment import MyTemplateAlignment, LowDimTemplateAlignment, get_template            
                 if lowdim_vertices: aligners=LowDimTemplateAlignment(pairwise_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],n_components=lowdim_ncomponents,lowdim_method=lowdim_method,scale_template=args_template['scale'],template_method=args_template['method'],reg=reg)
                 else: aligners=MyTemplateAlignment(pairwise_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],scale_template=args_template['scale'],template_method=args_template['method'],reg=reg)
                 print(hutils.memused()) 
-                if args_template['nsubsfortemplate']=='all':
-                    aligners.fit(nalign) 
-                else:
-                    aligners.fit([nalign[i] for i in args_template['nsubsfortemplate']])
-                    print(f'{c.time()}: Fitting rest of imgs to template')
+
+                if args_template['pca_template']==True:
+                    if args_template['nsubsfortemplate']=='all':
+                        aligners.template=get_template(c,clustering,nalign)
+                    else:
+                        aligners.template=get_template(c,clustering,[nalign[i] for i in args_template['nsubsfortemplate']])
                     aligners.fit_to_template(nalign)
+                elif args_template['pca_template']==False:
+                    if args_template['nsubsfortemplate']=='all':
+                        aligners.fit(nalign) 
+                    else:
+                        aligners.fit([nalign[i] for i in args_template['nsubsfortemplate']])
+                        print(f'{c.time()}: Fitting rest of imgs to template')
+                        aligners.fit_to_template(nalign)
                 print(hutils.memused()) #XXX
                 if absValueOfAligner:
                     [aligners.estimators[j].absValue() for j in range(len(aligners.estimators))]
@@ -384,19 +395,70 @@ if __name__=='__main__':
 
 
 ###########################################################
-
+    
     resultsfilepath=ospath(f'{results_path}/r{hutils.datetime_for_filename()}.txt')
     with open(resultsfilepath,'w') as resultsfile:
         t=hutils.cprint(resultsfile) 
-        for pairwise_method in ['scaled_orthogonal']:
-            for method in ['template']:
-                for n_subs in [10,20,50]:
-                    for reg in [0]:
-                        print(f'{method} - {pairwise_method} - nsubs{n_subs} - reg {reg}')
-                        c=hutils.clock()            
-                        print(hutils.memused())   
-                        func(c,t=t,n_subs=n_subs,n_movies=4,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=True,load_pickle=True,return_nalign=False,return_aligner=False,n_jobs=-1,args_template={'n_iter':2,'scale':False,'method':3,'nsubsfortemplate':'all'},plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
-                        print(hutils.memused())
-                        t.print('')  
 
+        method='template'
+        pairwise_method='scaled_orthogonal'
+        n_subs=10
+        n_movies=4
+        save_pickle=False
+        load_pickle=False
+        args_template = {'n_iter':1,'scale':False,'method':1,'nsubsfortemplate':'all','pca_template': False}
+        args_FC={'targets_nparcs':1000,'parcellation':'Schaefer'}
+
+        print(f'{method} - {pairwise_method} - nsubs{n_subs}')
+        c=hutils.clock()            
+        print(hutils.memused())   
+        imgs=func(c,t=t,n_subs=n_subs,n_movies=n_movies,n_rests=n_movies,nparcs=300,align_with='rest_FC',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,return_nalign=False,return_aligner=False,n_jobs=+1,args_template=args_template,args_FC=args_FC,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=0)
+        print(hutils.memused())
+        t.print('')  
+
+    
     print('\a') #beep sounds 
+
+    """
+    c=hutils.clock()       
+    import pickle
+    imgs=pickle.load(open('NALIGN_5.npy', "rb" ))
+
+    print(f'{c.time()}: PCA start')
+    from sklearn.decomposition import PCA, FastICA, IncrementalPCA
+    clustering= hutils.Schaefer(300)
+
+    def yield_imgs_one_parcel(clustering,imgs):
+        unique_labels=np.unique(clustering)
+        for k in range(len(unique_labels)):
+            label = unique_labels[k]
+            indices = clustering == label
+            imgs_one_parcel = [img[:,indices] for img in imgs]   
+            yield imgs_one_parcel
+    def do_pca(imgs_one_parcel):
+        imgs_one_parcel_concat = np.hstack(imgs_one_parcel)
+        n_components = imgs_one_parcel[0].shape[1]
+        method='pca'
+        if method=='pca':
+            pca = PCA(n_components=n_components, whiten=False)
+        elif method=='increm_pca':
+            pca = IncrementalPCA(n_components=n_components,whiten=False)
+        if method=='ica':
+            pca = FastICA(n_components=n_components,max_iter=100000) #default max_iter 200
+        newimgs = pca.fit_transform(imgs_one_parcel_concat)
+        return newimgs
+    def combine_parcelwise_imgs(clustering,imgs,shape):
+        result=np.zeros(shape,dtype=np.float16)
+        unique_labels=np.unique(clustering)
+        for k in range(len(unique_labels)):
+            label = unique_labels[k]
+            indices = clustering == label
+            result[:,indices] = imgs[k]
+        return result    
+
+    imgs_parcelwise_transformed = Parallel(n_jobs=6)(delayed(do_pca)(imgs_one_parcel) for imgs_one_parcel in yield_imgs_one_parcel(clustering,imgs))
+
+    template = combine_parcelwise_imgs(clustering,imgs_parcelwise_transformed,imgs[0].shape)
+
+    print(f'{c.time()}: PCA done')
+    """

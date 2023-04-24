@@ -365,8 +365,48 @@ class MyTemplateAlignment(BaseEstimator, TransformerMixin):
         #Transform X with subject 'index''s aligner to the template
         
         return self.estimators[index].transform(X)
-        
-        
+
+def get_template(c,clustering,imgs):
+    """
+    Instead of making template from mean of subjects (which can blur things), we will use dimensionality reduction on all subjects' vertices concatenated (per parcel)
+    """
+    from sklearn.decomposition import PCA, FastICA, IncrementalPCA
+    def yield_imgs_one_parcel(clustering,imgs):
+        unique_labels=np.unique(clustering)
+        for k in range(len(unique_labels)):
+            label = unique_labels[k]
+            indices = clustering == label
+            imgs_one_parcel = [img[:,indices] for img in imgs]   
+            yield imgs_one_parcel
+    def do_pca(imgs_one_parcel,method):
+        imgs_one_parcel_concat = np.hstack(imgs_one_parcel)
+        n_components = imgs_one_parcel[0].shape[1]
+        if method=='pca':
+            pca = PCA(n_components=n_components, whiten=False)
+        elif method=='increm_pca':
+            pca = IncrementalPCA(n_components=n_components,whiten=False)
+        if method=='ica':
+            pca = FastICA(n_components=n_components,max_iter=100000) #default max_iter 200
+        newimgs = pca.fit_transform(imgs_one_parcel_concat)
+        return newimgs
+    def combine_parcelwise_imgs(clustering,imgs,shape):
+        result=np.zeros(shape,dtype=np.float16)
+        unique_labels=np.unique(clustering)
+        for k in range(len(unique_labels)):
+            label = unique_labels[k]
+            indices = clustering == label
+            result[:,indices] = imgs[k]
+        return result    
+
+    print(f'{c.time()}: PCA start')
+    method='pca'
+    imgs_parcelwise_transformed = Parallel(n_jobs=-1)(delayed(do_pca)(imgs_one_parcel,method) for imgs_one_parcel in yield_imgs_one_parcel(clustering,imgs))
+    print(f'{c.time()}: PCA done')
+    return combine_parcelwise_imgs(clustering,imgs_parcelwise_transformed,imgs[0].shape)
+
+
+
+
 class LowDimTemplateAlignment(MyTemplateAlignment):
     """
     Dimensionality reduction first (across vertices, separately for each subject) to reduce effective no. of vertices. No parcellation.

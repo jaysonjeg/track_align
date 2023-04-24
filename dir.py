@@ -37,6 +37,12 @@ strings=['0-9','10-19','20-29','30-39','40-49']
 zb=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RDRT.npy' for string in strings]
 zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1/{i}') for i in zb] #RDRT
 
+#for niter1 with reg 0.05
+
+strings=['0-9','10-19','20-29','30-39','40-49']
+zb=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RDRT.npy' for string in strings]
+zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1_reg0.05/{i}') for i in zb] #RDRT
+
 
 #For RD and RT
 """
@@ -52,8 +58,8 @@ zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') 
 strings=['0-9','10-19','20-29','30-39','40-49']
 zd=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RD+.npy' for string in strings]
 zt=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RT+.npy' for string in strings]
-zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zd] #RD
-zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/direction/{i}') for i in zt] #RT
+zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/old/direction/{i}') for i in zd] #RD
+zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/old/direction/{i}') for i in zt] #RT
 
 
 #for niter1 smoothing 3,3, RDRT and RD+/RT+
@@ -75,8 +81,14 @@ blocks,_,_=tutils.load_f_and_a(zd[0]) #get blocks
 ##### GET OUTCOME MEASURES ######
 
 #Get confounders
+
+alignfile_movie = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
+alignfile_rsfmri = 'hcpalign_rest_FC_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False_FCSchaefer1000'
+
 nverts_parc = get_nverts_parc()
-scales_mean,log_scales_mean_adj = get_aligner_scale_factor()
+scales_mean_movie,log_scales_mean_adj_movie = get_aligner_scale_factor(alignfile_movie)
+scales_mean_rsfmri,log_scales_mean_adj_rsfmri = get_aligner_scale_factor(alignfile_rsfmri)
+aligner_variability = get_aligner_variability(alignfile_rsfmri)
 total_areas_parc , mean_vert_areas_parc = get_vertex_areas()
 mean_strengths_50subs = get_mean_strengths()
 
@@ -186,7 +198,9 @@ if show_dir:
 
 #Are spatial variations in SC-func linkage associated with these confounders?
 print(f'\n#### Correlation between bcre and () is () ####')
-print(f'aligner scale (mean), {np.corrcoef(bcre,scales_mean)[0,1]}')
+print(f'aligner scale (mean) (movie), {np.corrcoef(bcre,scales_mean_movie)[0,1]}')
+print(f'aligner scale (mean) (rsfmri), {np.corrcoef(bcre,scales_mean_rsfmri)[0,1]}')
+print(f'aligner_variability (rsfmri), {np.corrcoef(bcre,aligner_variability)[0,1]}')
 print(f'no of vertices in the parcel, {np.corrcoef(bcre,nverts_parc)[0,1]}')
 print(f'mean vert area in the parcel, {np.corrcoef(bcre,mean_vert_areas_parc)[0,1]}')
 print(f'total parcel area, {np.corrcoef(bcre,total_areas_parc)[0,1]}')
@@ -247,10 +261,15 @@ tm=cxdtr.mean(axis=1)
 #p.plot(trinarize(tm,2) @ align_parc_matrix,savename='tm_2')
 
 ### Plot confounders ###
+p.plot(log_scales_mean_adj_movie @ align_parc_matrix, savename='log_scales_mean_adj_movie') 
+p.plot(log_scales_mean_adj_rsfmri @ align_parc_matrix, savename='log_scales_mean_adj_rsfmri') 
+p.plot(aligner_variability @ align_parc_matrix, savename='aligner_variability') 
+
 """
 p.plot(nverts_parc @ align_parc_matrix, savename='nverts_parc')
-p.plot(log_scales_mean_adj @ align_parc_matrix, savename='log_scales_mean_adj') 
 p.plot(mean_vert_areas_parc @ align_parc_matrix,'mean_vert_areas_parc')
 p.plot(total_areas_parc @ align_parc_matrix,'total_areas_parc')
 p.plot(mean_strengths_50subs @ align_parc_matrix,'mean_node_strength')
 """
+
+regs=[log_scales_mean_adj_movie,log_scales_mean_adj_rsfmri,aligner_variability,nverts_parc,mean_vert_areas_parc,total_areas_parc,mean_strengths_50subs]
