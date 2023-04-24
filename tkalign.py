@@ -503,23 +503,28 @@ if __name__=='__main__':
         print(hutils.memused())
 
 
-    nblocks=10 #how many (parcel x parcel) blocks to examine
-    alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False_niter1_reg0.5'
-    block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
-    save_file=False  
+    nblocks=5 #how many (parcel x parcel) blocks to examine
+    block_choice='maxhpmult' #'largest', 'fromsourcevertex', 'all','maxhpmult'
+    save_file=True  
     load_file=False
     to_plot=True
-    save_plots=False
+    save_plots=True
 
-    pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
-    post_hrc_fwhm=3 #smoothing kernel after alignment. Default 3
+    pre_hrc_fwhm=5 #smoothing kernel (mm) for high-res connectomes. Default 3
+    post_hrc_fwhm=5 #smoothing kernel after alignment. Default 3
 
-    for howtoalign in ['RDRT']: #'RDRT','RD','RD+','RT','RT+'
-        for test in [range(0,5)]:
+    howtoalign='RDRT' #'RDRT','RD','RD+','RT','RT+'
+
+    for regv in [0.05]:
+        if regv==0: regstr=''
+        else:regstr=f'_reg{regv}'
+        alignfile = f'hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_niter1{regstr}'
+        for test in [range(0,10),range(10,20),range(20,30),range(30,40),range(40,50)]:
             aligner_nsubs = tutils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]
             subs_inds={'temp': temp, 'test': test}
 
             print('')
             print(f"{subs_inds['test']} - {howtoalign}")
+            print(regv)
             func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,pre_hrc_fwhm,post_hrc_fwhm) #tckfile='tracks_5M_1M_end.tck'

@@ -34,7 +34,7 @@ if __name__=='__main__':
         c: a hcpalign_utils.clock object
         t: If a hcpalign_utils.cprint object is given here, will print to both console and text file 
         sub_slice: if not False, will override n_subs by choosing specific subject list
-        n_jobs: processor cores for pairwise aligment (1 parcel per thread) (my PC has 12). -1 means use all cores
+        n_jobs: processor cores for pairwise aligment (1 parcel per thread) (my PC has 12) or the 'inner loop'. -1 means use all cores
         nparcs: no. of parcels. Subjects aligned within each parcel
         align_with: 'movie', 'diffusion', 'movie_FC', 'rest_FC', 'rest'
         method: anat, intra_subject, pairwise, template
@@ -124,6 +124,8 @@ if __name__=='__main__':
             save_suffix=f"{save_suffix}_template{len(args_template['nsubsfortemplate'])}"
         if not(args_template['n_iter']==2):
             save_suffix=f"{save_suffix}_niter{args_template['n_iter']}"
+        if not (args_template['method']==1):
+            save_suffix=f"{save_suffix}_meth{args_template['method']}"
         if reg:
             save_suffix=f"{save_suffix}_reg{reg}"
         
@@ -388,12 +390,12 @@ if __name__=='__main__':
         t=hutils.cprint(resultsfile) 
         for pairwise_method in ['scaled_orthogonal']:
             for method in ['template']:
-                for n_subs in [10]:
-                    for reg in [0,0.2,0.3,0.5,0.7]:
+                for n_subs in [10,20,50]:
+                    for reg in [0]:
                         print(f'{method} - {pairwise_method} - nsubs{n_subs} - reg {reg}')
                         c=hutils.clock()            
                         print(hutils.memused())   
-                        func(c,t=t,n_subs=n_subs,n_movies=4,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=True,load_pickle=False,return_nalign=False,return_aligner=False,n_jobs=+1,args_template={'n_iter':1,'scale':False,'method':1,'nsubsfortemplate':'all'},plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
+                        func(c,t=t,n_subs=n_subs,n_movies=4,n_rests=1,nparcs=300,align_with='movie',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=True,load_pickle=True,return_nalign=False,return_aligner=False,n_jobs=-1,args_template={'n_iter':2,'scale':False,'method':3,'nsubsfortemplate':'all'},plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
                         print(hutils.memused())
                         t.print('')  
 
