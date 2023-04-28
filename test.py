@@ -1,3 +1,4 @@
+"""
 n=[5,10,20,50,100]
 anat=[.68, .84, .88, .91, .93]
 temp=[.81,.91,.87,.88,.89]
@@ -16,3 +17,4 @@ ax.set_xscale('log')
 ax.set_xticks(n)
 ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
 plt.show()
+"""

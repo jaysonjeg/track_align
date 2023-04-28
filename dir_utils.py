@@ -6,6 +6,7 @@ import tkalign_utils as tutils
 import numpy as np
 import pickle
 import itertools
+import matplotlib.pyplot as plt
 
 
 align_nparcs=300
@@ -118,12 +119,12 @@ def get_aligner_variability(alignfile):
     total_areas_parc , _ =  get_vertex_areas() 
     from sklearn.linear_model import LinearRegression
     from sklearn.preprocessing import PolynomialFeatures
-    poly = PolynomialFeatures(degree=2)
-    regressors = poly.fit_transform(total_areas_parc.reshape(-1,1))
+    poly = PolynomialFeatures(degree=1)
+    regressors = poly.fit_transform(np.sqrt(total_areas_parc).reshape(-1,1))
     model = LinearRegression().fit(regressors, Y)
     Y_pred = model.predict(regressors)
     residuals = Y - Y_pred
-    return residuals
+    return residuals,Y
 
 
 
@@ -148,3 +149,50 @@ def get_mean_strengths():
     with open(path,'rb') as f:
         mean_strengths_50subs = np.load(f)
     return mean_strengths_50subs
+
+def make_null(list_of_values,samplesize,n_nulls):
+    return [np.mean(np.random.choice(list_of_values,size=samplesize,replace=False)) for i in range(n_nulls)]
+def get_all_nulls(list_of_values,max_samplesize=40,n_nulls=1000):
+    allnulls={}
+    for samplesize in range(1,max_samplesize):
+        allnulls[samplesize]=make_null(list_of_values,samplesize,n_nulls)
+    return allnulls
+def get_percentiles(cluster_means,cluster_sizes,nulls):
+    output=[]
+    for i in range(len(cluster_sizes)):
+        cluster_mean=cluster_means[i]
+        cluster_size=cluster_sizes[i]
+        null = nulls[cluster_size]
+        percentile = np.sum(cluster_mean > null)*100/len(null)
+        output.append(percentile)
+    return output
+
+
+
+def bar_plot(data,labels,title,xlim,cmap=None,leftmargin=None,vertlines=False):
+    data=np.array(data)
+    data[data<1]=1
+
+    if cmap is None:
+        cmap = plt.get_cmap('tab20')
+    fig, ax = plt.subplots()
+    y_pos = np.arange(len(data))
+    ax.barh(y_pos, data, color=cmap(np.arange(len(data))), alpha=0.8)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels)
+    ax.set_xlabel('Original > Scrambled (%)')
+    ax.set_ylabel(title)
+    #ax.set_title(title)
+    ax.set_xlim(xlim)
+    if vertlines:
+        ax.axvline(x=2.5, color='r')
+        ax.axvline(x=97.5, color='r')
+
+    if leftmargin is not None:
+        fig.subplots_adjust(left=leftmargin)
+    # Create legend
+    #handles = [plt.Rectangle((0,0),1,1, color=cmap(i)) for i in range(len(data))]
+    #ax.legend(handles, labels)
+
+
+

@@ -175,6 +175,7 @@ if __name__=='__main__':
                     args=[align_with,vertices,MSMAll,movie_clean,movie_fwhm,args_FC['parcellation'],args_FC['targets_nparcs'],filenames,'pxn']
                     nalign=hutils.get_all_FC(subs,args)
                     print(f"{c.time()} Get FC end") 
+                    nalign=[i.astype(np.float16) for i in nalign] 
 
                 if align_with=='diffusion':      
                     from scipy import sparse
@@ -363,6 +364,8 @@ if __name__=='__main__':
 
         if method in ['template','anat']: 
             
+            #To see accuracy for all subjects
+            
             X=np.vstack(ntasks_aligned)
             y=np.hstack(nlabels)
             num_of_tasks=ntasks_aligned[0].shape[0]
@@ -370,10 +373,11 @@ if __name__=='__main__':
             from sklearn.model_selection import GroupKFold,cross_val_score, GridSearchCV
             gkf=GroupKFold(n_splits=n_splits)       
             classification_scores=cross_val_score(classifier,X,y,groups=subjects,cv=gkf,n_jobs=-1)       
-
-            """
+            
+            
             #To see accuracy for subsets of subjects
-            for gp in [range(0,5),range(5,10)]:
+            """
+            for gp in [range(10,20)]:
                 X=np.vstack([ntasks_aligned[i] for i in gp])
                 y=np.hstack([nlabels[i] for i in gp])
                 num_of_tasks=ntasks_aligned[0].shape[0]
@@ -381,7 +385,7 @@ if __name__=='__main__':
                 from sklearn.model_selection import GroupKFold,cross_val_score, GridSearchCV
                 gkf=GroupKFold(n_splits=n_splits)       
                 classification_scores=cross_val_score(classifier,X,y,groups=subjects,cv=gkf,n_jobs=-1) 
-                print('Mean classification accuracy {:.2f}'.format(np.mean([np.mean(i) for i in classification_scores])))  
+                print('Subgroup mean classification accuracy {:.2f}'.format(np.mean([np.mean(i) for i in classification_scores])))  
             """
 
         print(f'{c.time()} Classifications done')
@@ -402,63 +406,21 @@ if __name__=='__main__':
 
         method='template'
         pairwise_method='scaled_orthogonal'
-        n_subs=10
+        align_with='movie'
+        n_subs=100
         n_movies=4
         save_pickle=False
         load_pickle=False
         args_template = {'n_iter':1,'scale':False,'method':1,'nsubsfortemplate':'all','pca_template': False}
         args_FC={'targets_nparcs':1000,'parcellation':'Schaefer'}
 
-        print(f'{method} - {pairwise_method} - nsubs{n_subs}')
-        c=hutils.clock()            
-        print(hutils.memused())   
-        imgs=func(c,t=t,n_subs=n_subs,n_movies=n_movies,n_rests=n_movies,nparcs=300,align_with='rest_FC',method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,return_nalign=False,return_aligner=False,n_jobs=+1,args_template=args_template,args_FC=args_FC,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=0)
-        print(hutils.memused())
-        t.print('')  
+        for reg in [0,0.05,0.1,0.2]:
+            print(f'{method} - {pairwise_method} - {align_with} nsubs{n_subs} -reg {reg}')
+            c=hutils.clock()            
+            print(hutils.memused())   
+            func(c,t=t,n_subs=n_subs,n_movies=n_movies,n_rests=n_movies,nparcs=300,align_with=align_with,method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,return_nalign=False,return_aligner=False,n_jobs=+1,args_template=args_template,args_FC=args_FC,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
+            print(hutils.memused())
+            t.print('')  
 
     
     print('\a') #beep sounds 
-
-    """
-    c=hutils.clock()       
-    import pickle
-    imgs=pickle.load(open('NALIGN_5.npy', "rb" ))
-
-    print(f'{c.time()}: PCA start')
-    from sklearn.decomposition import PCA, FastICA, IncrementalPCA
-    clustering= hutils.Schaefer(300)
-
-    def yield_imgs_one_parcel(clustering,imgs):
-        unique_labels=np.unique(clustering)
-        for k in range(len(unique_labels)):
-            label = unique_labels[k]
-            indices = clustering == label
-            imgs_one_parcel = [img[:,indices] for img in imgs]   
-            yield imgs_one_parcel
-    def do_pca(imgs_one_parcel):
-        imgs_one_parcel_concat = np.hstack(imgs_one_parcel)
-        n_components = imgs_one_parcel[0].shape[1]
-        method='pca'
-        if method=='pca':
-            pca = PCA(n_components=n_components, whiten=False)
-        elif method=='increm_pca':
-            pca = IncrementalPCA(n_components=n_components,whiten=False)
-        if method=='ica':
-            pca = FastICA(n_components=n_components,max_iter=100000) #default max_iter 200
-        newimgs = pca.fit_transform(imgs_one_parcel_concat)
-        return newimgs
-    def combine_parcelwise_imgs(clustering,imgs,shape):
-        result=np.zeros(shape,dtype=np.float16)
-        unique_labels=np.unique(clustering)
-        for k in range(len(unique_labels)):
-            label = unique_labels[k]
-            indices = clustering == label
-            result[:,indices] = imgs[k]
-        return result    
-
-    imgs_parcelwise_transformed = Parallel(n_jobs=6)(delayed(do_pca)(imgs_one_parcel) for imgs_one_parcel in yield_imgs_one_parcel(clustering,imgs))
-
-    template = combine_parcelwise_imgs(clustering,imgs_parcelwise_transformed,imgs[0].shape)
-
-    print(f'{c.time()}: PCA done')
-    """

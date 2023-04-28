@@ -44,7 +44,7 @@ if __name__=='__main__':
     print(hutils.memused())
     c=hutils.clock()
 
-    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,pre_hrc_fwhm,post_hrc_fwhm,tckfile=None):
+    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,pre_hrc_fwhm,post_hrc_fwhm,tckfile=None,text=''):
         print(hutils.memused())
         if howtoalign!='RDRT':
             print(f'howtoalign is {howtoalign}')
@@ -94,7 +94,10 @@ if __name__=='__main__':
 
 
         #save_prefix = f'r{hutils.datetime_for_filename()}'
-        save_prefix = f"corrs_0-{alignfile_nsubs}_{len(subs['temp'])}s_{min(subs_inds['test'])}-{max(subs_inds['test'])}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{align_nparcs}p_{nblocks}b_{block_choice[0:2]}_{howtoalign}"
+        save_prefix = f"corrs_0-{alignfile_nsubs}_{len(subs['temp'])}s_{min(subs_inds['test'])}-{max(subs_inds['test'])}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{align_nparcs}p_{nblocks}b_{block_choice[0:2]}_{howtoalign}{text}"
+
+        print(save_prefix)
+
         results_subfolder=ospath(f'{hutils.results_path}/{save_prefix}')
         if to_plot and save_plots: hutils.mkdir(results_subfolder)
         p=hutils.surfplot(results_subfolder,plot_type=plot_type)
@@ -503,28 +506,40 @@ if __name__=='__main__':
         print(hutils.memused())
 
 
-    nblocks=5 #how many (parcel x parcel) blocks to examine
-    block_choice='maxhpmult' #'largest', 'fromsourcevertex', 'all','maxhpmult'
-    save_file=True  
-    load_file=False
+    nblocks=10 #how many (parcel x parcel) blocks to examine
+    block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
+    save_file=False  
+    load_file=True
     to_plot=True
-    save_plots=True
+    save_plots=False
 
     pre_hrc_fwhm=5 #smoothing kernel (mm) for high-res connectomes. Default 3
     post_hrc_fwhm=5 #smoothing kernel after alignment. Default 3
 
-    howtoalign='RDRT' #'RDRT','RD','RD+','RT','RT+'
 
-    for regv in [0.05]:
+
+    for howtoalign in ['RDRT']: #'RDRT','RD','RD+','RT','RT+'             
+        """
+        regv=0.2
+        pcatemp=False
+        FCparcellation in ['Schaefer1000'] #'kmeans3000'
         if regv==0: regstr=''
         else:regstr=f'_reg{regv}'
-        alignfile = f'hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_niter1{regstr}'
-        for test in [range(0,10),range(10,20),range(20,30),range(30,40),range(40,50)]:
+        if pcatemp: pcatempstr='_pcatemp'
+        else: pcatrempstr=''
+        alignfile = f'hcpalign_rest_FC_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_FC{FCparcellation}_niter1{pcatempstr}{regstr}'
+        """
+
+
+        alignfile='hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False_niter1'
+
+        for test in [range(0,5)]:
             aligner_nsubs = tutils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]
             subs_inds={'temp': temp, 'test': test}
 
             print('')
             print(f"{subs_inds['test']} - {howtoalign}")
-            print(regv)
+
+            #func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,pre_hrc_fwhm,post_hrc_fwhm,text=FCparcellation) #for FCparcellation 
             func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,save_plots,pre_hrc_fwhm,post_hrc_fwhm) #tckfile='tracks_5M_1M_end.tck'

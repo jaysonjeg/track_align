@@ -9,7 +9,8 @@ Given outputs of tkalign.py using 'RD' and 'RT', try to compute directionality
 import hcpalign_utils as hutils
 import matplotlib.pyplot as plt
 import tkalign_utils as tutils
-from dir_utils import *
+import dir_utils as dutils
+from dir_utils import count, reshape, get_vals, pr, corr
 import numpy as np
 from scipy.stats import ttest_1samp, ttest_rel
 import matplotlib.pyplot as plt
@@ -32,17 +33,20 @@ zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/maxhpmult/{i}') 
 """
 
 #for niter1 (default)
-
+"""
 strings=['0-9','10-19','20-29','30-39','40-49']
 zb=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RDRT.npy' for string in strings]
 zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1/{i}') for i in zb] #RDRT
-
-#for niter1 with reg 0.05
+"""
+#for niter1 with reg 0.05 (GOOD)
 
 strings=['0-9','10-19','20-29','30-39','40-49']
 zb=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RDRT.npy' for string in strings]
 zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1_reg0.05/{i}') for i in zb] #RDRT
-
+xb = [dutils.get_a(i) for i in zb]
+xbn=[tutils.subtract_nonscrambled_from_a(i) for i in xb]
+xbc=np.concatenate(xbn,axis=0) 
+xbcre = count(reshape(xbc)) #for correlating with bcre
 
 #For RD and RT
 """
@@ -62,6 +66,7 @@ zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/old/direction/{i
 zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/old/direction/{i}') for i in zt] #RT
 
 
+
 #for niter1 smoothing 3,3, RDRT and RD+/RT+
 """
 strings=['0-9','10-19','20-29','30-39','40-49']
@@ -73,9 +78,23 @@ zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1/{i}') for
 zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1/{i}') for i in zt] #RT
 """
 
-d = [get_a(i) for i in zd]
-t = [get_a(i) for i in zt]
-b = [get_a(i) for i in zb]
+#for rest_FC, niter1, reg 0.2, smoothing 5,5, RDRT and RD+/RT+ (GOOD)
+"""
+parcellation='kmeans3000' #'Schaefer1000', 'kmeans3000'
+strings=['0-9','10-19','20-29','30-39','40-49']
+zb=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RDRT{parcellation}.npy' for string in strings]
+zd=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RD+{parcellation}.npy' for string in strings]
+zt=[f'corrs_0-{nsubs}_40s_{string}_tracks_5M_1M_end_5mm_5mm_300p_5b_ma_RT+{parcellation}.npy' for string in strings]
+zb = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1_restFC_reg0.2/{i}') for i in zb] #RDRT
+zd = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1_restFC_reg0.2/{i}') for i in zd] #RD
+zt = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/niter1_restFC_reg0.2/{i}') for i in zt] #RT
+"""
+
+
+
+d = [dutils.get_a(i) for i in zd]
+t = [dutils.get_a(i) for i in zt]
+b = [dutils.get_a(i) for i in zb]
 blocks,_,_=tutils.load_f_and_a(zd[0]) #get blocks
 
 ##### GET OUTCOME MEASURES ######
@@ -85,12 +104,13 @@ blocks,_,_=tutils.load_f_and_a(zd[0]) #get blocks
 alignfile_movie = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
 alignfile_rsfmri = 'hcpalign_rest_FC_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False_FCSchaefer1000'
 
-nverts_parc = get_nverts_parc()
-scales_mean_movie,log_scales_mean_adj_movie = get_aligner_scale_factor(alignfile_movie)
-scales_mean_rsfmri,log_scales_mean_adj_rsfmri = get_aligner_scale_factor(alignfile_rsfmri)
-aligner_variability = get_aligner_variability(alignfile_rsfmri)
-total_areas_parc , mean_vert_areas_parc = get_vertex_areas()
-mean_strengths_50subs = get_mean_strengths()
+nverts_parc = dutils.get_nverts_parc()
+scales_mean_movie,log_scales_mean_adj_movie = dutils.get_aligner_scale_factor(alignfile_movie)
+scales_mean_rsfmri,log_scales_mean_adj_rsfmri = dutils.get_aligner_scale_factor(alignfile_rsfmri)
+aligner_variability_rsfmri,Y = dutils.get_aligner_variability(alignfile_rsfmri)
+aligner_variability_movie,_ = dutils.get_aligner_variability(alignfile_movie)
+total_areas_parc , mean_vert_areas_parc = dutils.get_vertex_areas()
+mean_strengths_50subs = dutils.get_mean_strengths()
 
 #subtract nonscrambled
 dn=[tutils.subtract_nonscrambled_from_a(i) for i in d] #'n' means per fold
@@ -180,7 +200,7 @@ if show_dir:
 print('\n### Correlations between RD, RT, and RDRT ###')
 print('dce vs tce vs bce: counts, across blocks')
 print(np.corrcoef([dce,tce,bce]))
-model=OLS (bce ,[ dce,tce ] )
+model=dutils.OLS (bce ,[ dce,tce ] )
 print('OLS of bce, predicted by dce and tce')
 print("R-squared: {:.3f}".format(model.rsquared))
 print("R: {:.3f}".format(np.sqrt(model.rsquared)))
@@ -200,7 +220,8 @@ if show_dir:
 print(f'\n#### Correlation between bcre and () is () ####')
 print(f'aligner scale (mean) (movie), {np.corrcoef(bcre,scales_mean_movie)[0,1]}')
 print(f'aligner scale (mean) (rsfmri), {np.corrcoef(bcre,scales_mean_rsfmri)[0,1]}')
-print(f'aligner_variability (rsfmri), {np.corrcoef(bcre,aligner_variability)[0,1]}')
+print(f'aligner_variability (movie), {np.corrcoef(bcre,aligner_variability_movie)[0,1]}')
+print(f'aligner_variability (rsfmri), {np.corrcoef(bcre,aligner_variability_rsfmri)[0,1]}')
 print(f'no of vertices in the parcel, {np.corrcoef(bcre,nverts_parc)[0,1]}')
 print(f'mean vert area in the parcel, {np.corrcoef(bcre,mean_vert_areas_parc)[0,1]}')
 print(f'total parcel area, {np.corrcoef(bcre,total_areas_parc)[0,1]}')
@@ -233,43 +254,109 @@ plt.show()
 """
 
 ##### PLOTS ######
+
+def ploto(data,savename='',cmap=None):
+    p.plot(data @ align_parc_matrix, savename=savename,cmap=cmap)
+
+def plotstr(string_data,savename='',cmap='tab20'):
+    #like ploto except convert string data to numbers
+    uniques=np.unique(string_data)
+    int_data = [np.where(uniques==string)[0][0] for string in string_data]
+    ploto(int_data,savename=savename,cmap=cmap)
+
+align_nparcs=300
 p=hutils.surfplot(hutils.results_path,plot_type='open_in_browser')
 align_parc_matrix=hutils.Schaefer_matrix(align_nparcs)
 
 
 ### Plot non-directional stuff ###
 
+"""
 #counts, for each parc
 if show_dir:
-    p.plot(dcre@align_parc_matrix,'dcre') 
-    p.plot(tcre@align_parc_matrix,'tcre')
-p.plot(bcre@align_parc_matrix,'bcre')
+    ploto(dcre,'dcre')
+    ploto(tcre,'tcre')
+ploto(bcre,'bcre')
 
 #t-stat (mean across blocks), for each parc
 if show_dir:
-    p.plot(-dcxtr.mean(axis=1) @ align_parc_matrix, 'dcxtrm')  #compare to tkspat.py, line p.plot([-i for i in anct] @ align_parc_matrix,savename='-anct')
-    p.plot(-tcxtr.mean(axis=1) @ align_parc_matrix, 'tcxtrm')
-p.plot(-bcxtr.mean(axis=1) @ align_parc_matrix, 'bcxtrm')
+    ploto(-dcxtr.mean(axis=1),'dcxtrm') #compare to tkspat.py, line p.plot([-i for i in anct] @ align_parc_matrix,savename='-anct')
+    ploto(-tcxtr.mean(axis=1),'tcxtrm')
+ploto(-bcxtr.mean(axis=1),'bcxtrm')
 
 ### Plot directional stuff ###
 if show_dir:
-    p.plot(cxdtr.mean(axis=1) @ align_parc_matrix ,savename='cxdtrm')
+    ploto(cxdtr.mean(axis=1),'cxdtrm')
 
 #Let's focus on cxdtr
 tm=cxdtr.mean(axis=1)
-#p.plot(trinarize(tm,1.5) @ align_parc_matrix,savename='tm_1p5')
-#p.plot(trinarize(tm,2) @ align_parc_matrix,savename='tm_2')
+#p.plot(dutils.trinarize(tm,1.5) @ align_parc_matrix,savename='tm_1p5')
+#p.plot(dutils.trinarize(tm,2) @ align_parc_matrix,savename='tm_2')
+
+"""
 
 ### Plot confounders ###
-p.plot(log_scales_mean_adj_movie @ align_parc_matrix, savename='log_scales_mean_adj_movie') 
-p.plot(log_scales_mean_adj_rsfmri @ align_parc_matrix, savename='log_scales_mean_adj_rsfmri') 
-p.plot(aligner_variability @ align_parc_matrix, savename='aligner_variability') 
+"""
+ploto(log_scales_mean_adj_movie,'log_scales_mean_adj_movie') 
+ploto(log_scales_mean_adj_rsfmri ,'log_scales_mean_adj_rsfmri') 
+ploto(aligner_variability_rsfmri, cmap='inferno' ,savename='aligner_variability_rsfmri') 
+ploto(nverts_parc ,savename='nverts_parc')
+ploto(mean_vert_areas_parc ,'mean_vert_areas_parc')
+ploto(total_areas_parc ,'total_areas_parc')
+ploto(mean_strengths_50subs,'mean_node_strength')
+"""
+
+regs=[log_scales_mean_adj_movie,log_scales_mean_adj_rsfmri,aligner_variability_rsfmri,nverts_parc,mean_vert_areas_parc,total_areas_parc,mean_strengths_50subs]
 
 """
-p.plot(nverts_parc @ align_parc_matrix, savename='nverts_parc')
-p.plot(mean_vert_areas_parc @ align_parc_matrix,'mean_vert_areas_parc')
-p.plot(total_areas_parc @ align_parc_matrix,'total_areas_parc')
-p.plot(mean_strengths_50subs @ align_parc_matrix,'mean_node_strength')
+plt.scatter(xbcre,bcre)
+plt.xlabel('Coupling from movie viewing')
+plt.ylabel('Coupling from resting state functional connectivity')
 """
 
-regs=[log_scales_mean_adj_movie,log_scales_mean_adj_rsfmri,aligner_variability,nverts_parc,mean_vert_areas_parc,total_areas_parc,mean_strengths_50subs]
+from make_schaefer_parcellation import get_Schaefer_parcelnames
+nparcs=300
+s300=get_Schaefer_parcelnames(nparcs=nparcs)
+s300=np.vstack([['','','',''],s300]) #top row is the '0' parcel
+
+s300_hemi=s300[:,0]
+s300_networks=s300[:,1]
+s300_subregions=s300[:,2]
+s300_regions=[f'{i}_{j}' for i,j in zip(s300_networks,s300_subregions)]
+s300_unetworks=np.unique(s300_networks)
+s300_usubregions=np.unique(s300_subregions)
+s300_uregions=np.unique(s300_regions)
+
+bcre_networkmeans=[]
+bcre_networksize=[]
+for network in s300_unetworks:
+    inds=np.where(s300_networks==network)[0]
+    bcre_networkmeans.append(bcre[inds].mean())
+    bcre_networksize.append(len(inds))
+bcre_subregionmeans=[]
+bcre_subregionsize=[]
+for subregion in s300_usubregions:
+    inds=np.where(s300_subregions==subregion)[0]
+    bcre_subregionmeans.append(bcre[inds].mean())
+    bcre_subregionsize.append(len(inds))
+
+plt.scatter(bcre_networksize,bcre_networkmeans,color='b')
+plt.scatter(bcre_subregionsize,bcre_subregionmeans,color='r')
+#plt.show()
+
+nulls = dutils.get_all_nulls(bcre)   
+bcre_networkpercs=dutils.get_percentiles(bcre_networkmeans,bcre_networksize,nulls)
+bcre_subregionpercs=dutils.get_percentiles(bcre_subregionmeans,bcre_subregionsize,nulls)
+
+cmap_networks=plt.get_cmap('nipy_spectral',len(s300_unetworks))
+cmap_subregions=plt.get_cmap('nipy_spectral',len(s300_usubregions))
+plotstr(s300_networks,cmap=cmap_networks) #17 networks
+plotstr(s300_subregions,cmap=cmap_subregions) #subregions out of 36
+dutils.bar_plot(bcre_networkmeans[:],s300_unetworks[:],'17 networks', [65,76],cmap=cmap_networks,leftmargin=0.3)
+dutils.bar_plot(bcre_networkmeans[:],s300_unetworks[:],'17 networks', [55,85],cmap=cmap_networks,leftmargin=0.3)
+dutils.bar_plot(bcre_subregionmeans[:],s300_usubregions[:],'36 components', [55,85],cmap_subregions,leftmargin=0.4)
+
+dutils.bar_plot(bcre_networkpercs[:],s300_unetworks[:],'17 networks (perc)', [0,100],cmap=cmap_networks,vertlines=True,leftmargin=0.3)
+dutils.bar_plot(bcre_subregionpercs[:],s300_usubregions[:],'36 components (perc)', [0,100],cmap_subregions,vertlines=True,leftmargin=0.4)
+
+plt.show()

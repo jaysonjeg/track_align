@@ -98,8 +98,8 @@ def _create_template(imgs, n_iter, scale_template, alignment_method,
     if reg == 0 or reg==intrinsic_reg:
         adjusted_reg=0
     elif intrinsic_reg > reg:
-        print('1 / len(imgs) is greater than reg. Set reg to to larger values or else to zero')
-        assert(0)
+        print(f'Warnings: 1 / len(imgs) is greater than reg. Set reg to to larger values or else to zero')
+        adjusted_reg=0
     else:
         adjusted_reg = reg - intrinsic_reg 
     print(f'Reg is {reg}. Intrinsic reg is {intrinsic_reg:.3f}. Adjusted reg is {adjusted_reg:.3f}')
@@ -382,7 +382,7 @@ def get_template(c,clustering,imgs):
         imgs_one_parcel_concat = np.hstack(imgs_one_parcel)
         n_components = imgs_one_parcel[0].shape[1]
         if method=='pca':
-            pca = PCA(n_components=n_components, whiten=False)
+            pca = PCA(n_components=n_components, whiten=False,random_state=0)
         elif method=='increm_pca':
             pca = IncrementalPCA(n_components=n_components,whiten=False)
         if method=='ica':
