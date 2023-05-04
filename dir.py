@@ -296,9 +296,10 @@ tm=cxdtr.mean(axis=1)
 """
 
 ### Plot confounders ###
-"""
+
 ploto(log_scales_mean_adj_movie,'log_scales_mean_adj_movie') 
 ploto(log_scales_mean_adj_rsfmri ,'log_scales_mean_adj_rsfmri') 
+"""
 ploto(aligner_variability_rsfmri, cmap='inferno' ,savename='aligner_variability_rsfmri') 
 ploto(nverts_parc ,savename='nverts_parc')
 ploto(mean_vert_areas_parc ,'mean_vert_areas_parc')
@@ -314,6 +315,9 @@ plt.xlabel('Coupling from movie viewing')
 plt.ylabel('Coupling from resting state functional connectivity')
 """
 
+
+#### Mean coupling in each functional network or anatomical cluster (Yeolab)
+"""
 from make_schaefer_parcellation import get_Schaefer_parcelnames
 nparcs=300
 s300=get_Schaefer_parcelnames(nparcs=nparcs)
@@ -340,10 +344,6 @@ for subregion in s300_usubregions:
     bcre_subregionmeans.append(bcre[inds].mean())
     bcre_subregionsize.append(len(inds))
 
-plt.scatter(bcre_networksize,bcre_networkmeans,color='b')
-plt.scatter(bcre_subregionsize,bcre_subregionmeans,color='r')
-#plt.show()
-
 nulls = dutils.get_all_nulls(bcre)   
 bcre_networkpercs=dutils.get_percentiles(bcre_networkmeans,bcre_networksize,nulls)
 bcre_subregionpercs=dutils.get_percentiles(bcre_subregionmeans,bcre_subregionsize,nulls)
@@ -360,3 +360,4 @@ dutils.bar_plot(bcre_networkpercs[:],s300_unetworks[:],'17 networks (perc)', [0,
 dutils.bar_plot(bcre_subregionpercs[:],s300_usubregions[:],'36 components (perc)', [0,100],cmap_subregions,vertlines=True,leftmargin=0.4)
 
 plt.show()
+"""
