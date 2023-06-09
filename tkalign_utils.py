@@ -387,13 +387,13 @@ def plot_id(axis,x,title='title'):
     for nyD in range(n_subs):
         for nyR in range(n_subs):
             if nyD==nyR: 
-                #marker_color='r'
-                marker_color=colors[nyR%len(colors)]
-                marker_size=40
+                marker_color='r'
+                #marker_color=colors[nyR%len(colors)]
+                marker_size=10 #40
             else:
-                #marker_color='b'
-                marker_color=colors[nyR%len(colors)]
-                marker_size=20
+                marker_color='b'
+                #marker_color=colors[nyR%len(colors)]
+                marker_size=10
             axis.scatter(nyD+1, x[nyD, nyR], s=marker_size, c=marker_color)
     axis.set_title(title)          
     axis.get_xaxis().set_ticks([])

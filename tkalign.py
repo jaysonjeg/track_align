@@ -101,10 +101,10 @@ if __name__=='__main__':
         results_subfolder=ospath(f'{hutils.results_path}/{save_prefix}')
         if to_plot and save_plots: hutils.mkdir(results_subfolder)
         p=hutils.surfplot(results_subfolder,plot_type=plot_type)
-        save_folder=f'{hutils.intermediates_path}/tkalign_corrs'
+        save_folder=f'{hutils.intermediates_path}/tkalign_corrs' #/niter1_reg0.05
         hutils.mkdir(save_folder)
         save_path=ospath(f"{save_folder}/{save_prefix}.npy")
-
+        print(save_path)
 
         aligned_method = 'template' if (('temp' in alignfile) or ('Temp' in alignfile)) else 'pairwise'
         if aligned_method=='pairwise': 
@@ -506,7 +506,7 @@ if __name__=='__main__':
         print(hutils.memused())
 
 
-    nblocks=10 #how many (parcel x parcel) blocks to examine
+    nblocks=100 #how many (parcel x parcel) blocks to examine
     block_choice='largest' #'largest', 'fromsourcevertex', 'all','maxhpmult'
     save_file=False  
     load_file=True
@@ -531,9 +531,9 @@ if __name__=='__main__':
         """
 
 
-        alignfile='hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False_niter1'
+        alignfile='hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_niter1'
 
-        for test in [range(0,5)]:
+        for test in [range(0,10)]:
             aligner_nsubs = tutils.extract_nsubs(alignfile)
             temp = [i for i in range(aligner_nsubs) if i not in test]
             subs_inds={'temp': temp, 'test': test}
