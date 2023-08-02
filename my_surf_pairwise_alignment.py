@@ -1,6 +1,5 @@
 import numpy as np
 import sys
-sys.path.append('../dependencies/fmralign-benchmark')
 from fmralignbench.surf_pairwise_alignment import fit_parcellation
 from fmralign._utils import piecewise_transform
 from sklearn.base import BaseEstimator, TransformerMixin

@@ -23,7 +23,7 @@ if __name__=='__main__':
     available_tasks=hutils.tasks 
 
     def func(\
-        c,t=None,n_subs=3,sub_slice=False,n_movies=1,n_rests=1,n_tasks=7,n_jobs=-1,nparcs=300,align_with='movie',method='pairwise',pairwise_method='scaled_orthogonal', kfolds=5, lowdim_samples=False, lowdim_vertices=False, lowdim_ncomponents=300, MSMAll=False, descale_aligner=False, absValueOfAligner=False, scramble_aligners=False, movie_fwhm=0, decode_fwhm=0, post_decode_fwhm=0, return_score_by_class=False, load_pickle=False, save_pickle=False,\
+        c,t=None,n_subs=3,sub_slice=False,n_movies=1,n_rests=1,n_tasks=7,n_jobs=-1,nparcs=300,align_with='movie',method='pairwise',pairwise_method='scaled_orthogonal', kfolds=5, lowdim_samples=False, lowdim_vertices=False, lowdim_ncomponents=300, MSMAll=False, descale_aligner=False, absValueOfAligner=False, scramble_aligners=False, movie_fwhm=0, decode_fwhm=0, post_decode_fwhm=0, load_pickle=False, save_pickle=False,\
         plot_any=False, plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_nalign=False,return_aligner=False,\
         args_diffusion={'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':16000 , 'smooth_circular':True , 'fwhm_circ':3 , 'smooth_gyral':False , 'fwhm_x':3 , 'fwhm_y':3 , 'interp_from_gyri':False , 'use_gyral_mask':False},\
         args_FC={'targets_nparcs':300,'parcellation':'Schaefer'},\
@@ -49,7 +49,6 @@ if __name__=='__main__':
         scramble_aligners:  to transform subjects' task maps using someone else's aligner  
         movie_fwhm, decode_fwhm are spatial smoothing for movie images and decode images respectively (0,0)
         post_decode_fwhm smooths the left-out contrast maps predicted through alignment
-        return_score_by_class. Default False. to return one score
         plot_any #plot anything at all, or not
         plot_impulse_response #to plot aligned image of circular ROIs
         plot_contrast_maps #to plot task contrast maps (predicted through alignment)
@@ -110,7 +109,7 @@ if __name__=='__main__':
         decode_clean= False  #DOESNT ACTUALLY HAVE ANY IMPACT OTHER THAN SAVEFILE NAMING
         clean_each_movie_separately=True
         #Following only relevant if X_clean=True
-        standardize,detrend,low_pass,high_pass,t_r=True,True,None,None,1.0
+        standardize,detrend,low_pass,high_pass,t_r='zscore_sample',True,None,None,1.0
         
         """
         movie_clean and decode_clean will clean signals across time or across contrast maps (within each voxel)
@@ -141,7 +140,7 @@ if __name__=='__main__':
         decode_preproc=hutils.make_preproc(decode_fwhm,decode_clean,standardize,detrend,low_pass,high_pass,t_r)       
         post_decode_smooth=hutils.make_smoother_100610(post_decode_fwhm)
 
-        classifier=LinearSVC(max_iter=10000)     
+        classifier=LinearSVC(max_iter=10000,dual='auto')     
         nsubs = np.arange(len(subs)) #number of subjects
 
         """
@@ -407,14 +406,14 @@ if __name__=='__main__':
         method='template'
         pairwise_method='scaled_orthogonal'
         align_with='movie'
-        n_subs=100
-        n_movies=4
+        n_subs=5
+        n_movies=1
         save_pickle=False
         load_pickle=False
         args_template = {'n_iter':1,'scale':False,'method':1,'nsubsfortemplate':'all','pca_template': False}
         args_FC={'targets_nparcs':1000,'parcellation':'Schaefer'}
 
-        for reg in [0,0.05,0.1,0.2]:
+        for reg in [0]:
             print(f'{method} - {pairwise_method} - {align_with} nsubs{n_subs} -reg {reg}')
             c=hutils.clock()            
             print(hutils.memused())   

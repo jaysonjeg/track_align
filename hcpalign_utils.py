@@ -130,7 +130,7 @@ def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_fwhm,ts_clean):
         nalign_sub = [nalign_sub[i][movieVidVols[i],:] for i in range(len(nalign_sub))]
     #Following only relevant if X_clean=True
     clean_each_movie_separately=True
-    standardize,detrend,low_pass,high_pass,t_r=True,True,None,None,1.0
+    standardize,detrend,low_pass,high_pass,t_r='zscore_sample',True,None,None,1.0
     ts_preproc=make_preproc(ts_fwhm,ts_clean,standardize,detrend,low_pass,high_pass,t_r)  
     if clean_each_movie_separately:
         temp=np.vstack([ts_preproc(i) for i in nalign_sub])

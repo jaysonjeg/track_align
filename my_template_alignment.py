@@ -5,7 +5,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 import numpy as np
 from joblib import delayed, Memory, Parallel
 from nilearn.image import index_img, concat_imgs, load_img
-from nilearn.input_data.masker_validation import check_embedded_nifti_masker
+from nilearn.maskers._masker_validation import _check_embedded_nifti_masker
 from fmralign.pairwise_alignment import PairwiseAlignment
 from joblib import Parallel,delayed
 from my_surf_pairwise_alignment import MySurfacePairwiseAlignment
@@ -197,7 +197,7 @@ class MyTemplateAlignment(BaseEstimator, TransformerMixin):
                  clustering='kmeans', scale_template=False,
                  n_iter=2, save_template=None, n_bags=1,
                  target_affine=None, target_shape=None,
-                 memory=Memory(cachedir=None), memory_level=0,
+                 memory=Memory(location=None), memory_level=0,
                  n_jobs=1, verbose=0,template_method=1,reg=0):
         '''
         Parameterss
@@ -416,7 +416,7 @@ class LowDimTemplateAlignment(MyTemplateAlignment):
                  clustering='kmeans', scale_template=False,
                  n_iter=2, save_template=None, n_bags=1,
                  target_affine=None, target_shape=None,
-                 memory=Memory(cachedir=None), memory_level=0,
+                 memory=Memory(location=None), memory_level=0,
                  n_jobs=1, verbose=0,
                  n_components=20,whiten=True,lowdim_method='pca',reg=0):
                                  

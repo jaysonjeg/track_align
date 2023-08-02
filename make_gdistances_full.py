@@ -13,7 +13,7 @@ c=hcpalign_utils.clock()
 hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"
 
 
-def get_saved_gdistances_full_hemi(sub,surface,hemi,hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200",intermediates_path='/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/intermediates'):
+def get_saved_gdistances_full_hemi(sub,surface,hemi,hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200",intermediates_path='/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/old_intermediates'):
     """
     Get full geodesic distances based on a surface mesh
     sub e.g. '102311'
@@ -26,7 +26,7 @@ def get_saved_gdistances_full_hemi(sub,surface,hemi,hcp_folder="/mnt/d/FORSTORAG
     else:
         print(f'{save_path}.npy not found')
 
-def get_saved_gdistances_full(sub,surface,hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200",intermediates_path='/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/intermediates'):
+def get_saved_gdistances_full(sub,surface,hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200",intermediates_path='/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/old_intermediates'):
     L=get_saved_gdistances_full_hemi(sub,surface,'L')
     R=get_saved_gdistances_full_hemi(sub,surface,'R')
     w=np.zeros((59412,59412),dtype=L.dtype)
