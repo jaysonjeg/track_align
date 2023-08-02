@@ -23,7 +23,7 @@ if __name__=='__main__':
     available_tasks=hutils.tasks 
 
     def func(\
-        c,t=None,n_subs=3,sub_slice=False,n_movies=1,n_rests=1,n_tasks=7,n_jobs=-1,nparcs=300,align_with='movie',method='pairwise',pairwise_method='scaled_orthogonal', kfolds=5, lowdim_samples=False, lowdim_vertices=False, lowdim_ncomponents=300, MSMAll=False, descale_aligner=False, absValueOfAligner=False, scramble_aligners=False, movie_fwhm=0, decode_fwhm=0, post_decode_fwhm=0, load_pickle=False, save_pickle=False,\
+        c,t=None,n_subs=3,sub_slice=False,n_movies=1,n_rests=1,n_tasks=7,n_jobs=-1,parcellation_string='S300',align_with='movie',method='pairwise',pairwise_method='scaled_orthogonal', kfolds=5, lowdim_samples=False, lowdim_vertices=False, lowdim_ncomponents=300, MSMAll=False, descale_aligner=False, absValueOfAligner=False, scramble_aligners=False, movie_fwhm=0, decode_fwhm=0, post_decode_fwhm=0, load_pickle=False, save_pickle=False,\
         plot_any=False, plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_nalign=False,return_aligner=False,\
         args_diffusion={'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':16000 , 'smooth_circular':True , 'fwhm_circ':3 , 'smooth_gyral':False , 'fwhm_x':3 , 'fwhm_y':3 , 'interp_from_gyri':False , 'use_gyral_mask':False},\
         args_FC={'targets_nparcs':300,'parcellation':'Schaefer'},\
@@ -75,49 +75,38 @@ if __name__=='__main__':
         reg: regularization parameter for MySurfPairwiseAlignment: default 0
         """
         
+        #so that print will print to text file too
         if t is not None:
-            print=t.print #so that print will print to text file too
+            print=t.print 
         
-        if pairwise_method=='optimal_transport':
-            import dill
-            pickle=dill
-        else:
-            import pickle
-        
+        #select subjects
         if not sub_slice:
             subs=hutils.subs[0:n_subs]
         else:
             subs=hutils.subs[sub_slice]
             n_subs=len(subs)
+        nsubs = np.arange(len(subs)) #number of subjects
         tasks=available_tasks[0:n_tasks]
-
-        vertices= hcp.struct.cortex 
-        clustering= hutils.Schaefer(nparcs) #hcp.mmp.map_all, hutils.kmeans(nparcs) hutils.Schaefer(nparcs) #parcellation on 32k surface mesh
-        clustering=clustering[vertices]
                               
         if lowdim_samples or lowdim_vertices:
             lowdim_method='pca' #'pca','ica'
             lowdim_ncomponents=lowdim_ncomponents 
-
         if lowdim_vertices: assert(method in ['pairwise','template'])
-        assert(method in ['anat', 'intra_subject', 'pairwise', 'template'])
-        assert(pairwise_method in ['scaled_orthogonal', 'permutation', 'optimal_transport', 'ridge_cv','maxcorr'])
-                   
-        movie_clean=True
-        
-        
-        decode_clean= False  #DOESNT ACTUALLY HAVE ANY IMPACT OTHER THAN SAVEFILE NAMING
-        clean_each_movie_separately=True
-        #Following only relevant if X_clean=True
-        standardize,detrend,low_pass,high_pass,t_r='zscore_sample',True,None,None,1.0
-        
-        """
-        movie_clean and decode_clean will clean signals across time or across contrast maps (within each voxel)
-        """
 
+        #movie_clean and decode_clean determine whether data are standardized/detrended  across time or across contrast maps (within each voxel)        
+        movie_clean=True  
+        decode_clean= False 
+        standardize,detrend,low_pass,high_pass,t_r='zscore_sample',True,None,None,1.0 #These parameters only apply to 'movie' and 'decode' data depending on whether movie_clean=True or decode_clean=True
+        decode_preproc=hutils.make_preproc(decode_fwhm,decode_clean,standardize,detrend,low_pass,high_pass,t_r)       
+        post_decode_smooth=hutils.make_smoother_100610(post_decode_fwhm)
+
+        clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
+        classifier=LinearSVC(max_iter=10000,dual='auto')     
+
+
+        #Get the save file name
         temp={'diffusion':0,'movie':n_movies,'movie_FC':n_movies,'rest':n_rests,'rest_FC':n_rests}[align_with]
-        save_suffix=f"{align_with}_{method[0:4]}_{pairwise_method}_{n_subs}-{temp}-{n_tasks}_{str(movie_clean)[0]}{str(decode_clean)[0]}_{movie_fwhm}_{decode_fwhm}_{post_decode_fwhm}_{str(descale_aligner)[0]}{str(absValueOfAligner)[0]}{str(scramble_aligners)[0]}_S{nparcs}_{MSMAll}"
-        
+        save_suffix=f"{align_with}_{method[0:4]}_{pairwise_method}_{n_subs}-{temp}-{n_tasks}_{str(movie_clean)[0]}{str(decode_clean)[0]}_{movie_fwhm}_{decode_fwhm}_{post_decode_fwhm}_{str(descale_aligner)[0]}{str(absValueOfAligner)[0]}{str(scramble_aligners)[0]}_{parcellation_string}_{MSMAll}"
         if 'FC' in align_with:
             save_suffix=f"{save_suffix}_FC{args_FC['parcellation']}{args_FC['targets_nparcs']}"
         if not(args_template['nsubsfortemplate']=='all'):
@@ -131,17 +120,19 @@ if __name__=='__main__':
         if reg:
             save_suffix=f"{save_suffix}_reg{reg}"
         
+        #Set up for saving pickled data and for plotting
+        if pairwise_method=='optimal_transport':
+            import dill
+            pickle=dill
+        else:
+            import pickle      
         hutils.mkdir(f'{intermediates_path}/alignpickles')
         save_pickle_filename=ospath(f'{intermediates_path}/alignpickles/hcpalign_{save_suffix}.p')                          
         if plot_any:
             plot_dir=f'/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/figures/hcpalign/{save_suffix}'
             p=hutils.surfplot(plot_dir,plot_type='open_in_browser')
 
-        decode_preproc=hutils.make_preproc(decode_fwhm,decode_clean,standardize,detrend,low_pass,high_pass,t_r)       
-        post_decode_smooth=hutils.make_smoother_100610(post_decode_fwhm)
 
-        classifier=LinearSVC(max_iter=10000,dual='auto')     
-        nsubs = np.arange(len(subs)) #number of subjects
 
         """
         Convert arrays of filenames e.g. ftasks to arrays of ciftis and labels e.g. ntasks
@@ -151,13 +142,15 @@ if __name__=='__main__':
         """
 
         nalign=[]  
-
         print(f"{c.time()} Make nalign start") 
         
         hutils.mkdir(f'{intermediates_path}/hcp_timeseries')
         hutils.mkdir(f'{intermediates_path}/hcp_tasklabels')
         hutils.mkdir(f'{intermediates_path}/hcp_taskcontrasts')
         use_saved_aligner=load_pickle and os.path.exists(ospath(save_pickle_filename))
+
+
+
         if not(use_saved_aligner):
             if method=="anat":
                 nalign=[[] for sub in subs] #irrelevant anyway
@@ -171,10 +164,9 @@ if __name__=='__main__':
                     nalign=Parallel(n_jobs=-1,prefer="threads")(delayed(func)(sub) for sub in subs)
                 if 'FC' in align_with:
                     print(f"{c.time()} Get FC start")            
-                    args=[align_with,vertices,MSMAll,movie_clean,movie_fwhm,args_FC['parcellation'],args_FC['targets_nparcs'],filenames,'pxn']
+                    args=[align_with,MSMAll,movie_clean,movie_fwhm,args_FC['parcellation'],args_FC['targets_nparcs'],filenames,'pxn']
                     nalign=hutils.get_all_FC(subs,args)
                     print(f"{c.time()} Get FC end") 
-                    nalign=[i.astype(np.float16) for i in nalign] 
 
                 if align_with=='diffusion':      
                     from scipy import sparse
@@ -405,6 +397,7 @@ if __name__=='__main__':
 
         method='template'
         pairwise_method='scaled_orthogonal'
+        parcellation_string = 'S300' #S300, K1000, MMP
         align_with='movie'
         n_subs=5
         n_movies=1
@@ -417,7 +410,7 @@ if __name__=='__main__':
             print(f'{method} - {pairwise_method} - {align_with} nsubs{n_subs} -reg {reg}')
             c=hutils.clock()            
             print(hutils.memused())   
-            func(c,t=t,n_subs=n_subs,n_movies=n_movies,n_rests=n_movies,nparcs=300,align_with=align_with,method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,return_nalign=False,return_aligner=False,n_jobs=+1,args_template=args_template,args_FC=args_FC,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
+            func(c,t=None,n_subs=n_subs,n_movies=n_movies,n_rests=n_movies, parcellation_string=parcellation_string,align_with=align_with,method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,return_nalign=False,return_aligner=False,n_jobs=+1,args_template=args_template,args_FC=args_FC,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
             print(hutils.memused())
             t.print('')  
 

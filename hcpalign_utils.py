@@ -110,6 +110,16 @@ def getfilepath(filename,ts_type,sub,MSMAll=False,cleaned=True):
     elif ts_type=='rest':
         return ospath(f'{hcp_folder}/{sub}/MNINonLinear/Results/rfMRI_{filename}/rfMRI_{filename}_Atlas{MSMString}{cleanString}.dtseries.nii')
 
+def parcellation_string_to_parcellation(parcellation_string):
+    nparcs = int(parcellation_string[1:])
+    if parcellation_string[0]=='S':      
+        parcellation = Schaefer(nparcs)
+    elif parcellation_string[0]=='K':
+        parcellation = kmeans(nparcs)
+    elif parcellation_string[0]=='M':
+        parcellation = hcp.mmp.map_all()[hcp.struct.cortex]
+    return parcellation
+
 def get_timeseries(sub,ts_type,filename,MSMAll,dtype,vertices=slice(0,59412)):
     filepath=getfilepath(filename,ts_type,sub,MSMAll)
     return get(filepath)[:,vertices].astype(dtype)
@@ -298,7 +308,6 @@ def get_func_type(string):
 def get_FC_filepath(
     sub,
     align_with,
-    vertices,
     MSMAll,
     align_clean,
     align_fwhm,
@@ -314,7 +323,6 @@ def get_FC_filepath(
 def get_FC(
     sub,
     align_with,
-    vertices,
     MSMAll,
     align_clean,
     align_fwhm,
@@ -334,7 +342,8 @@ def get_FC(
         return corr4(nap,nap,b_blocksize=parc_matrix.shape[0])
 
 def get_all_FC(subs,args):
-    return Parallel(n_jobs=-1,prefer='threads')(delayed(from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
+    nalign = Parallel(n_jobs=-1,prefer='threads')(delayed(from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
+    return [i.astype(np.float16) for i in nalign] 
 
 
 def get_hrc_filepath(sub,tckfile,hcp_path,tract_path,sift2,threshold,MSMAll):
