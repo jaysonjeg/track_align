@@ -23,9 +23,9 @@ if __name__=='__main__':
     available_tasks=hutils.tasks 
 
     def func(\
-        c,t=None,n_subs=3,sub_slice=False,n_movies=1,n_rests=1,n_tasks=7,n_jobs=-1,parcellation_string='S300',align_with='movie',method='pairwise',pairwise_method='scaled_orthogonal', kfolds=5, lowdim_samples=False, lowdim_vertices=False, lowdim_ncomponents=300, MSMAll=False, descale_aligner=False, absValueOfAligner=False, scramble_aligners=False, movie_fwhm=0, decode_fwhm=0, post_decode_fwhm=0, load_pickle=False, save_pickle=False,\
+        c,t=None,n_subs=3,sub_slice=False,n_movies=1,n_rests=1,n_tasks=7,n_jobs=-1,parcellation_string='S300',align_with='movie',method='pairwise',pairwise_method='scaled_orthogonal', kfolds=5, lowdim_samples=False, lowdim_vertices=False, lowdim_ncomponents=300, MSMAll=False, descale_aligner=False, absValueOfAligner=False, scramble_aligners=False, align_fwhm=0, decode_fwhm=0, post_decode_fwhm=0, load_pickle=False, save_pickle=False,\
         plot_any=False, plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_nalign=False,return_aligner=False,\
-        args_diffusion={'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':16000 , 'smooth_circular':True , 'fwhm_circ':3 , 'smooth_gyral':False , 'fwhm_x':3 , 'fwhm_y':3 , 'interp_from_gyri':False , 'use_gyral_mask':False},\
+        args_diffusion={'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':3000 , 'smooth_circular':False , 'fwhm_circ':3 },\
         args_FC={'targets_nparcs':300,'parcellation':'Schaefer'},\
         args_template={'n_iter':2,'scale':False,'method':1,'nsubsfortemplate':'all','pca_template': False},\
         args_maxcorr={'max_dist':10,'typeof':3},\
@@ -47,7 +47,7 @@ if __name__=='__main__':
         descale_aligner: remove scale factor from aligner
         absValueOfAligner: to take elementwise absolute value of the aligner
         scramble_aligners:  to transform subjects' task maps using someone else's aligner  
-        movie_fwhm, decode_fwhm are spatial smoothing for movie images and decode images respectively (0,0)
+        align_fwhm, decode_fwhm are spatial smoothing for movie images and decode images respectively (0,0)
         post_decode_fwhm smooths the left-out contrast maps predicted through alignment
         plot_any #plot anything at all, or not
         plot_impulse_response #to plot aligned image of circular ROIs
@@ -59,10 +59,7 @@ if __name__=='__main__':
             tckfile e.g. 'tracks_5M' (default with sift2=True),'tracks_5M_sift1M.tck' (default with sift2=False) 'tracks_5M_sift1M.tck' 'tracks_5M_50k.tck', 'tracks_5M_sift1M_200k.tck'
             diffusion_targets_nparcs: False, or a number of parcels [100,300,1000,3000,10000] Number of connectivity targets for DA     
             diffusion_targets_nvertices: number of random vertices to use as targets for diffusion alignment
-            diffusion_smooth_circular: True to do circular smoothing of hrc
-            fwhm_circ: only relevant if diffusion_smooth_circular=True
-            diffusion_smooth_gyral: True to do gyral smoothing of hrc
-            fwhm_x, fwhm_y, interp_from_gyri, use_gyral_mask are only relevant if diffusion_smooth_gyral==True
+            fwhm_circ: 
         args_FC: only relevant if 'FC' is in align_with
             targets_nparcs: number of parcels for FC targets
             parcellation: 'kmeans' or 'Schaefer'
@@ -93,20 +90,18 @@ if __name__=='__main__':
             lowdim_ncomponents=lowdim_ncomponents 
         if lowdim_vertices: assert(method in ['pairwise','template'])
 
-        #movie_clean and decode_clean determine whether data are standardized/detrended  across time or across contrast maps (within each voxel)        
-        movie_clean=True  
+        #align_clean and decode_clean determine whether data are standardized/detrended  across time or across contrast maps (within each voxel)        
+        align_clean=True  
         decode_clean= False 
-        standardize,detrend,low_pass,high_pass,t_r='zscore_sample',True,None,None,1.0 #These parameters only apply to 'movie' and 'decode' data depending on whether movie_clean=True or decode_clean=True
+        standardize,detrend,low_pass,high_pass,t_r='zscore_sample',True,None,None,1.0 #These parameters only apply to 'movie' and 'decode' data depending on whether align_clean=True or decode_clean=True
+
+        align_preproc = hutils.make_preproc(align_fwhm,align_clean,standardize,detrend,low_pass,high_pass,t_r)
         decode_preproc=hutils.make_preproc(decode_fwhm,decode_clean,standardize,detrend,low_pass,high_pass,t_r)       
         post_decode_smooth=hutils.make_smoother_100610(post_decode_fwhm)
 
-        clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
-        classifier=LinearSVC(max_iter=10000,dual='auto')     
-
-
         #Get the save file name
         temp={'diffusion':0,'movie':n_movies,'movie_FC':n_movies,'rest':n_rests,'rest_FC':n_rests}[align_with]
-        save_suffix=f"{align_with}_{method[0:4]}_{pairwise_method}_{n_subs}-{temp}-{n_tasks}_{str(movie_clean)[0]}{str(decode_clean)[0]}_{movie_fwhm}_{decode_fwhm}_{post_decode_fwhm}_{str(descale_aligner)[0]}{str(absValueOfAligner)[0]}{str(scramble_aligners)[0]}_{parcellation_string}_{MSMAll}"
+        save_suffix=f"{align_with}_{method[0:4]}_{pairwise_method}_{n_subs}-{temp}-{n_tasks}_{str(align_clean)[0]}{str(decode_clean)[0]}_{align_fwhm}_{decode_fwhm}_{post_decode_fwhm}_{str(descale_aligner)[0]}{str(absValueOfAligner)[0]}{str(scramble_aligners)[0]}_{parcellation_string}_{MSMAll}"
         if 'FC' in align_with:
             save_suffix=f"{save_suffix}_FC{args_FC['parcellation']}{args_FC['targets_nparcs']}"
         if not(args_template['nsubsfortemplate']=='all'):
@@ -133,24 +128,9 @@ if __name__=='__main__':
             p=hutils.surfplot(plot_dir,plot_type='open_in_browser')
 
 
-
-        """
-        Convert arrays of filenames e.g. ftasks to arrays of ciftis and labels e.g. ntasks
-        nalign is list(nsubs) of array(nVols,nGrayordinates) containing alignment data
-        ntasks is list(nsubs) of array(nTotalLabels,nGrayordinates) containing task data
-        nlabels is list(nsubs) of array(nTotalLabels,) of task labels
-        """
-
-        nalign=[]  
+        #Get alignment data
         print(f"{c.time()} Make nalign start") 
-        
-        hutils.mkdir(f'{intermediates_path}/hcp_timeseries')
-        hutils.mkdir(f'{intermediates_path}/hcp_tasklabels')
-        hutils.mkdir(f'{intermediates_path}/hcp_taskcontrasts')
         use_saved_aligner=load_pickle and os.path.exists(ospath(save_pickle_filename))
-
-
-
         if not(use_saved_aligner):
             if method=="anat":
                 nalign=[[] for sub in subs] #irrelevant anyway
@@ -160,43 +140,20 @@ if __name__=='__main__':
                 elif 'rest' in align_with:
                     filenames = hutils.get_filenames('rest',n_rests)
                 if align_with=='movie' or align_with=='rest':           
-                    func = lambda sub: hutils.get_all_timeseries_sub(sub,align_with,filenames,MSMAll,movie_fwhm,movie_clean)
+                    func = lambda sub: hutils.get_all_timeseries_sub(sub,align_with,filenames,MSMAll,align_preproc)
                     nalign=Parallel(n_jobs=-1,prefer="threads")(delayed(func)(sub) for sub in subs)
-                if 'FC' in align_with:
-                    print(f"{c.time()} Get FC start")            
-                    args=[align_with,MSMAll,movie_clean,movie_fwhm,args_FC['parcellation'],args_FC['targets_nparcs'],filenames,'pxn']
-                    nalign=hutils.get_all_FC(subs,args)
-                    print(f"{c.time()} Get FC end") 
-
-                if align_with=='diffusion':      
-                    from scipy import sparse
-                    nalign = hutils.get_highres_connectomes(c,subs,args_diffusion['tckfile'],MSMAll=MSMAll,sift2=args_diffusion['sift2'])
-                    
-                    if args_diffusion['smooth_circular']:
-                        smoother=sparse.load_npz(ospath(f"{intermediates_path}/smoothers/100610_{args_diffusion['fwhm_circ']}_0.01.npz"))
-                        nalign=[css.smooth_high_resolution_connectome(hrs,smoother).astype(np.float32) for hrs in nalign]
-                    if args_diffusion['smooth_gyral']:
-                        import getmesh_utils
-                        nalign=[getmesh_utils.gyralsmoothing(hrs,sub,smoother_type = 'd',surface_type='white',fwhm_x=args_diffusion['fwhm_x'],fwhm_y=args_diffusion['fwhm_y'],use_gyral_mask=args_diffusion['use_gyral_mask'],gyrus_threshold_curvature=0.3,interp_from_gyri=args_diffusion['interp_from_gyri']) for sub,hrs in zip(subs,nalign)]            
-
-                    if args_diffusion['targets_nparcs']:
-                        #connectivity from each vertex, to each targetparcel
-                        align_parc_matrix=hutils.Schaefer_matrix(args_diffusion['targets_nparcs']) 
-                        nalign=[align_parc_matrix.dot(i) for i in nalign]
-                    else:
-                        these_vertices=np.linspace(0,len(clustering)-1,args_diffusion['targets_nvertices']).astype(int) #default 16000   
-                        nalign=[i[these_vertices,:] for i in nalign]         
-
-                    nalign=[i.toarray().astype('float32') for i in nalign]            
-
-            if scramble_aligners: 
-                nalign.append(nalign.pop(0)) #circular shift nalign to 'scramble' 
+                if 'FC' in align_with:          
+                    nalign=hutils.get_all_FC(subs,[align_with,MSMAll,align_preproc,args_FC['parcellation'],args_FC['targets_nparcs'],filenames,'pxn'])
+                if align_with=='diffusion':
+                    nalign = hutils.get_aligndata_highres_connectomes(c,subs,MSMAll,args_diffusion)
+            if scramble_aligners: #circular shift nalign to 'scramble' 
+                nalign.append(nalign.pop(0)) 
                 nalign.append(nalign.pop(0))
-            print(f"{c.time()} Make nalign done") 
-            
+            print(f"{c.time()} Make nalign done")          
             print(hutils.memused())
             if return_nalign: return nalign
         
+            #Reduce alignment data dimensionality in samples(ntimepoints) axis
             if lowdim_samples:
                 from sklearn.decomposition import PCA,FastICA
                 if lowdim_method=='pca':
@@ -208,14 +165,18 @@ if __name__=='__main__':
                 nalign=[decomp.transform(i.T).T for i in nalign]
                 print(f"{c.time()} lowdim_nsamples done") 
             
-        
-        print(f"{c.time()} Get tasks")
-        ntasks=[hutils.from_cache(hutils.get_tasks_cachepath,hutils.gettasks,tasks,sub,MSMAll=MSMAll) for sub in subs]   
-        ntasks = [decode_preproc(i) for i in ntasks]       
-        nlabels=[hutils.from_cache(hutils.get_tasklabels_cachepath,hutils.gettasklabels,tasks,sub) for sub in subs]
-        n_contrasts=len(nlabels[0]) #number of task contrasts
-        print(f"{c.time()} Get tasks done")
-        
+        #Get decoding data
+        print(f"{c.time()} Get decoding data")
+        ndecode=[hutils.from_cache(hutils.get_tasks_cachepath,hutils.gettasks,tasks,sub,MSMAll=MSMAll) for sub in subs] #list(nsubjects) of decode data (ncontrasts,nvertices)   
+        ndecode = [decode_preproc(i) for i in ndecode]       
+        #nlabels=[hutils.from_cache(hutils.get_tasklabels_cachepath,hutils.gettasklabels,tasks,sub) for sub in subs] #list (nsubjects) of labels (ncontrasts,)
+        nlabels = [np.array(range(i.shape[0])) for i in ndecode] #since the exact label names are not important, just use the contrast number as the label       
+        print(f"{c.time()} Get decoding data done")
+
+
+        #Get parcellation and classifier
+        clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
+        classifier=LinearSVC(max_iter=10000,dual='auto')     
         n_splits=min(kfolds,n_subs) #for cross validation
         kf=KFold(n_splits=n_splits)
         classification_scores=[]
@@ -275,7 +236,7 @@ if __name__=='__main__':
                 sources=[i for i in nsubs if i!=target]  
                 aligned_sources_decode=[]
                 for source in sources:
-                    source_decode = ntasks[source]
+                    source_decode = ndecode[source]
                     aligner=aligners[f'{subs[source]}-{subs[target]}'] 
                     aligned_sources_decode.append( post_decode_smooth(aligner.transform(source_decode)) )
                 aligned_sources_decode = np.vstack(aligned_sources_decode)
@@ -290,7 +251,7 @@ if __name__=='__main__':
                 clf=clone(classifier)
                 clf.fit(aligned_sources_decode, np.hstack(sources_labels))
                 return clf.score(target_decode, target_labels)
-            classification_scores = Parallel(n_jobs=-1)(delayed(classify_pairwise)(target,nsubs,nlabels,ntasks[target],nlabels[target],all_aligned_sources_decode[target],classifier) for target in nsubs)               
+            classification_scores = Parallel(n_jobs=-1)(delayed(classify_pairwise)(target,nsubs,nlabels,ndecode[target],nlabels[target],all_aligned_sources_decode[target],classifier) for target in nsubs)               
 
         elif method=='template':
         ###TEMPLATE ALIGNMENT###           
@@ -330,7 +291,7 @@ if __name__=='__main__':
                     pickle.dump(aligners,open(save_pickle_filename,"wb"))
                 
             #Taligner.estimators is list(nsubs) of SurfacePairwiseAlignments, from each subj to template       
-            ntasks_aligned=[post_decode_smooth(aligners.transform(ntasks[i],i)) for i in range(len(ntasks))]
+            ndecode_aligned=[post_decode_smooth(aligners.transform(ndecode[i],i)) for i in range(len(ndecode))]
             if plot_any:
                 if plot_impulse_response:
                     source=0 #aligner for plot is sub 0 to template
@@ -340,8 +301,8 @@ if __name__=='__main__':
                 if plot_contrast_maps:
                     for i in range(1):
                         for contrast in [3]: #Visualise predicted contrast map   
-                            p.plot(ntasks[i][contrast,:],'Con{}_sub{}'.format(contrast,i))
-                            p.plot(ntasks_aligned[i][contrast,:],'_Con{}_subTemplate_from_sub{}'.format(contrast,i))
+                            p.plot(ndecode[i][contrast,:],'Con{}_sub{}'.format(contrast,i))
+                            p.plot(ndecode_aligned[i][contrast,:],'_Con{}_subTemplate_from_sub{}'.format(contrast,i))
                 if plot_scales:
                     p.plot(aligners.estimators[source].get_spatial_map_of_scale(),f"scale") 
 
@@ -350,16 +311,16 @@ if __name__=='__main__':
             hutils.getloadavg()
            
         elif method=='anat':
-            ntasks_aligned=[post_decode_smooth(ntask) for ntask in ntasks]
+            ndecode_aligned=[post_decode_smooth(ntask) for ntask in ndecode]
         del nalign
 
         if method in ['template','anat']: 
             
             #To see accuracy for all subjects
             
-            X=np.vstack(ntasks_aligned)
+            X=np.vstack(ndecode_aligned)
             y=np.hstack(nlabels)
-            num_of_tasks=ntasks_aligned[0].shape[0]
+            num_of_tasks=ndecode_aligned[0].shape[0]
             subjects=np.hstack([np.tile([i],num_of_tasks) for i in range(n_subs)])
             from sklearn.model_selection import GroupKFold,cross_val_score, GridSearchCV
             gkf=GroupKFold(n_splits=n_splits)       
@@ -369,9 +330,9 @@ if __name__=='__main__':
             #To see accuracy for subsets of subjects
             """
             for gp in [range(10,20)]:
-                X=np.vstack([ntasks_aligned[i] for i in gp])
+                X=np.vstack([ndecode_aligned[i] for i in gp])
                 y=np.hstack([nlabels[i] for i in gp])
-                num_of_tasks=ntasks_aligned[0].shape[0]
+                num_of_tasks=ndecode_aligned[0].shape[0]
                 subjects=np.hstack([np.tile([i],num_of_tasks) for i in range(len(gp))])
                 from sklearn.model_selection import GroupKFold,cross_val_score, GridSearchCV
                 gkf=GroupKFold(n_splits=n_splits)       
@@ -398,7 +359,7 @@ if __name__=='__main__':
         method='template'
         pairwise_method='scaled_orthogonal'
         parcellation_string = 'S300' #S300, K1000, MMP
-        align_with='movie'
+        align_with='diffusion'
         n_subs=5
         n_movies=1
         save_pickle=False
@@ -410,7 +371,7 @@ if __name__=='__main__':
             print(f'{method} - {pairwise_method} - {align_with} nsubs{n_subs} -reg {reg}')
             c=hutils.clock()            
             print(hutils.memused())   
-            func(c,t=None,n_subs=n_subs,n_movies=n_movies,n_rests=n_movies, parcellation_string=parcellation_string,align_with=align_with,method=method ,pairwise_method=pairwise_method,movie_fwhm=0,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,return_nalign=False,return_aligner=False,n_jobs=+1,args_template=args_template,args_FC=args_FC,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
+            func(c,t=t,n_subs=n_subs,n_movies=n_movies,n_rests=n_movies, parcellation_string=parcellation_string,align_with=align_with,method=method ,pairwise_method=pairwise_method,align_fwhm=0,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,return_nalign=False,return_aligner=False,n_jobs=+1,args_template=args_template,args_FC=args_FC,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
             print(hutils.memused())
             t.print('')  
 

@@ -94,6 +94,18 @@ class cprint():
         print(*args,**kwargs)
         sys.stdout=temp #set stdout back to console output
 
+def parcellation_string_to_parcellation(parcellation_string):
+    #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'M' for HCP multimodal parcellation
+    #Returns an array of size (59412,) with parcel labels for each vertex in fs32k cortex
+    nparcs = int(parcellation_string[1:])
+    if parcellation_string[0]=='S':      
+        parcellation = Schaefer(nparcs)
+    elif parcellation_string[0]=='K':
+        parcellation = kmeans(nparcs)
+    elif parcellation_string[0]=='M':
+        parcellation = hcp.mmp.map_all()[hcp.struct.cortex]
+    return parcellation
+
 def get_filenames(func_type,func_nruns):
     if func_type=='movie':
         filenames = movies[0:func_nruns]
@@ -110,16 +122,6 @@ def getfilepath(filename,ts_type,sub,MSMAll=False,cleaned=True):
     elif ts_type=='rest':
         return ospath(f'{hcp_folder}/{sub}/MNINonLinear/Results/rfMRI_{filename}/rfMRI_{filename}_Atlas{MSMString}{cleanString}.dtseries.nii')
 
-def parcellation_string_to_parcellation(parcellation_string):
-    nparcs = int(parcellation_string[1:])
-    if parcellation_string[0]=='S':      
-        parcellation = Schaefer(nparcs)
-    elif parcellation_string[0]=='K':
-        parcellation = kmeans(nparcs)
-    elif parcellation_string[0]=='M':
-        parcellation = hcp.mmp.map_all()[hcp.struct.cortex]
-    return parcellation
-
 def get_timeseries(sub,ts_type,filename,MSMAll,dtype,vertices=slice(0,59412)):
     filepath=getfilepath(filename,ts_type,sub,MSMAll)
     return get(filepath)[:,vertices].astype(dtype)
@@ -128,20 +130,24 @@ def get_timeseries_cachepath(sub,ts_type,filename,MSMAll,dtype):
     MSMString=MSMlogical2str[MSMAll]
     return f'{intermediates_path}/hcp_timeseries/{sub}_{filename}{MSMString}'
 
-def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_fwhm,ts_clean):
+def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_preproc):
     """
+    Returns an array containing fMRI time series
+    sub: subject ID 
     ts_type: 'movie' or 'rest'
     filenames e.g. ['MOVIE1_7T_AP','MOVIE2_7T_PA','MOVIE3_7T_PA','MOVIE4_7T_AP'] 
+    MSMAll: True/False
+    ts_fwhm: smoothing kernel mm
+    ts_clean: True/False
     """    
     dtype=np.float16 #np.float32 or np.float32
+    mkdir(f'{intermediates_path}/hcp_timeseries')
     nalign_sub=[from_cache(get_timeseries_cachepath,get_timeseries,sub,ts_type,filename,MSMAll,dtype,load=True,save=True) for filename in filenames]   
     if ts_type=='movie':   
         movieVidVols = [movieVolumeSelect(v,10,10) for v in movieVidTimes] #get list of all movie volumes to be included  
         nalign_sub = [nalign_sub[i][movieVidVols[i],:] for i in range(len(nalign_sub))]
     #Following only relevant if X_clean=True
     clean_each_movie_separately=True
-    standardize,detrend,low_pass,high_pass,t_r='zscore_sample',True,None,None,1.0
-    ts_preproc=make_preproc(ts_fwhm,ts_clean,standardize,detrend,low_pass,high_pass,t_r)  
     if clean_each_movie_separately:
         temp=np.vstack([ts_preproc(i) for i in nalign_sub])
     else:
@@ -150,6 +156,7 @@ def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_fwhm,ts_clean):
 
 
 def get_tasks_cachepath(tasks,sub,MSMAll=False):
+    mkdir(f'{intermediates_path}/hcp_taskcontrasts')
     MSMtypestring = MSMlogical2str[MSMAll]  
     task_string=''.join([i[0] for i in tasks])
     return f'{intermediates_path}/hcp_taskcontrasts/{sub}{MSMtypestring}_{task_string}'
@@ -168,6 +175,7 @@ def gettaskcontrastfiles(tasks,subs):
     return ftaskcontrasts
 
 def get_tasklabels_cachepath(tasks,sub):
+    mkdir(f'{intermediates_path}/hcp_tasklabels')
     task_string=''.join([i[0] for i in tasks])
     return f'{intermediates_path}/hcp_tasklabels/labels_{sub}_{task_string}'
 
@@ -176,6 +184,68 @@ def gettasklabels(tasks,sub):
     contrast_files=[ospath(f'{hcp_folder}/{sub}/MNINonLinear/Results/tfMRI_{task}/tfMRI_{task}_hp200_s2_level2.feat/Contrasts.txt') for task in tasks]
     labels = [pd.read_csv(contrast_files[i],header=None).iloc[allowed_labels_dict[tasks[i]]] for i in range(len(tasks))]
     return np.vstack(labels).squeeze()
+
+
+def from_cache(func_filepath,func,*args,load=True,save=True,**kwargs):
+    """
+    Generate filepath using func_filepath(*args,**kwargs). Check if filepath already exists. If it doesn't exist, generate required value or array using func(*args,**kwargs) and save this in filepath. 
+    Optional arguments load and save can be provided after **kwargs
+    """
+    filepath=func_filepath(*args,**kwargs)   
+    if load and os.path.exists(ospath(filepath)):
+        values = pickle.load(open(ospath(filepath), "rb" ))
+    else:
+        values = func(*args,**kwargs)
+        if save:
+            pickle.dump(values,open(ospath(filepath),"wb"))
+    return values
+
+def get_func_type(string):
+    if 'movie' in string: return 'movie'
+    elif 'rest' in string: return 'rest'
+    else: assert(0)
+
+def get_FC_filepath(
+    sub,
+    align_with,
+    MSMAll,
+    align_clean,
+    align_fwhm,
+    targets_parcellation,
+    targets_nparcs,
+    filenames,
+    FC_type): 
+
+    align_clean_string = logical2str[align_clean]    
+    MSMtypestring = MSMlogical2str[MSMAll]    
+    return f'{intermediates_path}/functional_connectivity/{get_func_type(align_with)}{MSMtypestring}_{len(filenames)}runs_{align_clean_string}_fwhm{align_fwhm}_{targets_parcellation}{targets_nparcs}_{FC_type}_sub{sub}.p'
+
+def get_FC(
+    sub,
+    align_with,
+    MSMAll,
+    align_clean,
+    align_fwhm,
+    targets_parcellation,
+    targets_nparcs,
+    filenames,
+    FC_type):   
+    """
+    FC_type is 'pxn' or pxp'
+    """
+    _,parc_matrix=get_parcellation(targets_parcellation,targets_nparcs)
+    standardize,detrend,low_pass,high_pass,t_r='zscore_sample',True,None,None,1.0 #These parameters only apply to 'movie' and 'decode' data depending on whether movie_clean=True or decode_clean=True
+    align_preproc = make_preproc(align_fwhm,align_clean,standardize,detrend,low_pass,high_pass,t_r)
+    na = get_all_timeseries_sub(sub,get_func_type(align_with),filenames,MSMAll,align_preproc)
+    nap=(na@parc_matrix.T) #ntimepoints * nparcs
+    if FC_type=='pxn':
+        return corr4(nap,na,b_blocksize=parc_matrix.shape[0])
+    elif FC_type=='pxp':
+        return corr4(nap,nap,b_blocksize=parc_matrix.shape[0])
+
+def get_all_FC(subs,args):
+    nalign = Parallel(n_jobs=-1,prefer='threads')(delayed(from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
+    return [i.astype(np.float16) for i in nalign] 
 
 def get_thickness(sub):
     #Get cortical thickness. Returns an array (59412,)
@@ -286,65 +356,6 @@ def rowcorr_nonsparse(sp1,sp2):
 def density(sparsearray):
     return sparsearray.getnnz()/(sparsearray.shape[0]*sparsearray.shape[1])
 
-def from_cache(func_filepath,func,*args,load=True,save=True,**kwargs):
-    """
-    Generate filepath using func_filepath(*args,**kwargs). Check if filepath already exists. If it doesn't exist, generate required value or array using func(*args,**kwargs) and save this in filepath. 
-    Optional arguments load and save can be provided after **kwargs
-    """
-    filepath=func_filepath(*args,**kwargs)   
-    if load and os.path.exists(ospath(filepath)):
-        values = pickle.load(open(ospath(filepath), "rb" ))
-    else:
-        values = func(*args,**kwargs)
-        if save:
-            pickle.dump(values,open(ospath(filepath),"wb"))
-    return values
-
-def get_func_type(string):
-    if 'movie' in string: return 'movie'
-    elif 'rest' in string: return 'rest'
-    else: assert(0)
-
-def get_FC_filepath(
-    sub,
-    align_with,
-    MSMAll,
-    align_clean,
-    align_fwhm,
-    targets_parcellation,
-    targets_nparcs,
-    filenames,
-    FC_type): 
-
-    align_clean_string = logical2str[align_clean]    
-    MSMtypestring = MSMlogical2str[MSMAll]    
-    return f'{intermediates_path}/functional_connectivity/{get_func_type(align_with)}{MSMtypestring}_{len(filenames)}runs_{align_clean_string}_fwhm{align_fwhm}_{targets_parcellation}{targets_nparcs}_{FC_type}_sub{sub}.p'
-
-def get_FC(
-    sub,
-    align_with,
-    MSMAll,
-    align_clean,
-    align_fwhm,
-    targets_parcellation,
-    targets_nparcs,
-    filenames,
-    FC_type):   
-    """
-    FC_type is 'pxn' or pxp'
-    """
-    _,parc_matrix=get_parcellation(targets_parcellation,targets_nparcs)
-    na = get_all_timeseries_sub(sub,get_func_type(align_with),filenames,MSMAll,align_fwhm,align_clean)
-    nap=(na@parc_matrix.T) #ntimepoints * nparcs
-    if FC_type=='pxn':
-        return corr4(nap,na,b_blocksize=parc_matrix.shape[0])
-    elif FC_type=='pxp':
-        return corr4(nap,nap,b_blocksize=parc_matrix.shape[0])
-
-def get_all_FC(subs,args):
-    nalign = Parallel(n_jobs=-1,prefer='threads')(delayed(from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
-    return [i.astype(np.float16) for i in nalign] 
-
 
 def get_hrc_filepath(sub,tckfile,hcp_path,tract_path,sift2,threshold,MSMAll):
     tractsub_path=f'{tract_path}/{sub}' #can put 'y' or 'z' before {sub}
@@ -416,9 +427,26 @@ def get_highres_connectomes(
         return [func(sub) for sub in subs]
     else:
         return Parallel(n_jobs=n_jobs,prefer=prefer)(delayed(func)(sub) for sub in subs)
-        
+
+
+def get_aligndata_highres_connectomes(c,subs,MSMAll,args_diffusion):
+    #Get high-res-connectomes as alignment data
+    nalign = get_highres_connectomes(c,subs,args_diffusion['tckfile'],MSMAll=MSMAll,sift2=args_diffusion['sift2'])
+    if args_diffusion['fwhm_circ']:
+        nalign = smooth_highres_connectomes_mm(nalign,args_diffusion['fwhm_circ'])
+        nalign = [i.astype(np.float32) for i in nalign]
+    if args_diffusion['targets_nparcs']: #connectivity from each vertex, to each targetparcel
+        align_parc_matrix=Schaefer_matrix(args_diffusion['targets_nparcs']) 
+        nalign=[align_parc_matrix.dot(i) for i in nalign]
+    else:
+        these_vertices=np.linspace(0,nalign[0].shape-1,args_diffusion['targets_nvertices']).astype(int) #default 16000   
+        nalign=[i[these_vertices,:] for i in nalign]         
+    nalign=[i.toarray().astype('float32') for i in nalign]  
+    return nalign 
+
 def smooth_highres_connectomes(hr,smoother):
     """
+    Parallelizes connectome-spatial-smoothing.smooth_high_resolution_connectome
     hr is list of sparse connectomes from get_highres_connectomes
     smoother is a smoothing kernel as a sparse array
     """   
@@ -426,6 +454,11 @@ def smooth_highres_connectomes(hr,smoother):
     def func(hrs): return css.smooth_high_resolution_connectome(hrs,smoother)
     hr=Parallel(n_jobs=-1,prefer='threads')(delayed(func)(i) for i in hr)   
     return hr 
+
+def smooth_highres_connectomes_mm(hr,fwhm):
+    #fwhm: float
+    smoother=sparse.load_npz(ospath(f"{intermediates_path}/smoothers/100610_{fwhm}_0.01.npz"))
+    return smooth_highres_connectomes(hr,smoother)
 
 def _make_diagonals_zero(sparse_array):
     #for a single sparse array
