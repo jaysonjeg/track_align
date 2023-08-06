@@ -42,7 +42,7 @@ subs=['100610','102311','102816','104416','105923','108323','109123','111312','1
 
 subs=list(np.loadtxt('included_subs_minus3.csv',dtype='str')) #made from findpts.py
 
-logical2str={True:'T',False:'F'}
+logical2str={True:'t',False:'f'}
 MSMlogical2str={True:'_MSMAll',False:''}
 
 #start/end times(s)/volumes for each video and each rest period
@@ -94,23 +94,11 @@ class cprint():
         print(*args,**kwargs)
         sys.stdout=temp #set stdout back to console output
 
-def parcellation_string_to_parcellation(parcellation_string):
-    #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'M' for HCP multimodal parcellation
-    #Returns an array of size (59412,) with parcel labels for each vertex in fs32k cortex
-    nparcs = int(parcellation_string[1:])
-    if parcellation_string[0]=='S':      
-        parcellation = Schaefer(nparcs)
-    elif parcellation_string[0]=='K':
-        parcellation = kmeans(nparcs)
-    elif parcellation_string[0]=='M':
-        parcellation = hcp.mmp.map_all()[hcp.struct.cortex]
-    return parcellation
-
 def get_filenames(func_type,func_nruns):
     if func_type=='movie':
-        filenames = movies[0:func_nruns]
+        filenames = [movies[i] for i in func_nruns]
     elif func_type=='rest':
-        filenames = rests[0:func_nruns]
+        filenames = [rests[i] for i in func_nruns]
     return filenames
 
 def getfilepath(filename,ts_type,sub,MSMAll=False,cleaned=True):
@@ -154,6 +142,32 @@ def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_preproc):
         temp=ts_preproc(np.vstack(nalign_sub))
     return temp.astype(dtype)
 
+def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,clean=True,MSMAll=False,FC_parcellation_string=None):
+    """
+    Returns movie viewing or resting state fMRI data, and a string describing the movie or rest data
+    align_with: 'movie', 'rest', 'movie_FC', 'rest_FC', 'diffusion'
+    prefer: 'threads' (default) or 'processes' for parallelization
+    runs: list of runs to use, e.g. [0], [0,2]
+    fwhm: spatial smoothing kernel mm
+    clean: True for standardization and detrending
+    MSMAll: True/False
+    FC_parcellation_string: e.g. 'S300', 'K1000'
+    """
+    align_preproc = make_preproc(fwhm,clean,'zscore_sample',True,None,None,1.0)
+    filenames = get_filenames(align_with,runs)
+    if align_with in ['movie','rest']:
+        func = lambda sub: get_all_timeseries_sub(sub,align_with,filenames,MSMAll,align_preproc)
+        nalign=Parallel(n_jobs=-1,prefer="threads")(delayed(func)(sub) for sub in subs)
+    if 'FC' in align_with:         
+        nalign=get_all_FC(subs,[align_with,MSMAll,align_preproc,FC_parcellation_string,filenames,'pxn'])
+
+    runs_string = ''.join([str(i) for i in runs])
+    string = f'{align_with}{runs_string}{logical2str[MSMAll]}{logical2str[clean]}{fwhm}'
+    if 'FC' in align_with:
+        string=f'{string}{FC_parcellation_string}'
+    return nalign,string
+
+
 
 def get_tasks_cachepath(tasks,sub,MSMAll=False):
     mkdir(f'{intermediates_path}/hcp_taskcontrasts')
@@ -185,6 +199,13 @@ def gettasklabels(tasks,sub):
     labels = [pd.read_csv(contrast_files[i],header=None).iloc[allowed_labels_dict[tasks[i]]] for i in range(len(tasks))]
     return np.vstack(labels).squeeze()
 
+def get_task_data(subs,tasks,MSMAll=False):
+    #Given a list of subjects and some tasks, return a list (nsubjects) of task data arrays (ncontrasts,nvertices), and a description string
+    decode_string = f'{len(tasks)}tasks{logical2str[MSMAll]}'
+    ndecode=[from_cache(get_tasks_cachepath,gettasks,tasks,sub,MSMAll=MSMAll) for sub in subs]  
+    #nlabels=[from_cache(get_tasklabels_cachepath,gettasklabels,tasks,sub) for sub in subs] #list (nsubjects) of labels (ncontrasts,)
+    nlabels = [np.array(range(i.shape[0])) for i in ndecode] #since the exact label names are not important, just use the contrast number as the label     
+    return ndecode, decode_string  
 
 def from_cache(func_filepath,func,*args,load=True,save=True,**kwargs):
     """
@@ -211,14 +232,15 @@ def get_FC_filepath(
     MSMAll,
     align_clean,
     align_fwhm,
-    targets_parcellation,
-    targets_nparcs,
+    parcellation_string,
     filenames,
     FC_type): 
-
+    if parcellation_string[0]=='S': targets_parcellation = 'Schaefer'
+    elif parcellation_string[0]=='K': targets_parcellation = 'kmeans'
+    else: assert(0)
     align_clean_string = logical2str[align_clean]    
     MSMtypestring = MSMlogical2str[MSMAll]    
-    return f'{intermediates_path}/functional_connectivity/{get_func_type(align_with)}{MSMtypestring}_{len(filenames)}runs_{align_clean_string}_fwhm{align_fwhm}_{targets_parcellation}{targets_nparcs}_{FC_type}_sub{sub}.p'
+    return f'{intermediates_path}/functional_connectivity/{get_func_type(align_with)}{MSMtypestring}_{len(filenames)}runs_{align_clean_string}_fwhm{align_fwhm}_{targets_parcellation}{parcellation_string[1:]}_{FC_type}_sub{sub}.p'
 
 def get_FC(
     sub,
@@ -226,14 +248,15 @@ def get_FC(
     MSMAll,
     align_clean,
     align_fwhm,
-    targets_parcellation,
-    targets_nparcs,
+    parcellation_string,
     filenames,
     FC_type):   
     """
     FC_type is 'pxn' or pxp'
     """
-    _,parc_matrix=get_parcellation(targets_parcellation,targets_nparcs)
+    #_,parc_matrix=get_parcellation(targets_parcellation,targets_nparcs)
+    parc_matrix = parcellation_string_to_parcmatrix(parcellation_string)
+
     standardize,detrend,low_pass,high_pass,t_r='zscore_sample',True,None,None,1.0 #These parameters only apply to 'movie' and 'decode' data depending on whether movie_clean=True or decode_clean=True
     align_preproc = make_preproc(align_fwhm,align_clean,standardize,detrend,low_pass,high_pass,t_r)
     na = get_all_timeseries_sub(sub,get_func_type(align_with),filenames,MSMAll,align_preproc)
@@ -246,6 +269,24 @@ def get_FC(
 def get_all_FC(subs,args):
     nalign = Parallel(n_jobs=-1,prefer='threads')(delayed(from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
     return [i.astype(np.float16) for i in nalign] 
+
+
+def reduce_dimensionality_samples(c,nalign,ncomponents,method):
+    """
+    Reduce alignment data dimensionality in axis 0 (nsamples,ntimepoints)
+    """
+    from sklearn.decomposition import PCA,FastICA
+    print(f"{c.time()} reduce_dimensionality_samples start") 
+    if method=='pca':
+        decomp=PCA(n_components=ncomponents,whiten=False)
+    elif method=='ica':
+        decomp=FastICA(n_components=ncomponents,max_iter=100000)
+    temp=np.dstack(nalign).mean(axis=2) #mean of all subjects
+    decomp.fit(temp.T)
+    nalign=[decomp.transform(i.T).T for i in nalign]
+    print(f"{c.time()} reduce_dimensionality_samples done") 
+    return nalign, f'{method}{ncomponents}'
+
 
 def get_thickness(sub):
     #Get cortical thickness. Returns an array (59412,)
@@ -429,20 +470,21 @@ def get_highres_connectomes(
         return Parallel(n_jobs=n_jobs,prefer=prefer)(delayed(func)(sub) for sub in subs)
 
 
-def get_aligndata_highres_connectomes(c,subs,MSMAll,args_diffusion):
-    #Get high-res-connectomes as alignment data
-    nalign = get_highres_connectomes(c,subs,args_diffusion['tckfile'],MSMAll=MSMAll,sift2=args_diffusion['sift2'])
-    if args_diffusion['fwhm_circ']:
-        nalign = smooth_highres_connectomes_mm(nalign,args_diffusion['fwhm_circ'])
+def get_aligndata_highres_connectomes(c,subs,MSMAll,tckfile='tracks_5M_sift1M.tck',sift2=False,fwhm=3,targets_nparcs=False,targets_nvertices=16000):
+    #Get high-res-connectomes as alignment data, and returns a short description string
+    nalign = get_highres_connectomes(c,subs,tckfile,MSMAll=MSMAll,sift2=sift2)
+    if fwhm:
+        nalign = smooth_highres_connectomes_mm(nalign,fwhm)
         nalign = [i.astype(np.float32) for i in nalign]
-    if args_diffusion['targets_nparcs']: #connectivity from each vertex, to each targetparcel
-        align_parc_matrix=Schaefer_matrix(args_diffusion['targets_nparcs']) 
+    if targets_nparcs: #connectivity from each vertex, to each targetparcel
+        align_parc_matrix=Schaefer_matrix(targets_nparcs) 
         nalign=[align_parc_matrix.dot(i) for i in nalign]
     else:
-        these_vertices=np.linspace(0,nalign[0].shape-1,args_diffusion['targets_nvertices']).astype(int) #default 16000   
+        these_vertices=np.linspace(0,nalign[0].shape[0]-1,targets_nvertices).astype(int) #default 16000   
         nalign=[i[these_vertices,:] for i in nalign]         
     nalign=[i.toarray().astype('float32') for i in nalign]  
-    return nalign 
+    string = f'diff{logical2str[MSMAll]}{logical2str["sift2"]}{fwhm}{targets_nvertices}{tckfile[:-4]}'
+    return nalign,string
 
 def smooth_highres_connectomes(hr,smoother):
     """
@@ -709,6 +751,33 @@ def kmeans_matrix(nparcs):
     save=ospath(f'{save_folder}/kmeansparc_sub100610_sphere_{nparcs}parcs_matrix.p')
     return pickle.load( open( ospath(save), "rb" ) )
 
+def parcellation_string_to_parcellation(parcellation_string):
+    #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'M' for HCP multimodal parcellation
+    #Returns an array of size (59412,) with parcel labels for each vertex in fs32k cortex
+    nparcs = int(parcellation_string[1:])
+    if parcellation_string[0]=='S':      
+        parcellation = Schaefer(nparcs)
+    elif parcellation_string[0]=='K':
+        parcellation = kmeans(nparcs)
+    elif parcellation_string[0]=='M':
+        parcellation = hcp.mmp.map_all[hcp.struct.cortex]
+    return parcellation
+
+def parcellation_string_to_parcmatrix(parcellation_string):
+    #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'M' for HCP multimodal parcellation
+    #Returns parcellation matrix (nparcs,nvertices)
+    nparcs = int(parcellation_string[1:])
+    if parcellation_string[0]=='S':      
+        matrix = Schaefer_matrix(nparcs).astype(bool)
+    elif parcellation_string[0]=='K':
+        matrix = kmeans_matrix(nparcs).astype(bool)
+    elif parcellation_string[0]=='M':
+        matrix = parc_char_matrix(hcp.mmp.map_all[hcp.struct.cortex])[1].astype(bool)
+    nonempty_parcels = np.array((matrix.sum(axis=1)!=0)).squeeze()
+    assert(len(nonempty_parcels)==matrix.shape[0]) #no empty parcels
+    return matrix
+
+'''
 def get_parcellation(parcellation,nparcs,return_nonempty=True):
     """
     Returns kmeans or Schaefer parcellations with 'nparcs' parcels. 
@@ -727,7 +796,8 @@ def get_parcellation(parcellation,nparcs,return_nonempty=True):
     assert(len(nonempty_parcels)==parc_matrix.shape[0]) #no empty parcels
 
     return labels, parc_matrix
-
+'''
+    
 def parc_char_matrix(parc):
     """
     Similar to connectome-spatial-smoothing.parcellation_characteristic_matrix

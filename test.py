@@ -1,3 +1,35 @@
+import hcp_utils as hcp
+import numpy as np
+import os
+from sklearn.svm import LinearSVC
+import hcpalign_utils as hutils
+from joblib import Parallel, delayed
+from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
+
+hcp_folder=hutils.hcp_folder
+intermediates_path=hutils.intermediates_path
+results_path=hutils.results_path
+
+subs=hutils.subs[slice(0,2)]
+nsubs = np.arange(len(subs)) #number of subjects
+MSMAll=False
+
+post_decode_smooth=hutils.make_smoother_100610(0)
+
+nalign,string = hutils.get_movie_or_rest_data(subs,'movie',runs=[0],fwhm=0,clean=True,MSMAll=MSMAll)
+ndecode,decode_string = hutils.get_task_data(subs,hutils.tasks[0:7],MSMAll=MSMAll)
+nlabels = [np.array(range(i.shape[0])) for i in ndecode] 
+
+parcellation_string='S300'
+clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
+classifier=LinearSVC(max_iter=10000,dual='auto')     
+
+aligner=MySurfacePairwiseAlignment(alignment_method='scaled_orthogonal', clustering=clustering,n_jobs=-1,reg=0)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads
+aligner.fit(nalign[0],nalign[1])
+
+aligner.transform(ndecode[0])
+
+
 """
 #Generic brain plot for figure
 import hcpalign_utils as hutils
