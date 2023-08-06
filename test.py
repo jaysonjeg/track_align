@@ -26,8 +26,12 @@ classifier=LinearSVC(max_iter=10000,dual='auto')
 
 aligner=MySurfacePairwiseAlignment(alignment_method='scaled_orthogonal', clustering=clustering,n_jobs=-1,reg=0)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads
 aligner.fit(nalign[0],nalign[1])
-
 aligner.transform(ndecode[0])
+
+
+from fmralignbench.surf_pairwise_alignment import SurfacePairwiseAlignment
+aligner2 = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',clustering=clustering)
+aligner2.fit(nalign[0],nalign[1])
 
 
 """

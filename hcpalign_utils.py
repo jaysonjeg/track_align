@@ -302,7 +302,40 @@ def get (filename,vertices=slice(0,None)):
     Default all vertices
     """
     return nib.load(filename).get_fdata()[:,vertices]
-    
+
+def aligner_absvalue(aligner):
+    #Given a SurfacePairwiseAlignment object, change the elements in alignment matrices to absolute values
+    for i in range(len(aligner.fit_)):
+        try:
+            aligner.fit_[i].R = np.abs(aligner.fit_[i].R)
+        except:
+            pass #usually when fit_ is identity matrix due to empty parcel
+
+def aligner_descale(aligner):
+    #Given a SurfacePairwiseAlignment object, remove the scale factor from Procrustes alignment
+    for i in range(len(aligner.fit_)):
+        try:
+            scale=aligner.fit_[i].scale
+            aligner.fit_[i].scale=1
+            aligner.fit_[i].R /= scale                          
+        except:
+            pass
+
+def aligner_get_scale_map(aligner):
+    #Given a MySurfacePairwiseAlignment object, return the 'scale' value at each vertex
+    scales=np.ones((len(aligner.clustering)))
+    parcels=np.unique(aligner.clustering)
+    for i in range(len(parcels)):
+        try:
+            parcel=parcels[i]
+            scale=aligner.fit_[i].scale
+            indices=np.where(aligner.clustering==parcel)[0]
+            scales[indices]=scale
+        except: 
+            pass
+    return scales
+
+
 def pairwise_correlation_for_all_tasks(t):
     """
     t is a list(nsub) containing task maps (ncontrasts x nvertices)

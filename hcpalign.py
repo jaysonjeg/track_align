@@ -108,7 +108,6 @@ if __name__=='__main__':
             p=hutils.surfplot(plot_dir,plot_type='open_in_browser')
 
         print(save_suffix)
-        assert(0)
 
 
         if load_pickle: assert(os.path.exists(ospath(save_pickle_filename)))
@@ -152,8 +151,8 @@ if __name__=='__main__':
                     return aligner
                 def fit_aligner(source_align, target_align, absValueOfAligner, descale_aligner,aligner):
                     aligner.fit(source_align, target_align)
-                    if absValueOfAligner: aligner.absValue()
-                    if descale_aligner: aligner.descale()
+                    if absValueOfAligner: hutils.aligner_absvalue(aligner)
+                    if descale_aligner: hutils.aligner_descale(aligner)
                     return aligner
 
                 print(hutils.memused())  
@@ -170,7 +169,7 @@ if __name__=='__main__':
                     pickle.dump(aligners,open(save_pickle_filename,"wb"))
 
             print(hutils.memused())  
-            print(f'{c.time()}: Aligning decodes start')                    
+            print(f'{c.time()}: Aligning decode data start')                    
             all_aligned_sources_decode=[]
             for target in nsubs:
                 sources=[i for i in nsubs if i!=target]  
@@ -244,7 +243,7 @@ if __name__=='__main__':
                             p.plot(ndecode[i][contrast,:],'Con{}_sub{}'.format(contrast,i))
                             p.plot(ndecode_aligned[i][contrast,:],'_Con{}_subTemplate_from_sub{}'.format(contrast,i))
                 if plot_scales:
-                    p.plot(aligners.estimators[source].get_spatial_map_of_scale(),f"scale") 
+                    p.plot(hutils.aligner_get_scale_map(clustering,aligners.estimators[source]),'scale') #plot scale parameter for Procrustes aligner
 
             del aligners
             print('{} Template transform done'.format(c.time()))
@@ -299,7 +298,7 @@ if __name__=='__main__':
 
 
         subs=hutils.subs[slice(0,5)]
-        method='template' #anat, intra_subject, pairwise, template
+        method='anat' #anat, intra_subject, pairwise, template
         pairwise_method='scaled_orthogonal' #scaled_orthogonal, permutation, optimal_tarnsport, ridge_cv
         parcellation_string = 'S300' #S300, K1000, MMP
         save_pickle=False
@@ -312,6 +311,7 @@ if __name__=='__main__':
         print(f"{c.time()} Get alignment data start")
         if method=='anat' or load_pickle:
             nalign = [[] for sub in subs] #irrelevant anyway
+            align_string = ''
         else:
             nalign,align_string = hutils.get_movie_or_rest_data(subs,'movie',runs=[0],fwhm=0,clean=True,MSMAll=MSMAll)
             #nalign,align_string = hutils.get_aligndata_highres_connectomes(c,subs,MSMAll,{'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':16000 , 'fwhm_circ':3 })
@@ -326,10 +326,16 @@ if __name__=='__main__':
             align_string = f'{align_string}{string}'
             
         #Get decoding data. List (nsubjects) of decode data (ncontrasts, nvertices)
-        print(f"{c.time()} Get decoding data dysty")
+        print(f"{c.time()} Get decoding data start")
         ndecode,decode_string = hutils.get_task_data(subs,available_tasks[0:7],MSMAll=MSMAll)
         print(f"{c.time()} Get decoding data done")
 
+        #decode movie viewing data instead
+        """
+        ndecode,decode_string = hutils.get_movie_or_rest_data(subs,'movie',runs=[1],fwhm=0,clean=True,MSMAll=MSMAll)
+        ndecode, string = hutils.reduce_dimensionality_samples(c,ndecode,ncomponents=20,method='pca')
+        decode_string = f'{decode_string}{string}'
+        """
 
         for reg in [0]:
          

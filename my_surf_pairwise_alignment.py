@@ -1,5 +1,4 @@
 import numpy as np
-import sys
 from fmralignbench.surf_pairwise_alignment import fit_parcellation
 from fmralign._utils import piecewise_transform
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -11,7 +10,7 @@ class MySurfacePairwiseAlignment(BaseEstimator, TransformerMixin):
     Inputs:
     vertices: e.g. hcp.struct.cortex
     """
-    def __init__(self, alignment_method, clustering, n_jobs=1, verbose=0,reg=0):
+    def __init__(self, alignment_method, clustering, n_jobs=1, parallel_type='threads', verbose=0,reg=0):
         """
         reg is regularization parameter
         reg ranges from 0 to 1. Bigger values are more regularization. 
@@ -23,6 +22,7 @@ class MySurfacePairwiseAlignment(BaseEstimator, TransformerMixin):
         self.alignment_method = alignment_method
         self.clustering = clustering
         self.n_jobs = n_jobs
+        self.parallel_type = parallel_type
         self.verbose = verbose
         self.reg=reg
             
@@ -50,7 +50,7 @@ class MySurfacePairwiseAlignment(BaseEstimator, TransformerMixin):
             Y = np.average([X,Y],axis=0,weights=[self.reg,1-self.reg])
 
         self.labels_, self.fit_ = fit_parcellation(
-            X, Y, self.alignment_method, self.clustering, self.n_jobs, self.verbose)
+            X, Y, self.alignment_method, self.clustering, self.n_jobs, self.parallel_type,self.verbose)
             #clustering needs to be list of ints      
         
         def change_type(fit_,whichtype):
@@ -60,24 +60,6 @@ class MySurfacePairwiseAlignment(BaseEstimator, TransformerMixin):
         self.fit_ = [change_type(i,np.float32) for i in self.fit_] #reduce memory usage
         
         return self
-
-    def absValue(self):
-        """Absolute value of each element in alignment matrix R """
-        for i in range(len(self.fit_)):
-            try:
-                self.fit_[i].R = np.abs(self.fit_[i].R)
-            except:
-                x=1 #usually when fit_ is 'identity' due to empty parcel
-
-    def descale(self):
-        """Remove scale factor from Procrustes alignment"""
-        for i in range(len(self.fit_)):
-            try:
-                scale=self.fit_[i].scale
-                self.fit_[i].scale=1
-                self.fit_[i].R /= scale                          
-            except:
-                x=1
 
     def get_spatial_map_of_scale(self):
         scales=np.ones((len(self.clustering)))
