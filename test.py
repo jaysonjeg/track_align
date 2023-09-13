@@ -4,8 +4,9 @@ import os
 from sklearn.svm import LinearSVC
 import hcpalign_utils as hutils
 from joblib import Parallel, delayed
-from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
+#from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
+c=hutils.clock()
 hcp_folder=hutils.hcp_folder
 intermediates_path=hutils.intermediates_path
 results_path=hutils.results_path
@@ -24,14 +25,51 @@ parcellation_string='S300'
 clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
 classifier=LinearSVC(max_iter=10000,dual='auto')     
 
+
+"""
 aligner=MySurfacePairwiseAlignment(alignment_method='scaled_orthogonal', clustering=clustering,n_jobs=-1,reg=0)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads
 aligner.fit(nalign[0],nalign[1])
 aligner.transform(ndecode[0])
 
-
-from fmralignbench.surf_pairwise_alignment import SurfacePairwiseAlignment
-aligner2 = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',clustering=clustering)
+from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
+aligner2 = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',clustering=clustering,alignment_kwargs ={'scaling':True})
 aligner2.fit(nalign[0],nalign[1])
+"""
+
+"""
+from my_template_alignment import MyTemplateAlignment, get_template  
+aligners= MyTemplateAlignment('scaled_orthogonal',clustering=clustering,n_jobs=1,n_iter=2,scale_template=False,template_method=1,reg=0)
+aligners.fit(nalign) 
+ndecode_new = aligners.transform(ndecode[0],0)
+"""
+
+print(f'{c.time()}: Done loading data')
+
+
+from fmralign.template_alignment import TemplateAlignment 
+
+if False:
+    aligners= TemplateAlignment('scaled_orthogonal',clustering=clustering,n_jobs=1,n_iter=2,scale_template=False,include_current_subject=True,alignment_kwargs={'scaling':True})
+    aligners.fit(nalign) 
+    ndecode_new = aligners.transform(ndecode[0],0)
+    print(ndecode_new[0:2,0])
+    print(aligners.estimators[0].fit_[0].R[0:2,0:2]) 
+
+    print(f'{c.time()}: Done fitting alignment 1')
+
+
+from fmralign import template_alignment
+aligners2= TemplateAlignment('scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':True})
+aligners2.make_template(nalign,n_iter=1,do_level_1=False,normalize_imgs='zscore',normalize_template='zscore',remove_self=False,level1_equal_weight=False)
+aligners2.fit_to_template(nalign)
+ndecode_new2 = aligners2.transform(ndecode[0],0)
+print(ndecode_new2[0:2,0])
+print(aligners2.estimators[0].fit_[0].R[0:2,0:2])
+
+print(f'{c.time()}: Done fitting alignment 2')
+
+#aligners.template=get_template(clustering,nalign)
+#aligners.fit_to_template(nalign)
 
 
 """

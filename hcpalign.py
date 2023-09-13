@@ -23,7 +23,7 @@ if __name__=='__main__':
     available_tasks=hutils.tasks 
 
     def func(\
-        c,t,subs,nalign,align_string, ndecode, decode_string, n_jobs=-1,parcellation_string='S300',method='pairwise',pairwise_method='scaled_orthogonal', kfolds=5, lowdim_vertices=False, lowdim_ncomponents=300, MSMAll=False, descale_aligner=False, absValueOfAligner=False, scramble_aligners=False,post_decode_fwhm=0, load_pickle=False, save_pickle=False,\
+        c,t,subs,nalign,align_string, ndecode, decode_string, n_jobs=-1,parcellation_string='S300',method='pairwise',alignment_method='scaled_orthogonal',alignment_kwargs={}, kfolds=5, lowdim_vertices=False, lowdim_ncomponents=300, MSMAll=False, descale_aligner=False, absValueOfAligner=False, scramble_aligners=False,post_decode_fwhm=0, load_pickle=False, save_pickle=False,\
         plot_any=False, plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_aligner=False,\
         args_template={'n_iter':2,'scale':False,'method':1,'nsubsfortemplate':'all','pca_template': False},\
         args_maxcorr={'max_dist':10,'typeof':3},\
@@ -39,7 +39,9 @@ if __name__=='__main__':
         n_jobs: processor cores for a single source to target pairwise aligment (1 parcel per thread) (my PC has 12), ie for the 'inner loop'. -1 means use all cores
         nparcs: no. of parcels. Subjects aligned within each parcel
         method: anat, intra_subject, pairwise, template
-        pairwise_method: scaled_orthogonal, permutation, optimal_tarnsport, ridge_cv
+        alignment_method: scaled_orthogonal, permutation, optimal_tarnsport, ridge_cv
+        alignment_kwargs: dict
+            Additional keyword arguments to pass to the alignment method
         kfolds: default 5 (for classification)
         lowdim_vertices: to use PCA/ICA to reduce nalign dimensionality along the nvertices axis 
         lowdim_ncomponents: default 300, works with lowdim_samples or lowdim_vertices
@@ -61,7 +63,7 @@ if __name__=='__main__':
             fwhm_circ: 
         args_template: only relevant for template alignment 
             n_iter: default 2
-            scale: True of False for scale_template
+            scale: True or False for scale_template
             method: 1, 2, or 3 
             nsubsfortemplate: 'all' or an iterable, e.g. [0,2,4], or range(3)
             pca_template: True to use new PCA-derived template
@@ -84,7 +86,7 @@ if __name__=='__main__':
    
         post_decode_smooth=hutils.make_smoother_100610(post_decode_fwhm)
 
-        save_suffix=f"A{align_string}_D{decode_string}_{method[0:4]}_{pairwise_method}_{parcellation_string}_{n_subs}_{post_decode_fwhm}{str(descale_aligner)[0]}{str(absValueOfAligner)[0]}{str(scramble_aligners)[0]}"
+        save_suffix=f"A{align_string}_D{decode_string}_{method[0:4]}_{alignment_method}_{parcellation_string}_{n_subs}_{post_decode_fwhm}{str(descale_aligner)[0]}{str(absValueOfAligner)[0]}{str(scramble_aligners)[0]}"
         if not(args_template['nsubsfortemplate']=='all'):
             save_suffix=f"{save_suffix}_template{len(args_template['nsubsfortemplate'])}"
         if not(args_template['n_iter']==2):
@@ -96,7 +98,7 @@ if __name__=='__main__':
         if reg:
             save_suffix=f"{save_suffix}_reg{reg}"
         #Set up for saving pickled data and for plotting
-        if pairwise_method=='optimal_transport':
+        if alignment_method=='optimal_transport':
             import dill
             pickle=dill
         else:
@@ -126,7 +128,7 @@ if __name__=='__main__':
                 print('loading aligners')
                 aligners = pickle.load(open(ospath(save_pickle_filename), "rb" ))
             else:        
-                if pairwise_method=='maxcorr':
+                if alignment_method=='maxcorr':
                     typeof=args_maxcorr['typeof']
                     max_dist=args_maxcorr['max_dist']                  
                     if typeof==1:
@@ -142,12 +144,12 @@ if __name__=='__main__':
                     print(f'nnz is {dists.getnnz()}, first row size {dists.indptr[1]}')
 
                 def initialise_aligner():
-                    if pairwise_method=='maxcorr':                          
+                    if alignment_method=='maxcorr':                          
                         aligner=hutils.maxcorr(dists=dists,max_dist=max_dist,typeof=typeof)
                     elif lowdim_vertices: 
-                        aligner=LowDimSurfacePairwiseAlignment(alignment_method=pairwise_method, clustering=clustering,n_jobs=n_jobs,reg=reg,n_components=lowdim_ncomponents,lowdim_method=lowdim_method)
+                        aligner=LowDimSurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,reg=reg,n_components=lowdim_ncomponents,lowdim_method=lowdim_method)
                     else: 
-                        aligner=MySurfacePairwiseAlignment(alignment_method=pairwise_method, clustering=clustering,n_jobs=n_jobs,reg=reg)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads
+                        aligner=MySurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,reg=reg)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads
                     return aligner
                 def fit_aligner(source_align, target_align, absValueOfAligner, descale_aligner,aligner):
                     aligner.fit(source_align, target_align)
@@ -199,15 +201,15 @@ if __name__=='__main__':
                 aligners = pickle.load(open(ospath(save_pickle_filename), "rb" ))
             else:       
                 from my_template_alignment import MyTemplateAlignment, LowDimTemplateAlignment, get_template            
-                if lowdim_vertices: aligners=LowDimTemplateAlignment(pairwise_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],n_components=lowdim_ncomponents,lowdim_method=lowdim_method,scale_template=args_template['scale'],template_method=args_template['method'],reg=reg)
-                else: aligners=MyTemplateAlignment(pairwise_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],scale_template=args_template['scale'],template_method=args_template['method'],reg=reg)
+                if lowdim_vertices: aligners=LowDimTemplateAlignment(alignment_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],n_components=lowdim_ncomponents,lowdim_method=lowdim_method,scale_template=args_template['scale'],template_method=args_template['method'],reg=reg)
+                else: aligners=MyTemplateAlignment(alignment_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],scale_template=args_template['scale'],template_method=args_template['method'],reg=reg)
                 print(hutils.memused()) 
 
                 if args_template['pca_template']==True:
                     if args_template['nsubsfortemplate']=='all':
-                        aligners.template=get_template(c,clustering,nalign)
+                        aligners.template=get_template(clustering,nalign)
                     else:
-                        aligners.template=get_template(c,clustering,[nalign[i] for i in args_template['nsubsfortemplate']])
+                        aligners.template=get_template(clustering,[nalign[i] for i in args_template['nsubsfortemplate']])
                     aligners.fit_to_template(nalign)
                 elif args_template['pca_template']==False:
                     if args_template['nsubsfortemplate']=='all':
@@ -297,14 +299,15 @@ if __name__=='__main__':
         c=hutils.clock()   
 
 
-        subs=hutils.subs[slice(0,5)]
-        method='anat' #anat, intra_subject, pairwise, template
-        pairwise_method='scaled_orthogonal' #scaled_orthogonal, permutation, optimal_tarnsport, ridge_cv
+        subs=hutils.subs[slice(0,3)]
+        method='template' #anat, intra_subject, pairwise, template
+        alignment_method='scaled_orthogonal' #scaled_orthogonal, permutation, optimal_transport, ridge_cv
+        alignment_kwargs = {'scaling':True}
         parcellation_string = 'S300' #S300, K1000, MMP
         save_pickle=False
         load_pickle=False #use saved aligner
         MSMAll=False
-        args_template = {'n_iter':1,'scale':False,'method':1,'nsubsfortemplate':'all','pca_template': False}
+        args_template = {'n_iter':1,'do_level_1':False,'normalize_imgs':None,'normalize_template':None,'remove_self':False,'level1_equal_weight':False}
 
 
         #Get alignment data. List (nsubjects) of alignment data (ntimepoints, nvertices)
@@ -340,7 +343,7 @@ if __name__=='__main__':
         for reg in [0]:
          
             print(hutils.memused())   
-            func(c,t,subs, nalign, align_string, ndecode, decode_string, parcellation_string=parcellation_string,method=method ,pairwise_method=pairwise_method,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,n_jobs=+1,args_template=args_template,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
+            func(c,t,subs, nalign, align_string, ndecode, decode_string, parcellation_string=parcellation_string,method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,n_jobs=+1,args_template=args_template,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
             print(hutils.memused())
             t.print('')  
 

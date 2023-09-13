@@ -1,8 +1,12 @@
+#DEFUNCT
+
 import numpy as np
 from fmralignbench.surf_pairwise_alignment import fit_parcellation
 from fmralign._utils import piecewise_transform
 from sklearn.base import BaseEstimator, TransformerMixin
 import warnings
+
+assert(0)
 
 class MySurfacePairwiseAlignment(BaseEstimator, TransformerMixin):
     """

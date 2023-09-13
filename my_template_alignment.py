@@ -2,6 +2,8 @@
 Adapted from fmralign: https://github.com/Parietal-INRIA/fmralign/blob/master/fmralign/template_alignment.py
 """
 from sklearn.base import BaseEstimator, TransformerMixin
+#DEFUNCT
+
 import numpy as np
 from joblib import delayed, Memory, Parallel
 from nilearn.image import index_img, concat_imgs, load_img
@@ -9,7 +11,9 @@ from nilearn.maskers._masker_validation import _check_embedded_nifti_masker
 from fmralign.pairwise_alignment import PairwiseAlignment
 from joblib import Parallel,delayed
 from my_surf_pairwise_alignment import MySurfacePairwiseAlignment
-from hcpalign_utils import now
+#from fmralignbench.surf_pairwise_alignment import SurfacePairwiseAlignment
+
+assert(0)
 
 def _rescaled_euclidean_mean(imgs, scale_average=False):
     """ Make the Euclidian average of images
@@ -366,7 +370,7 @@ class MyTemplateAlignment(BaseEstimator, TransformerMixin):
         
         return self.estimators[index].transform(X)
 
-def get_template(c,clustering,imgs):
+def get_template(clustering,imgs):
     """
     Instead of making template from mean of subjects (which can blur things), we will use dimensionality reduction on all subjects' vertices concatenated (per parcel)
     """
@@ -398,10 +402,8 @@ def get_template(c,clustering,imgs):
             result[:,indices] = imgs[k]
         return result    
 
-    print(f'{c.time()}: PCA start')
     method='pca'
     imgs_parcelwise_transformed = Parallel(n_jobs=-1)(delayed(do_pca)(imgs_one_parcel,method) for imgs_one_parcel in yield_imgs_one_parcel(clustering,imgs))
-    print(f'{c.time()}: PCA done')
     return combine_parcelwise_imgs(clustering,imgs_parcelwise_transformed,imgs[0].shape)
 
 
