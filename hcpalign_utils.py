@@ -335,51 +335,6 @@ def aligner_get_scale_map(aligner):
             pass
     return scales
 
-def get_lowdim_template(clustering,imgs):
-    """
-    Instead of making template from mean of subjects (which can blur things), we will use dimensionality reduction on all subjects' vertices concatenated (per parcel). 
-    imgs: list (nsubjects) of arrays (ntimepoints,nvertices)
-    clustering: array (nvertices) of ints
-
-    Get a template time series for each parcel separately, then concatenate them
-    To get a parcel-specific template, stack all subjects' data across vertices, then do dimensionality reduction (PCA, ICA) on that parcel's. PCA components are linear combinations of different vertices in different subjects. Retain the first n_components such that the transformed data has the same shape as a single subject's data for that parcel. Finally, combine the parcel-specific templates
-    """
-    from sklearn.decomposition import PCA, FastICA, IncrementalPCA
-    def yield_imgs_one_parcel(clustering,imgs):
-        #Given list (nsubjects) of arrays (ntimepoints,nvertices), yields a list (nsubjects) of arrays (ntimepoints,nvertices_in_this_parcel)
-        unique_labels=np.unique(clustering)
-        for k in range(len(unique_labels)):
-            label = unique_labels[k]
-            indices = clustering == label
-            imgs_one_parcel = [img[:,indices] for img in imgs]   
-            yield imgs_one_parcel
-    def do_pca(imgs_one_parcel,method):
-        """
-        Given a list of identically sized 2D arrays, concatenate along horizontal axis, then do PCA on that axis and retain enough components so that the dimensionality reduced version has same shape as any of the original 2D arrays
-        """
-        imgs_one_parcel_concat = np.hstack(imgs_one_parcel) #concatenate all subjects' data across vertices
-        n_components = imgs_one_parcel[0].shape[1] #retain same no of components as no of vertices in this parcel
-        if method=='pca':
-            dimreduce = PCA(n_components=n_components, whiten=False,random_state=0)
-        elif method=='increm_pca':
-            dimreduce = IncrementalPCA(n_components=n_components,whiten=False)
-        if method=='ica':
-            dimreduce = FastICA(n_components=n_components,max_iter=100000) #default max_iter 200
-        newimgs = dimreduce.fit_transform(imgs_one_parcel_concat)
-        return newimgs
-    def combine_parcelwise_imgs(clustering,imgs,shape):
-        result=np.zeros(shape,dtype=np.float16)
-        unique_labels=np.unique(clustering)
-        for k in range(len(unique_labels)):
-            label = unique_labels[k]
-            indices = clustering == label
-            result[:,indices] = imgs[k]
-        return result    
-
-    method='pca'
-    imgs_parcelwise_transformed = Parallel(n_jobs=-1)(delayed(do_pca)(imgs_one_parcel,method) for imgs_one_parcel in yield_imgs_one_parcel(clustering,imgs))
-    return combine_parcelwise_imgs(clustering,imgs_parcelwise_transformed,imgs[0].shape)
-
 def pairwise_correlation_for_all_tasks(t):
     """
     t is a list(nsub) containing task maps (ncontrasts x nvertices)
@@ -1016,7 +971,7 @@ def do_plot_impulse_responses(p,plot_prefix,aligner,method,lowdim_vertices):
     lowdim_vertices can be 'true' or 'false'
     """
     verticesx=[1,2,3,4,5,6,7,8,29696+1,29696+2,29696+3,29696+4,29696+5,29696+6,29696+7,29696+8]
-    for radius in [2]: #default [0,2]
+    for radius in [1]: #default [0,2]
         s=surfgeoroi(verticesx,radius)
         t=aligner.transform(s[None,:])[0]  
         if method=='template' and lowdim_vertices==True:

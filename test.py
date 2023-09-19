@@ -6,6 +6,7 @@ import hcpalign_utils as hutils
 from joblib import Parallel, delayed
 #from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
+p=hutils.surfplot('',plot_type='open_in_browser')
 c=hutils.clock()
 hcp_folder=hutils.hcp_folder
 intermediates_path=hutils.intermediates_path
@@ -13,63 +14,69 @@ results_path=hutils.results_path
 
 subs=hutils.subs[slice(0,2)]
 nsubs = np.arange(len(subs)) #number of subjects
-MSMAll=False
 
 post_decode_smooth=hutils.make_smoother_100610(0)
 
-nalign,string = hutils.get_movie_or_rest_data(subs,'movie',runs=[0],fwhm=0,clean=True,MSMAll=MSMAll)
-ndecode,decode_string = hutils.get_task_data(subs,hutils.tasks[0:7],MSMAll=MSMAll)
+nalign,string = hutils.get_movie_or_rest_data(subs,'movie',runs=[0],fwhm=0,clean=True,MSMAll=False)
+ndecode,decode_string = hutils.get_task_data(subs,hutils.tasks[0:7],MSMAll=False)
 nlabels = [np.array(range(i.shape[0])) for i in ndecode] 
 
 parcellation_string='S300'
 clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
 classifier=LinearSVC(max_iter=10000,dual='auto')     
+print(f'{c.time()}: Done loading data')
 
 
+#Example: Template alignment
 """
+from fmralign.template_alignment import TemplateAlignment
+aligners2 = TemplateAlignment('scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':True})
+aligners2.make_template(nalign,n_iter=1,do_level_1=False,level1_equal_weight=False,normalize_imgs=None,normalize_template=None,remove_self=False,gamma=0.3)
+aligners2.fit_to_template(nalign,gamma=0.3)
+print(aligners2.estimators[0].fit_[0].R[0:2,0:2])
+"""
+
+#Example: Make low dimensional template
+"""
+from fmralign.lowdim_template import make_lowdim_template
+lowdim_template = make_lowdim_template(clustering,nalign)
+"""
+
+
+#Preparation for ProMises model
+nparcs=parcellation_string[1:]
+gdists_path=hutils.ospath(f'/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/AWS_studies/files0/intermediates/geodesic_distances/gdist_full_100610.midthickness.32k_fs_LR.S{nparcs}.p') #Get saved geodesic distances between vertices (for vertices in each parcel separately)
+import pickle
+with open(gdists_path,'rb') as file:
+    gdists = pickle.load(file)
+promises_k=0 #k parameter in ProMises model
+F = [np.exp(-i) for i in gdists] #local distance matrix in ProMises model
+promises_kF = [promises_k*i for i in F] 
+
+#Procrustes alignment with SCCA parameter alpha, and ProMises model
+from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
+aligner = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',clustering=clustering,alignment_kwargs ={'scaling':True,'scca_alpha':0.8},per_parcel_kwargs={'promises_kF':promises_kF}) 
+aligner.fit(nalign[0],nalign[1]) 
+print(aligner.fit_[0].R[0,0:2])
+
+print(f'{c.time()}: Done fitting alignment')
+hutils.do_plot_impulse_responses(p,'',aligner,'pairwise',False)
+
+
+#Old methods
+"""
+from my_surf_pairwise_alignment import MySurfacePairwiseAlignment
 aligner=MySurfacePairwiseAlignment(alignment_method='scaled_orthogonal', clustering=clustering,n_jobs=-1,reg=0)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads
 aligner.fit(nalign[0],nalign[1])
 aligner.transform(ndecode[0])
 
-from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
-aligner2 = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',clustering=clustering,alignment_kwargs ={'scaling':True})
-aligner2.fit(nalign[0],nalign[1])
-"""
-
-"""
 from my_template_alignment import MyTemplateAlignment, get_template  
 aligners= MyTemplateAlignment('scaled_orthogonal',clustering=clustering,n_jobs=1,n_iter=2,scale_template=False,template_method=1,reg=0)
 aligners.fit(nalign) 
 ndecode_new = aligners.transform(ndecode[0],0)
+print(aligners.estimators[0].fit_[0].R[0:2,0:2])
+assert(0)
 """
-
-print(f'{c.time()}: Done loading data')
-
-
-from fmralign.template_alignment import TemplateAlignment 
-
-if False:
-    aligners= TemplateAlignment('scaled_orthogonal',clustering=clustering,n_jobs=1,n_iter=2,scale_template=False,include_current_subject=True,alignment_kwargs={'scaling':True})
-    aligners.fit(nalign) 
-    ndecode_new = aligners.transform(ndecode[0],0)
-    print(ndecode_new[0:2,0])
-    print(aligners.estimators[0].fit_[0].R[0:2,0:2]) 
-
-    print(f'{c.time()}: Done fitting alignment 1')
-
-
-from fmralign import template_alignment
-aligners2= TemplateAlignment('scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':True})
-aligners2.make_template(nalign,n_iter=1,do_level_1=False,normalize_imgs='zscore',normalize_template='zscore',remove_self=False,level1_equal_weight=False)
-aligners2.fit_to_template(nalign)
-ndecode_new2 = aligners2.transform(ndecode[0],0)
-print(ndecode_new2[0:2,0])
-print(aligners2.estimators[0].fit_[0].R[0:2,0:2])
-
-print(f'{c.time()}: Done fitting alignment 2')
-
-#aligners.template=get_template(clustering,nalign)
-#aligners.fit_to_template(nalign)
 
 
 """

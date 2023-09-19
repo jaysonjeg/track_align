@@ -6,7 +6,7 @@ from fmralign._utils import piecewise_transform
 from sklearn.base import BaseEstimator, TransformerMixin
 import warnings
 
-assert(0)
+#assert(0)
 
 class MySurfacePairwiseAlignment(BaseEstimator, TransformerMixin):
     """

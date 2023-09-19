@@ -43,8 +43,47 @@ def process_i(i,nvertices_target,vertices,triangles):
     distances=gdist.compute_gdist(vertices,triangles,source_indices,target_indices=target_indices)
     return distances.astype(np.float16)
 
+
+
 if __name__=='__main__':
-    method = 2 #methods 1 and 2
+   
+    #To generate geodesic distances only between vertices within the same parcel. Returns a list (nparcels) of arrays (nvertices,nvertices)
+    
+    import pickle
+    surface_type = 'midthickness'
+    for sub in ["100610","102311"]:
+        vertices = hcp.mesh.midthickness[0]
+        triangles = hcp.mesh.midthickness[1]
+        gray = hcpalign_utils.vertexmap_59kto64k()
+        vertices = vertices[gray,:].astype('float64')
+        triangles = hcpalign_utils.cortex_64kto59k_for_triangles(triangles,hemi='both')
+        for nparcs in [800,600,500,400,300,200,100]:
+            clustering = hcpalign_utils.Schaefer(nparcs)
+            number_parcels = len(np.unique(clustering))
+            save_path=ospath(f'/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/old_intermediates/geodesic_distances/gdist_full_{sub}.{surface_type}.32k_fs_LR.S{nparcs}.p')
+            output = []
+            for nparc in range(number_parcels):
+                print(f"{sub}, {nparc}/{number_parcels}")
+                valid_vertex_indices = np.where(clustering==nparc)[0].astype('int32')
+                vertices_parc = vertices[clustering==nparc] #vertex coords for vertices belonging to the parcel
+                temp=np.isin(triangles,valid_vertex_indices)
+                temp2=np.all(temp,axis=1)
+                triangles_parc = triangles[temp2,:] #triangles where all 3 vertices belong within the parcel
+                #renumber vertex index numbers 
+                temp = np.zeros(len(vertices),dtype=int)
+                for index,value in enumerate(valid_vertex_indices):
+                    temp[value] = index
+                triangles_parc = temp[triangles_parc] 
+                #find geodesic distances
+                r_sparse=gdist.local_gdist_matrix(vertices_parc,triangles_parc)
+                r_sparse = r_sparse.astype(np.float32)
+                r=r_sparse.toarray().astype(np.float16)
+                output.append(r)
+            with open(save_path,'wb') as file:
+                pickle.dump(output,file)
+    assert(0)
+
+    method = 1 #methods 1 and 2
     use_multiproc=True
     p=hcpalign_utils.surfplot('',plot_type='open_in_browser')
     for surface_type in ['midthickness','inflated']:
@@ -66,7 +105,7 @@ if __name__=='__main__':
                     hemi_grays=hcp.vertex_info.grayr
                 vertices=vertices[hemi_grays]
                 triangles=hcpalign_utils.cortex_64kto59k_for_triangles(triangles,hemi=hemi)
-                
+
                 if method==1:
                     print(f'start at {c.time()}')
                     r_sparse=gdist.local_gdist_matrix(vertices,triangles)

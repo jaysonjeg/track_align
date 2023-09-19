@@ -87,6 +87,8 @@ if __name__=='__main__':
         post_decode_smooth=hutils.make_smoother_100610(post_decode_fwhm)
 
         save_suffix=f"A{align_string}_D{decode_string}_{method[0:4]}_{alignment_method}_{parcellation_string}_{n_subs}_{post_decode_fwhm}{str(descale_aligner)[0]}{str(absValueOfAligner)[0]}{str(scramble_aligners)[0]}"
+
+        """
         if not(args_template['nsubsfortemplate']=='all'):
             save_suffix=f"{save_suffix}_template{len(args_template['nsubsfortemplate'])}"
         if not(args_template['n_iter']==2):
@@ -95,6 +97,7 @@ if __name__=='__main__':
             save_suffix=f"{save_suffix}_meth{args_template['method']}"
         if args_template['pca_template']==True:
             save_suffix=f"{save_suffix}_pcatemp"
+        """
         if reg:
             save_suffix=f"{save_suffix}_reg{reg}"
         #Set up for saving pickled data and for plotting
@@ -149,7 +152,7 @@ if __name__=='__main__':
                     elif lowdim_vertices: 
                         aligner=LowDimSurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,reg=reg,n_components=lowdim_ncomponents,lowdim_method=lowdim_method)
                     else: 
-                        aligner=MySurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,reg=reg)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads
+                        aligner=MySurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,reg=reg)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads. MAKE IT PROCESSES!???
                     return aligner
                 def fit_aligner(source_align, target_align, absValueOfAligner, descale_aligner,aligner):
                     aligner.fit(source_align, target_align)
@@ -300,7 +303,7 @@ if __name__=='__main__':
 
 
         subs=hutils.subs[slice(0,3)]
-        method='template' #anat, intra_subject, pairwise, template
+        method='pairwise' #anat, intra_subject, pairwise, template
         alignment_method='scaled_orthogonal' #scaled_orthogonal, permutation, optimal_transport, ridge_cv
         alignment_kwargs = {'scaling':True}
         parcellation_string = 'S300' #S300, K1000, MMP

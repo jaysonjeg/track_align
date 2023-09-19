@@ -13,7 +13,7 @@ from joblib import Parallel,delayed
 from my_surf_pairwise_alignment import MySurfacePairwiseAlignment
 #from fmralignbench.surf_pairwise_alignment import SurfacePairwiseAlignment
 
-assert(0)
+#assert(0)
 
 def _rescaled_euclidean_mean(imgs, scale_average=False):
     """ Make the Euclidian average of images
