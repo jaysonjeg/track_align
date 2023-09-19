@@ -29,8 +29,7 @@ if __name__=='__main__':
         c,t,subs,nalign,align_string, ndecode, decode_string, n_jobs=-1,parcellation_string='S300',MSMAll=False, method='pairwise',alignment_method='scaled_orthogonal',alignment_kwargs={}, per_parcel_kwargs={}, gamma=0, absValueOfAligner=False, scramble_aligners=False,post_decode_fwhm=0, subs_template=None, lowdim_template=False,\
         args_template={'n_iter':1,'do_level_1':False,'normalize_imgs':None,'normalize_template':None,'remove_self':False,'level1_equal_weight':False},\
         kfolds=5,load_pickle=False, save_pickle=False,\
-        plot_any=False, plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_aligner=False,\
-        args_maxcorr={'max_dist':10,'typeof':3}):
+        plot_any=False, plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_aligner=False):
         """
         c: a hcpalign_utils.clock object
         t: If a hcpalign_utils.cprint object is given here, will print to both console and text file 
@@ -81,22 +80,12 @@ if __name__=='__main__':
         nlabels = [np.array(range(i.shape[0])) for i in ndecode]  
         post_decode_smooth=hutils.make_smoother_100610(post_decode_fwhm)
 
+        #Set up file name for outputs
         save_suffix=f"A{align_string}_D{decode_string}_{method[0:4]}_{alignment_method}_{parcellation_string}_{n_subs}_{post_decode_fwhm}"
-
-        addit = f"{str(absValueOfAligner)[0]}{str(scramble_aligners)[0]}"
-
-        """
-        if not(args_template['nsubsfortemplate']=='all'):
-            save_suffix=f"{save_suffix}_template{len(args_template['nsubsfortemplate'])}"
-        if not(args_template['n_iter']==2):
-            save_suffix=f"{save_suffix}_niter{args_template['n_iter']}"
-        if not (args_template['method']==1):
-            save_suffix=f"{save_suffix}_meth{args_template['method']}"
-        if args_template['pca_template']==True:
-            save_suffix=f"{save_suffix}_pcatemp"
-        """
         if gamma:
-            save_suffix=f"{save_suffix}_reg{gamma}"
+            save_suffix=f"{save_suffix}_gamma{gamma}"
+        print(save_suffix)
+
         #Set up for saving pickled data and for plotting
         if alignment_method=='optimal_transport':
             import dill
@@ -108,12 +97,7 @@ if __name__=='__main__':
         if plot_any:
             plot_dir=f'/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/figures/hcpalign/{save_suffix}'
             p=hutils.surfplot(plot_dir,plot_type='open_in_browser')
-
-        print(save_suffix)
-
-
         if load_pickle: assert(os.path.exists(ospath(save_pickle_filename)))
-
 
         #Get parcellation and classifier
         clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
@@ -128,26 +112,8 @@ if __name__=='__main__':
                 print('loading aligners')
                 aligners = pickle.load(open(ospath(save_pickle_filename), "rb" ))
             else:        
-                if alignment_method=='maxcorr':
-                    typeof=args_maxcorr['typeof']
-                    max_dist=args_maxcorr['max_dist']                  
-                    if typeof==1:
-                        import get_gdistances
-                        dists=get_gdistances.get_gdistances('100610','midthickness',max_dist,load_from_cache=True,save_to_cache=False)  
-                    else:
-                        from make_gdistances_full import get_saved_gdistances_full
-                        x=get_saved_gdistances_full('100610','midthickness')
-                        if typeof==3:
-                            from scipy.sparse import csr_matrix
-                            x = x < max_dist
-                            dists = csr_matrix((x[x.nonzero()],x.nonzero()),shape=x.shape)
-                    print(f'nnz is {dists.getnnz()}, first row size {dists.indptr[1]}')
-
                 def initialise_aligner():
-                    if alignment_method=='maxcorr':                          
-                        aligner=hutils.maxcorr(dists=dists,max_dist=max_dist,typeof=typeof)
-                    else: 
-                        aligner=SurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads. MAKE IT PROCESSES!???
+                    aligner=SurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads. MAKE IT PROCESSES!???
                     return aligner
                 def fit_aligner(source_align, target_align, absValueOfAligner, aligner):
                     aligner.fit(source_align, target_align)
