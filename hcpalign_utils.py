@@ -962,7 +962,7 @@ def plot_parc_multi(p,align_parc_matrix,strings,values):
         plot_parc(p,align_parc_matrix,value,string)
 
 
-def do_plot_impulse_responses(p,plot_prefix,aligner,method,lowdim_vertices):
+def do_plot_impulse_responses(p,plot_prefix,aligner,method):
     """
     aligner can be my_surf_pairwise_alignment or my_template_alignment
     p is surfplot instance
@@ -973,9 +973,7 @@ def do_plot_impulse_responses(p,plot_prefix,aligner,method,lowdim_vertices):
     verticesx=[1,2,3,4,5,6,7,8,29696+1,29696+2,29696+3,29696+4,29696+5,29696+6,29696+7,29696+8]
     for radius in [1]: #default [0,2]
         s=surfgeoroi(verticesx,radius)
-        t=aligner.transform(s[None,:])[0]  
-        if method=='template' and lowdim_vertices==True:
-            t=aligner.pcas[1].inverse_transform(aligner.transform(s[None,:],0))      
+        t=aligner.transform(s[None,:])[0]     
         p.plot(s, f"{plot_prefix}_roi_source{radius}",symmetric_cmap=True)
         p.plot(np.squeeze(t),f"{plot_prefix}_roi_target{radius}",symmetric_cmap=True)
 

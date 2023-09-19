@@ -10,10 +10,13 @@ if __name__=='__main__':
     import hcpalign_utils as hutils
     from hcpalign_utils import ospath
     from Connectome_Spatial_Smoothing import CSS as css
-    from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
     from joblib import Parallel, delayed
     from sklearn.model_selection import KFold
     import psutil
+
+    from fmralign.template_alignment import TemplateAlignment
+    from fmralign.lowdim_template import make_lowdim_template
+    from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
 
     hcp_folder=hutils.hcp_folder
     intermediates_path=hutils.intermediates_path
@@ -23,11 +26,11 @@ if __name__=='__main__':
     available_tasks=hutils.tasks 
 
     def func(\
-        c,t,subs,nalign,align_string, ndecode, decode_string, n_jobs=-1,parcellation_string='S300',method='pairwise',alignment_method='scaled_orthogonal',alignment_kwargs={}, kfolds=5, lowdim_vertices=False, lowdim_ncomponents=300, MSMAll=False, descale_aligner=False, absValueOfAligner=False, scramble_aligners=False,post_decode_fwhm=0, load_pickle=False, save_pickle=False,\
+        c,t,subs,nalign,align_string, ndecode, decode_string, n_jobs=-1,parcellation_string='S300',MSMAll=False, method='pairwise',alignment_method='scaled_orthogonal',alignment_kwargs={}, per_parcel_kwargs={}, gamma=0, absValueOfAligner=False, scramble_aligners=False,post_decode_fwhm=0, subs_template=None, lowdim_template=False,\
+        args_template={'n_iter':1,'do_level_1':False,'normalize_imgs':None,'normalize_template':None,'remove_self':False,'level1_equal_weight':False},\
+        kfolds=5,load_pickle=False, save_pickle=False,\
         plot_any=False, plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_aligner=False,\
-        args_template={'n_iter':2,'scale':False,'method':1,'nsubsfortemplate':'all','pca_template': False},\
-        args_maxcorr={'max_dist':10,'typeof':3},\
-        reg=0):
+        args_maxcorr={'max_dist':10,'typeof':3}):
         """
         c: a hcpalign_utils.clock object
         t: If a hcpalign_utils.cprint object is given here, will print to both console and text file 
@@ -38,18 +41,23 @@ if __name__=='__main__':
         decode_string: description string for the type of decoding data
         n_jobs: processor cores for a single source to target pairwise aligment (1 parcel per thread) (my PC has 12), ie for the 'inner loop'. -1 means use all cores
         nparcs: no. of parcels. Subjects aligned within each parcel
+        MSMAll: False for MSMSulc
         method: anat, intra_subject, pairwise, template
         alignment_method: scaled_orthogonal, permutation, optimal_tarnsport, ridge_cv
         alignment_kwargs: dict
             Additional keyword arguments to pass to the alignment method
-        kfolds: default 5 (for classification)
-        lowdim_vertices: to use PCA/ICA to reduce nalign dimensionality along the nvertices axis 
-        lowdim_ncomponents: default 300, works with lowdim_samples or lowdim_vertices
-        MSMAll: False for MSMSulc
-        descale_aligner: remove scale factor from aligner
+        per_parcel_kwargs: dict
+            extra arguments, unique value for each parcel. Dictionary of keys (argument name) and values (list of values, one for each parcel) For each parcel, the part of per_parcel_kwargs that applies to that parcel will be added to alignment_kwargs
+        gamma: regularization parameter for surf_pairwise_alignment: default 0
         absValueOfAligner: to take elementwise absolute value of the aligner
         scramble_aligners:  to transform subjects' task maps using someone else's aligner  
         post_decode_fwhm smooths the left-out contrast maps predicted through alignment
+        subs_template: list of subject IDs
+        lowdim_template: bool
+            True to use PCA/ICA to make template
+        args_template: dict
+            Passed to TemplateAlignment
+        kfolds: default 5 (for classification)
         plot_any #plot anything at all, or not
         plot_impulse_response #to plot aligned image of circular ROIs
         plot_contrast_maps #to plot task contrast maps (predicted through alignment)
@@ -61,13 +69,6 @@ if __name__=='__main__':
             diffusion_targets_nparcs: False, or a number of parcels [100,300,1000,3000,10000] Number of connectivity targets for DA     
             diffusion_targets_nvertices: number of random vertices to use as targets for diffusion alignment
             fwhm_circ: 
-        args_template: only relevant for template alignment 
-            n_iter: default 2
-            scale: True or False for scale_template
-            method: 1, 2, or 3 
-            nsubsfortemplate: 'all' or an iterable, e.g. [0,2,4], or range(3)
-            pca_template: True to use new PCA-derived template
-        reg: regularization parameter for MySurfPairwiseAlignment: default 0
         """
         
         #so that print will print to text file too
@@ -77,16 +78,12 @@ if __name__=='__main__':
 
         n_subs=len(subs)
         nsubs = np.arange(len(subs)) #number of subjects
-        nlabels = [np.array(range(i.shape[0])) for i in ndecode]
-
-        if lowdim_vertices:
-            lowdim_method='pca' #'pca','ica'
-            lowdim_ncomponents=lowdim_ncomponents 
-        if lowdim_vertices: assert(method in ['pairwise','template'])
-   
+        nlabels = [np.array(range(i.shape[0])) for i in ndecode]  
         post_decode_smooth=hutils.make_smoother_100610(post_decode_fwhm)
 
-        save_suffix=f"A{align_string}_D{decode_string}_{method[0:4]}_{alignment_method}_{parcellation_string}_{n_subs}_{post_decode_fwhm}{str(descale_aligner)[0]}{str(absValueOfAligner)[0]}{str(scramble_aligners)[0]}"
+        save_suffix=f"A{align_string}_D{decode_string}_{method[0:4]}_{alignment_method}_{parcellation_string}_{n_subs}_{post_decode_fwhm}"
+
+        addit = f"{str(absValueOfAligner)[0]}{str(scramble_aligners)[0]}"
 
         """
         if not(args_template['nsubsfortemplate']=='all'):
@@ -98,8 +95,8 @@ if __name__=='__main__':
         if args_template['pca_template']==True:
             save_suffix=f"{save_suffix}_pcatemp"
         """
-        if reg:
-            save_suffix=f"{save_suffix}_reg{reg}"
+        if gamma:
+            save_suffix=f"{save_suffix}_reg{gamma}"
         #Set up for saving pickled data and for plotting
         if alignment_method=='optimal_transport':
             import dill
@@ -149,21 +146,18 @@ if __name__=='__main__':
                 def initialise_aligner():
                     if alignment_method=='maxcorr':                          
                         aligner=hutils.maxcorr(dists=dists,max_dist=max_dist,typeof=typeof)
-                    elif lowdim_vertices: 
-                        aligner=LowDimSurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,reg=reg,n_components=lowdim_ncomponents,lowdim_method=lowdim_method)
                     else: 
-                        aligner=MySurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,reg=reg)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads. MAKE IT PROCESSES!???
+                        aligner=SurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads. MAKE IT PROCESSES!???
                     return aligner
-                def fit_aligner(source_align, target_align, absValueOfAligner, descale_aligner,aligner):
+                def fit_aligner(source_align, target_align, absValueOfAligner, aligner):
                     aligner.fit(source_align, target_align)
                     if absValueOfAligner: hutils.aligner_absvalue(aligner)
-                    if descale_aligner: hutils.aligner_descale(aligner)
                     return aligner
 
                 print(hutils.memused())  
                 print(f'{c.time()}: Calculate aligners')
                 import itertools       
-                temp=Parallel(n_jobs=-1,prefer='processes')(delayed(fit_aligner)(nalign[source],nalign[target], absValueOfAligner, descale_aligner,initialise_aligner()) for source,target in itertools.permutations(nsubs,2))
+                temp=Parallel(n_jobs=-1,prefer='processes')(delayed(fit_aligner)(nalign[source],nalign[target], absValueOfAligner, initialise_aligner()) for source,target in itertools.permutations(nsubs,2))
                 aligners={}
                 index=0
                 for source,target in itertools.permutations(nsubs,2):
@@ -202,30 +196,18 @@ if __name__=='__main__':
             if load_pickle:
                 print('loading aligner')
                 aligners = pickle.load(open(ospath(save_pickle_filename), "rb" ))
-            else:       
-                from my_template_alignment import MyTemplateAlignment, LowDimTemplateAlignment, get_template            
-                if lowdim_vertices: aligners=LowDimTemplateAlignment(alignment_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],n_components=lowdim_ncomponents,lowdim_method=lowdim_method,scale_template=args_template['scale'],template_method=args_template['method'],reg=reg)
-                else: aligners=MyTemplateAlignment(alignment_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],scale_template=args_template['scale'],template_method=args_template['method'],reg=reg)
+            else:                
+                aligners=TemplateAlignment(alignment_method,clustering=clustering,n_jobs=n_jobs,n_iter=args_template['n_iter'],scale_template=args_template['scale'],template_method=args_template['method'],gamma=gamma)
                 print(hutils.memused()) 
-
-                if args_template['pca_template']==True:
-                    if args_template['nsubsfortemplate']=='all':
-                        aligners.template=get_template(clustering,nalign)
-                    else:
-                        aligners.template=get_template(clustering,[nalign[i] for i in args_template['nsubsfortemplate']])
+                if args_template['nsubsfortemplate']=='all':
+                    aligners.fit(nalign) 
+                else:
+                    aligners.fit([nalign[i] for i in args_template['nsubsfortemplate']])
+                    print(f'{c.time()}: Fitting rest of imgs to template')
                     aligners.fit_to_template(nalign)
-                elif args_template['pca_template']==False:
-                    if args_template['nsubsfortemplate']=='all':
-                        aligners.fit(nalign) 
-                    else:
-                        aligners.fit([nalign[i] for i in args_template['nsubsfortemplate']])
-                        print(f'{c.time()}: Fitting rest of imgs to template')
-                        aligners.fit_to_template(nalign)
                 print(hutils.memused()) #XXX
                 if absValueOfAligner:
                     [aligners.estimators[j].absValue() for j in range(len(aligners.estimators))]
-                if descale_aligner:
-                    [aligners.estimators[j].descale() for j in range(len(aligners.estimators))]
                 print('{} Template align done'.format(c.time())) 
                 if return_aligner: 
                     print(hutils.memused())
@@ -240,7 +222,7 @@ if __name__=='__main__':
                 if plot_impulse_response:
                     source=0 #aligner for plot is sub 0 to template
                     aligner = aligners.estimators[source] 
-                    hutils.do_plot_impulse_responses(p,'',aligner,method,lowdim_vertices)
+                    hutils.do_plot_impulse_responses(p,'',aligner,method)
                     assert(0) #XXXXX
                 if plot_contrast_maps:
                     for i in range(1):
@@ -288,7 +270,7 @@ if __name__=='__main__':
         print('Mean classification accuracy {:.2f}'.format(np.mean([np.mean(i) for i in classification_scores])))
         
         if plot_any and plot_impulse_response and method != 'anat': 
-            hutils.do_plot_impulse_responses(p,'',aligner,method,lowdim_vertices)
+            hutils.do_plot_impulse_responses(p,'',aligner,method)
         
         print(hutils.memused())
         return classification_scores
@@ -306,11 +288,16 @@ if __name__=='__main__':
         method='pairwise' #anat, intra_subject, pairwise, template
         alignment_method='scaled_orthogonal' #scaled_orthogonal, permutation, optimal_transport, ridge_cv
         alignment_kwargs = {'scaling':True}
+        per_parcel_kwargs={}
         parcellation_string = 'S300' #S300, K1000, MMP
+        MSMAll=False
         save_pickle=False
         load_pickle=False #use saved aligner
-        MSMAll=False
-        args_template = {'n_iter':1,'do_level_1':False,'normalize_imgs':None,'normalize_template':None,'remove_self':False,'level1_equal_weight':False}
+
+        if method=='template':
+            subs_template = hutils.subs[slice(0,3)]
+            lowdim_template=False
+            args_template = {'n_iter':1,'do_level_1':False,'normalize_imgs':None,'normalize_template':None,'remove_self':False,'level1_equal_weight':False}
 
 
         #Get alignment data. List (nsubjects) of alignment data (ntimepoints, nvertices)
@@ -343,10 +330,10 @@ if __name__=='__main__':
         decode_string = f'{decode_string}{string}'
         """
 
-        for reg in [0]:
+        for gamma in [0]:
          
             print(hutils.memused())   
-            func(c,t,subs, nalign, align_string, ndecode, decode_string, parcellation_string=parcellation_string,method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,n_jobs=+1,args_template=args_template,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,reg=reg)
+            func(c,t,subs, nalign, align_string, ndecode, decode_string, parcellation_string=parcellation_string,method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,post_decode_fwhm=0,save_pickle=save_pickle,load_pickle=load_pickle,n_jobs=+1,subs_template=subs_template,lowdim_template=lowdim_template,args_template=args_template,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False,gamma=gamma)
             print(hutils.memused())
             t.print('')  
 

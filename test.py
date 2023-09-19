@@ -17,7 +17,7 @@ nsubs = np.arange(len(subs)) #number of subjects
 
 post_decode_smooth=hutils.make_smoother_100610(0)
 
-nalign,string = hutils.get_movie_or_rest_data(subs,'movie',runs=[0],fwhm=0,clean=True,MSMAll=False)
+nalign,align_string = hutils.get_movie_or_rest_data(subs,'movie',runs=[0],fwhm=0,clean=True,MSMAll=False)
 ndecode,decode_string = hutils.get_task_data(subs,hutils.tasks[0:7],MSMAll=False)
 nlabels = [np.array(range(i.shape[0])) for i in ndecode] 
 
@@ -41,7 +41,6 @@ print(aligners2.estimators[0].fit_[0].R[0:2,0:2])
 from fmralign.lowdim_template import make_lowdim_template
 lowdim_template = make_lowdim_template(clustering,nalign)
 """
-
 
 #Preparation for ProMises model
 nparcs=parcellation_string[1:]
