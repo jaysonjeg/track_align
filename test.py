@@ -6,6 +6,23 @@ import hcpalign_utils as hutils
 from joblib import Parallel, delayed
 #from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
+
+"""
+from fmralign.pairwise_alignment import fit_one_piece
+X = np.random.random((100,200))
+Y = np.random.random((100,200))
+z = fit_one_piece(X, Y, 2, 'ridge_cv',{'alphas':[0.1]})
+assert(0)
+"""
+
+
+"""
+
+[i[0].R[0,1] for i in alignment_algos_per_bag]
+np.mean([i.R[0,1] for i in alignment_algos_per_bag])
+alignment_algo.R[0,1]
+"""
+
 p=hutils.surfplot('',plot_type='open_in_browser')
 c=hutils.clock()
 hcp_folder=hutils.hcp_folder
@@ -17,9 +34,9 @@ nsubs = np.arange(len(subs)) #number of subjects
 
 post_decode_smooth=hutils.make_smoother_100610(0)
 
-nalign,align_string = hutils.get_movie_or_rest_data(subs,'movie',runs=[0],fwhm=0,clean=True,MSMAll=False)
-ndecode,decode_string = hutils.get_task_data(subs,hutils.tasks[0:7],MSMAll=False)
-nlabels = [np.array(range(i.shape[0])) for i in ndecode] 
+imgs_align,align_string = hutils.get_movie_or_rest_data(subs,'movie',runs=[0],fwhm=0,clean=True,MSMAll=False)
+imgs_decode,decode_string = hutils.get_task_data(subs,hutils.tasks[0:7],MSMAll=False)
+labels = [np.array(range(i.shape[0])) for i in imgs_decode] 
 
 parcellation_string='S300'
 clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
@@ -30,17 +47,13 @@ print(f'{c.time()}: Done loading data')
 #Example: Template alignment
 """
 from fmralign.template_alignment import TemplateAlignment
-aligners2 = TemplateAlignment('scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':True})
-aligners2.make_template(nalign,n_iter=1,do_level_1=False,level1_equal_weight=False,normalize_imgs=None,normalize_template=None,remove_self=False,gamma=0.3)
-aligners2.fit_to_template(nalign,gamma=0.3)
-print(aligners2.estimators[0].fit_[0].R[0:2,0:2])
+aligners = TemplateAlignment('scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':True})
+#aligners.make_template(imgs_align,n_iter=1,do_level_1=False,level1_equal_weight=False,normalize_imgs=None,normalize_template=None,remove_self=False,gamma=0.3)
+aligners.make_lowdim_template(clustering,imgs_align)
+aligners.fit_to_template(imgs_align,gamma=0.3)
+print(aligners.estimators[0].fit_[0].R[0:2,0:2])
 """
 
-#Example: Make low dimensional template
-"""
-from fmralign.lowdim_template import make_lowdim_template
-lowdim_template = make_lowdim_template(clustering,nalign)
-"""
 
 #Preparation for ProMises model
 nparcs=parcellation_string[1:]
@@ -49,30 +62,33 @@ import pickle
 with open(gdists_path,'rb') as file:
     gdists = pickle.load(file)
 promises_k=0 #k parameter in ProMises model
-F = [np.exp(-i) for i in gdists] #local distance matrix in ProMises model
-promises_kF = [promises_k*i for i in F] 
+promises_F = [np.exp(-i) for i in gdists] #local distance matrix in ProMises model
 
 #Procrustes alignment with SCCA parameter alpha, and ProMises model
 from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
-aligner = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',clustering=clustering,alignment_kwargs ={'scaling':True,'scca_alpha':0.8},per_parcel_kwargs={'promises_kF':promises_kF}) 
-aligner.fit(nalign[0],nalign[1]) 
+#aligner = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',n_bags=1,clustering=clustering,alignment_kwargs ={'scaling':True,'scca_alpha':1,'promises_k':promises_k},per_parcel_kwargs={'promises_F':promises_F}) 
+
+aligner = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',n_bags=3,clustering=clustering,alignment_kwargs ={}) 
+
+aligner.fit(imgs_align[0],imgs_align[1]) 
 print(aligner.fit_[0].R[0,0:2])
 
 print(f'{c.time()}: Done fitting alignment')
-hutils.do_plot_impulse_responses(p,'',aligner,'pairwise',False)
+
+hutils.do_plot_impulse_responses(p,'',aligner)
 
 
 #Old methods
 """
 from my_surf_pairwise_alignment import MySurfacePairwiseAlignment
 aligner=MySurfacePairwiseAlignment(alignment_method='scaled_orthogonal', clustering=clustering,n_jobs=-1,reg=0)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads
-aligner.fit(nalign[0],nalign[1])
-aligner.transform(ndecode[0])
+aligner.fit(imgs_align[0],imgs_align[1])
+aligner.transform(imgs_decode[0])
 
 from my_template_alignment import MyTemplateAlignment, get_template  
 aligners= MyTemplateAlignment('scaled_orthogonal',clustering=clustering,n_jobs=1,n_iter=2,scale_template=False,template_method=1,reg=0)
-aligners.fit(nalign) 
-ndecode_new = aligners.transform(ndecode[0],0)
+aligners.fit(imgs_align) 
+imgs_decode_new = aligners.transform(imgs_decode[0],0)
 print(aligners.estimators[0].fit_[0].R[0:2,0:2])
 assert(0)
 """

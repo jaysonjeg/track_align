@@ -38,9 +38,8 @@ all_top_block_labels=0 #for hcpalign.py using top most connected blocks for DA
 movies=['MOVIE1_7T_AP','MOVIE2_7T_PA','MOVIE3_7T_PA','MOVIE4_7T_AP']
 rests=['REST1_7T_PA','REST2_7T_AP','REST3_7T_PA','REST4_7T_AP']
 tasks=['WM','GAMBLING','RELATIONAL','MOTOR','EMOTION','LANGUAGE','SOCIAL']
-subs=['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823','115017','115825','116726','118225','125525']
-
-subs=list(np.loadtxt('included_subs_minus3.csv',dtype='str')) #made from findpts.py
+all_subs=['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823','115017','115825','116726','118225','125525']
+all_subs=list(np.loadtxt('included_subs_minus3.csv',dtype='str')) #made from findpts.py
 
 logical2str={True:'t',False:'f'}
 MSMlogical2str={True:'_MSMAll',False:''}
@@ -130,19 +129,27 @@ def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_preproc):
     """    
     dtype=np.float16 #np.float32 or np.float32
     mkdir(f'{intermediates_path}/hcp_timeseries')
-    nalign_sub=[from_cache(get_timeseries_cachepath,get_timeseries,sub,ts_type,filename,MSMAll,dtype,load=True,save=True) for filename in filenames]   
+    imgs_align_sub=[from_cache(get_timeseries_cachepath,get_timeseries,sub,ts_type,filename,MSMAll,dtype,load=True,save=True) for filename in filenames]   
     if ts_type=='movie':   
         movieVidVols = [movieVolumeSelect(v,10,10) for v in movieVidTimes] #get list of all movie volumes to be included  
-        nalign_sub = [nalign_sub[i][movieVidVols[i],:] for i in range(len(nalign_sub))]
+        imgs_align_sub = [imgs_align_sub[i][movieVidVols[i],:] for i in range(len(imgs_align_sub))]
     #Following only relevant if X_clean=True
     clean_each_movie_separately=True
     if clean_each_movie_separately:
-        temp=np.vstack([ts_preproc(i) for i in nalign_sub])
+        temp=np.vstack([ts_preproc(i) for i in imgs_align_sub])
     else:
-        temp=ts_preproc(np.vstack(nalign_sub))
+        temp=ts_preproc(np.vstack(imgs_align_sub))
     return temp.astype(dtype)
 
-def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,clean=True,MSMAll=False,FC_parcellation_string=None):
+def get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string):
+    runs_string = ''.join([str(i) for i in runs])
+    dict1 = {'movie':'mov','rest':'res','movie_FC':'movfc','rest_FC':'resfc','diffusion':'diff'}
+    string = f'{dict1[align_with]}{logical2str[MSMAll]}{runs_string}{logical2str[clean]}{fwhm}'
+    if 'FC' in align_with:
+        string=f'{string}{FC_parcellation_string}'
+    return string
+
+def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,clean=True,MSMAll=False,FC_parcellation_string=None, string_only=False):
     """
     Returns movie viewing or resting state fMRI data, and a string describing the movie or rest data
     align_with: 'movie', 'rest', 'movie_FC', 'rest_FC', 'diffusion'
@@ -152,22 +159,28 @@ def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,cle
     clean: True for standardization and detrending
     MSMAll: True/False
     FC_parcellation_string: e.g. 'S300', 'K1000'
+    string_only: bool
     """
-    align_preproc = make_preproc(fwhm,clean,'zscore_sample',True,None,None,1.0)
-    filenames = get_filenames(align_with,runs)
-    if align_with in ['movie','rest']:
-        func = lambda sub: get_all_timeseries_sub(sub,align_with,filenames,MSMAll,align_preproc)
-        nalign=Parallel(n_jobs=-1,prefer="threads")(delayed(func)(sub) for sub in subs)
-    if 'FC' in align_with:         
-        nalign=get_all_FC(subs,[align_with,MSMAll,align_preproc,FC_parcellation_string,filenames,'pxn'])
+    align_string = get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string)
+    if string_only:
+        return  [[] for sub in subs],align_string
+    else:
+        align_preproc = make_preproc(fwhm,clean,'zscore_sample',True,None,None,1.0)
+        filenames = get_filenames(align_with,runs)
+        if align_with in ['movie','rest']:
+            func = lambda sub: get_all_timeseries_sub(sub,align_with,filenames,MSMAll,align_preproc)
+            imgs_align=Parallel(n_jobs=-1,prefer="threads")(delayed(func)(sub) for sub in subs)
+        if 'FC' in align_with:         
+            imgs_align=get_all_FC(subs,[align_with,MSMAll,align_preproc,FC_parcellation_string,filenames,'pxn'])
 
-    runs_string = ''.join([str(i) for i in runs])
-    string = f'{align_with}{runs_string}{logical2str[MSMAll]}{logical2str[clean]}{fwhm}'
-    if 'FC' in align_with:
-        string=f'{string}{FC_parcellation_string}'
-    return nalign,string
+        if False: #circular shift imgs_align to scramble
+            imgs_align.append(imgs_align.pop(0)) 
+            imgs_align.append(imgs_align.pop(0))
+        if False: #reduce dimensionality of alignment data in ntimepoints/nsamples axis using PCA
+            imgs_align, string = reduce_dimensionality_samples(c,imgs_align,ncomponents=300,method='pca')
+            align_string = f'{align_string}{string}'
 
-
+        return imgs_align,align_string
 
 def get_tasks_cachepath(tasks,sub,MSMAll=False):
     mkdir(f'{intermediates_path}/hcp_taskcontrasts')
@@ -202,10 +215,164 @@ def gettasklabels(tasks,sub):
 def get_task_data(subs,tasks,MSMAll=False):
     #Given a list of subjects and some tasks, return a list (nsubjects) of task data arrays (ncontrasts,nvertices), and a description string
     decode_string = f'{len(tasks)}tasks{logical2str[MSMAll]}'
-    ndecode=[from_cache(get_tasks_cachepath,gettasks,tasks,sub,MSMAll=MSMAll) for sub in subs]  
-    #nlabels=[from_cache(get_tasklabels_cachepath,gettasklabels,tasks,sub) for sub in subs] #list (nsubjects) of labels (ncontrasts,)
-    nlabels = [np.array(range(i.shape[0])) for i in ndecode] #since the exact label names are not important, just use the contrast number as the label     
-    return ndecode, decode_string  
+    imgs_decode=[from_cache(get_tasks_cachepath,gettasks,tasks,sub,MSMAll=MSMAll) for sub in subs]  
+    #labels=[from_cache(get_tasklabels_cachepath,gettasklabels,tasks,sub) for sub in subs] #list (nsubjects) of labels (ncontrasts,)
+    labels = [np.array(range(i.shape[0])) for i in imgs_decode] #since the exact label names are not important, just use the contrast number as the label     
+    return imgs_decode, decode_string  
+
+
+def get_subjects(sub_slice,subs_template_slice):
+    subs=all_subs[sub_slice]
+    sub_slice_string = f'sub{sub_slice.start}to{sub_slice.stop}'
+    subs_template = all_subs[subs_template_slice] 
+    subs_template_slice_string = f'sub{subs_template_slice.start}to{subs_template_slice.stop}'
+    return subs,sub_slice_string,subs_template,subs_template_slice_string
+
+def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle):
+    #### Get alignment data. List (nsubjects) of alignment data (nsamples,nvertices)
+    print(f"{c.time()} Get alignment data start")
+    if method=='anat': 
+        align_string='anat'
+        imgs_align = [[] for sub in subs] #irrelevant anyway
+    else:
+        imgs_align, align_string = get_movie_or_rest_data(subs,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle) #load_pickle=True means return string only
+    #imgs_align,align_string = get_aligndata_highres_connectomes(c,subs,MSMAll,{'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':16000 , 'fwhm_circ':3 })  
+        
+    #### Get decoding data. List (nsubjects) of decode data (ncontrasts, nvertices)
+    print(f"{c.time()} Get decoding data start")
+    imgs_decode,decode_string = get_task_data(subs,tasks[0:7],MSMAll=MSMAll)
+
+    #### Decode movie viewing data instead
+    """
+    imgs_decode,decode_string = hutils.get_movie_or_rest_data(subs,'movie',runs=[1],fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll)
+    imgs_decode, string = hutils.reduce_dimensionality_samples(c,imgs_decode,ncomponents=20,method='pca')
+    decode_string = f'{decode_string}{string}'
+    """
+    return imgs_align,imgs_decode,align_string,decode_string
+
+def get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template):
+    #### Get template-making alignment data. List (nsubjects) of data (nsamples,nvertices)
+    print(f"{c.time()} Get template-making data start")  
+    if method=='template':
+        imgs_template, template_imgtype_string = get_movie_or_rest_data(subs_template,align_with,run=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle) #load_pickle=True means return string only
+        template_string = f'_T{template_imgtype_string}{subs_template_slice_string}_{get_template_making_string(lowdim_template,args_template)}'
+    else:
+        imgs_template, template_string = None, ''
+    return imgs_template,template_string
+
+def get_template_making_string(lowdim_template,args):
+    """
+    Return short string describing how template was made
+    """
+    dict2 = {'rescale':'r','zscore':'z',None:'n'}
+    return f"{logical2str[lowdim_template]}{args['n_iter']}{logical2str[args['do_level_1']]}{logical2str[args['remove_self']]}{logical2str[args['level1_equal_weight']]}{dict2[args['normalize_imgs']]}{dict2[args['normalize_template']]}"
+
+def alignment_method_string(method,alignment_method,alignment_kwargs,per_parcel_kwargs,gamma):
+    """
+    Returns a string describing keyword arguments passed to SurfacePairwiseAlignment
+    """
+    string=f"{method[0:4].capitalize()}{alignment_method[0:4].capitalize()}_"
+    if 'scaling' in alignment_kwargs:
+        string += f"sc{logical2str[alignment_kwargs['scaling']]}"
+    if 'scca_alpha' in alignment_kwargs:
+        string += f"scca{alignment_kwargs['scca_alpha']}"
+    if 'promises_k' in alignment_kwargs:
+        string += f"ProM{alignment_kwargs['promises_k']}"
+    if 'alphas' in alignment_kwargs:
+        string += f"alphas"
+    if 'reg' in alignment_kwargs:
+        string += f"reg{alignment_kwargs['reg']}"
+    if 'max_iter' in alignment_kwargs:
+        string += f"maxiter{alignment_kwargs['max_iter']}"
+    if 'tol' in alignment_kwargs:
+        string += f"tol{alignment_kwargs['tol']}"
+    if gamma:
+        string+=f"gam{gamma}"
+    return string
+
+def get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_jobs,alignment_kwargs,per_parcel_kwargs,gamma,absValueOfAligner):
+    """
+    Calculate alignment transformations between all pairs of subjects. First find all aligners for all pairs of subjects and put them in a list 'temp'. Then assign each aligner to a dictionary 'aligners' with keys '100610-102310', '100610-102816', etc.
+    INPUTS:
+    subs: list
+        subject IDs
+    Other parameters are same as function func() in hcpalign.py
+    RETURNS:
+    aligners: dict
+        Values are SurfacePairwiseAlignment objects
+        Key "100610-102310" points to the transformation from subject 100610 to subject 102310 
+    """
+    from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
+    import itertools
+    subs_indices = np.arange(len(subs))
+    def initialise_aligner():
+        aligner=SurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads. MAKE IT PROCESSES!???
+        return aligner
+    def fit_aligner(source_align, target_align, absValueOfAligner, aligner):
+        aligner.fit(source_align, target_align)
+        if absValueOfAligner: aligner_absvalue(aligner)
+        return aligner
+    temp=Parallel(n_jobs=-1,prefer='processes')(delayed(fit_aligner)(imgs_align[source],imgs_align[target], absValueOfAligner, initialise_aligner()) for source,target in itertools.permutations(subs_indices,2))
+    aligners={}
+    index=0
+    for source,target in itertools.permutations(subs_indices,2):
+        aligners[f'{subs[source]}-{subs[target]}'] = temp[index]
+        index +=1
+    del temp
+    return aligners
+
+from sklearn.base import clone
+def classify_pairwise(target,subs_indices,labels,target_decode,aligned_sources_decode,classifier):
+    """
+    target: index of subject to be decoded
+    subs_indices: indices of all subjects
+    labels: list (nsubjects) of labels (ncontrasts,)
+    target_decode: decode data for target subject (ncontrasts,nvertices)
+    aligned_sources_decode: list (n_nontargetsubjects) of arrays (ncontrasts,nvertices)
+        Decode data for non-target subjects, aligned to target subject's functional space
+    """
+    sources=[i for i in subs_indices if i!=target]
+    sources_labels=[labels[i] for i in sources] 
+    target_labels = labels[target] #labels for target subject (ncontrasts,)
+    clf=clone(classifier)
+    clf.fit(aligned_sources_decode, np.hstack(sources_labels))
+    return clf.score(target_decode, target_labels)
+
+
+def transform_all_decode_data(subs,imgs_decode,aligners,post_decode_smooth):
+    """
+    Transform decode data for all non-target subjects to the functional space of a target subject. Repeat this, using a different target subject each time.
+
+    Parameters
+    ----------
+    subs: list
+        subject IDs
+    imgs_decode: list
+        list (nsubjects) of decode data arrays (ncontrasts,nvertices)
+    aligners: dict
+        Values are SurfacePairwiseAlignment objects
+        Key "100610-102310" points to the transformation from subject 100610 to subject 102310    
+    post_decode_smooth: function
+        To spatially smooth data after transformation
+
+    Returns
+    ----------
+    all_aligned_sources_decode: list
+        list (nsubjects) of all others subjects' transformed decode data concatenated (ncontrasts*nleftoutsubjects,nvertices)
+    """
+    subs_indices = np.arange(len(subs)) #list from 0 to n_subs-1
+    all_aligned_sources_decode=[]
+    for target in subs_indices:
+        sources=[i for i in subs_indices if i!=target]  
+        aligned_sources_decode=[]
+        for source in sources:
+            source_decode = imgs_decode[source]
+            aligner=aligners[f'{subs[source]}-{subs[target]}'] 
+            aligned_sources_decode.append( post_decode_smooth(aligner.transform(source_decode)) )
+        aligned_sources_decode = np.vstack(aligned_sources_decode) #(ncontrasts*nleftoutsubjects,nvertices)
+        all_aligned_sources_decode.append(aligned_sources_decode)
+    return all_aligned_sources_decode
+
 
 def from_cache(func_filepath,func,*args,load=True,save=True,**kwargs):
     """
@@ -267,11 +434,11 @@ def get_FC(
         return corr4(nap,nap,b_blocksize=parc_matrix.shape[0])
 
 def get_all_FC(subs,args):
-    nalign = Parallel(n_jobs=-1,prefer='threads')(delayed(from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
-    return [i.astype(np.float16) for i in nalign] 
+    imgs_align = Parallel(n_jobs=-1,prefer='threads')(delayed(from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
+    return [i.astype(np.float16) for i in imgs_align] 
 
 
-def reduce_dimensionality_samples(c,nalign,ncomponents,method):
+def reduce_dimensionality_samples(c,imgs_align,ncomponents,method):
     """
     Reduce alignment data dimensionality in axis 0 (nsamples,ntimepoints)
     """
@@ -281,11 +448,11 @@ def reduce_dimensionality_samples(c,nalign,ncomponents,method):
         decomp=PCA(n_components=ncomponents,whiten=False)
     elif method=='ica':
         decomp=FastICA(n_components=ncomponents,max_iter=100000)
-    temp=np.dstack(nalign).mean(axis=2) #mean of all subjects
+    temp=np.dstack(imgs_align).mean(axis=2) #mean of all subjects
     decomp.fit(temp.T)
-    nalign=[decomp.transform(i.T).T for i in nalign]
+    imgs_align=[decomp.transform(i.T).T for i in imgs_align]
     print(f"{c.time()} reduce_dimensionality_samples done") 
-    return nalign, f'{method}{ncomponents}'
+    return imgs_align, f'{method}{ncomponents}'
 
 
 def get_thickness(sub):
@@ -504,19 +671,19 @@ def get_highres_connectomes(
 
 def get_aligndata_highres_connectomes(c,subs,MSMAll,tckfile='tracks_5M_sift1M.tck',sift2=False,fwhm=3,targets_nparcs=False,targets_nvertices=16000):
     #Get high-res-connectomes as alignment data, and returns a short description string
-    nalign = get_highres_connectomes(c,subs,tckfile,MSMAll=MSMAll,sift2=sift2)
+    imgs_align = get_highres_connectomes(c,subs,tckfile,MSMAll=MSMAll,sift2=sift2)
     if fwhm:
-        nalign = smooth_highres_connectomes_mm(nalign,fwhm)
-        nalign = [i.astype(np.float32) for i in nalign]
+        imgs_align = smooth_highres_connectomes_mm(imgs_align,fwhm)
+        imgs_align = [i.astype(np.float32) for i in imgs_align]
     if targets_nparcs: #connectivity from each vertex, to each targetparcel
         align_parc_matrix=Schaefer_matrix(targets_nparcs) 
-        nalign=[align_parc_matrix.dot(i) for i in nalign]
+        imgs_align=[align_parc_matrix.dot(i) for i in imgs_align]
     else:
-        these_vertices=np.linspace(0,nalign[0].shape[0]-1,targets_nvertices).astype(int) #default 16000   
-        nalign=[i[these_vertices,:] for i in nalign]         
-    nalign=[i.toarray().astype('float32') for i in nalign]  
+        these_vertices=np.linspace(0,imgs_align[0].shape[0]-1,targets_nvertices).astype(int) #default 16000   
+        imgs_align=[i[these_vertices,:] for i in imgs_align]         
+    imgs_align=[i.toarray().astype('float32') for i in imgs_align]  
     string = f'diff{logical2str[MSMAll]}{logical2str["sift2"]}{fwhm}{targets_nvertices}{tckfile[:-4]}'
-    return nalign,string
+    return imgs_align,string
 
 def smooth_highres_connectomes(hr,smoother):
     """
@@ -962,13 +1129,15 @@ def plot_parc_multi(p,align_parc_matrix,strings,values):
         plot_parc(p,align_parc_matrix,value,string)
 
 
-def do_plot_impulse_responses(p,plot_prefix,aligner,method):
+def do_plot_impulse_responses(p,plot_prefix,aligner):
     """
-    aligner can be my_surf_pairwise_alignment or my_template_alignment
-    p is surfplot instance
-    plot_prefix is a string
-    method can be 'pairwise' or 'template'
-    lowdim_vertices can be 'true' or 'false'
+    Show the impulse response of a functional alignment matrix. That is, how a small circular ROI activation is transformed by alignment.
+
+    Parameters
+    ----------
+    p: hcpalign_utils.surfplot instance
+    plot_prefix: string
+    aligner: fmralign.SurfacePairwiseAlignment object
     """
     verticesx=[1,2,3,4,5,6,7,8,29696+1,29696+2,29696+3,29696+4,29696+5,29696+6,29696+7,29696+8]
     for radius in [1]: #default [0,2]
