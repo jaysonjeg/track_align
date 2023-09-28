@@ -25,10 +25,10 @@ if __name__=='__main__':
     available_tasks=hutils.tasks 
 
     def align_and_classify(\
-        c,t,verbose,save_string, subs, imgs_align, imgs_decode, n_jobs=-1,MSMAll=False, method='pairwise',alignment_method='scaled_orthogonal',alignment_kwargs={}, per_parcel_kwargs={}, gamma=0, absValueOfAligner=False, scramble_aligners=False,post_decode_fwhm=0, imgs_template=None, lowdim_template=False,\
+        c,t,verbose,save_string, subs, imgs_align, imgs_decode, n_bags=1, n_jobs=-1,MSMAll=False, method='pairwise',alignment_method='scaled_orthogonal',alignment_kwargs={}, per_parcel_kwargs={}, gamma=0, absValueOfAligner=False, scramble_aligners=False,post_decode_fwhm=0, imgs_template=None, lowdim_template=False,n_bags_template=1, gamma_template=0,
         args_template={'n_iter':1,'do_level_1':False,'normalize_imgs':None,'normalize_template':None,'remove_self':False,'level1_equal_weight':False},\
         kfolds=5,load_pickle=False, save_pickle=False,\
-        plot_any=False, plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_aligner=False):
+        plot_type='open_in_browser', plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_aligner=False):
         """
         c: a hcpalign_utils.clock object
         t: If a hcpalign_utils.cprint object is given here, will print to both console and text file 
@@ -39,6 +39,8 @@ if __name__=='__main__':
         subs: list of subject IDs
         imgs_align: list of alignment data (subs_indices) (nvertices,nsamples) for each subject
         imgs_decode: list of decoding data (subs_indices) (ncontrasts,nvertices) for each subject
+        n_bags: integer, optional (default = 1)
+            Number of bags to use for bagging. If n_bags > 1, then make n_bags bootstrap resamples (sampling rows) of source and target image data. Each bag produces a different alignment matrix which are subsequently averaged. 
         n_jobs: processor cores for a single source to target pairwise aligment (1 parcel per thread) (my PC has 12), ie for the 'inner loop'. -1 means use all cores
         nparcs: no. of parcels. Subjects aligned within each parcel
         MSMAll: False for MSMSulc
@@ -62,7 +64,7 @@ if __name__=='__main__':
             to load precalculated aligner
         save_pickle: bool
             to save aligner as pickle object
-        plot_any #plot anything at all, or not
+        plot_type: 'open_in_browser' or 'save_to_html'
         plot_impulse_response #to plot aligned image of circular ROIs
         plot_contrast_maps #to plot task contrast maps (predicted through alignment)
         plot_scales #to plot scale parameter for Procrustes aligner
@@ -93,9 +95,9 @@ if __name__=='__main__':
             import pickle      
         hutils.mkdir(f'{intermediates_path}/alignpickles')
         save_pickle_filename=ospath(f'{intermediates_path}/alignpickles/{save_string}.p')                          
-        if plot_any:
-            plot_dir=f'/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/figures/hcpalign/{save_string}'
-            p=hutils.surfplot(plot_dir,plot_type='open_in_browser')
+        if  plot_impulse_response or plot_contrast_maps or plot_scales:
+            plot_dir=f'{results_path}/figures/hcpalign/{save_string}'
+            p=hutils.surfplot(plot_dir,plot_type=plot_type)
         if load_pickle: assert(os.path.exists(ospath(save_pickle_filename)))
 
         #Get parcellation and classifier
@@ -113,7 +115,7 @@ if __name__=='__main__':
                 aligners = pickle.load(open(ospath(save_pickle_filename), "rb" ))
             else:      
                 vprint(f'{c.time()}: Calculate aligners')   
-                aligners = hutils.get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_jobs,alignment_kwargs,per_parcel_kwargs,gamma,absValueOfAligner)
+                aligners = hutils.get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_bags,n_jobs,alignment_kwargs,per_parcel_kwargs,gamma,absValueOfAligner)
                 if save_pickle: 
                     pickle.dump(aligners,open(save_pickle_filename,"wb"))
             vprint(hutils.memused())  
@@ -129,12 +131,13 @@ if __name__=='__main__':
                 vprint('loading aligner')
                 aligners = pickle.load(open(ospath(save_pickle_filename), "rb" ))
             else:                
-                aligners=TemplateAlignment(alignment_method,clustering=clustering,alignment_kwargs={},per_parcel_kwargs={})
+                aligners=TemplateAlignment(alignment_method,clustering=clustering,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs)
                 if lowdim_template:
-                    aligners.make_lowdim_template(clustering,imgs_template)
+                    aligners.make_lowdim_template(imgs_template,clustering,n_bags=n_bags_template)
                 else:
-                    aligners.make_template(imgs_template,**args_template,gamma=gamma)
-                aligners.fit_to_template(imgs_align,gamma=gamma)
+                    aligners.make_template(imgs_template,n_bags=n_bags_template,**args_template,gamma=gamma_template)
+                vprint('{} Make template done'.format(c.time())) 
+                aligners.fit_to_template(imgs_align,n_bags=n_bags,gamma=gamma)
                 vprint(hutils.memused()) 
                 if absValueOfAligner:
                     [aligners.estimators[j].absValue() for j in range(len(aligners.estimators))]
@@ -147,18 +150,17 @@ if __name__=='__main__':
                 
             #aligners.estimators is list(subs_indices) of SurfacePairwiseAlignments, from each subj to template       
             imgs_decode_aligned=[post_decode_smooth(aligners.transform(imgs_decode[i],i)) for i in range(len(imgs_decode))]
-            if plot_any:
-                if plot_impulse_response:
-                    source=0 #aligner for plot is sub 0 to template
-                    aligner = aligners.estimators[source] 
-                    hutils.do_plot_impulse_responses(p,'',aligner)
-                if plot_contrast_maps:
-                    for i in range(1):
-                        for contrast in [3]: #Visualise predicted contrast map   
-                            p.plot(imgs_decode[i][contrast,:],'Con{}_sub{}'.format(contrast,i))
-                            p.plot(imgs_decode_aligned[i][contrast,:],'_Con{}_subTemplate_from_sub{}'.format(contrast,i))
-                if plot_scales:
-                    p.plot(hutils.aligner_get_scale_map(aligners.estimators[source])) #plot scale parameter for Procrustes aligner
+            if plot_impulse_response:
+                ratio_within_roi_first = hutils.do_plot_impulse_responses(p,'FirstSub',aligners.estimators[0]) #aligner for plot is sub 0 to template
+                ratio_within_roi_last = hutils.do_plot_impulse_responses(p,'LastSub',aligners.estimators[-1]) #aligner for plot is last sub to template
+                t.print(f'Ratios within ROI: First sub {ratio_within_roi_first:.2f}, Last sub {ratio_within_roi_last:.2f}')
+            if plot_contrast_maps:
+                for i in range(1):
+                    for contrast in [3]: #Visualise predicted contrast map   
+                        p.plot(imgs_decode[i][contrast,:],'Con{}_sub{}'.format(contrast,i))
+                        p.plot(imgs_decode_aligned[i][contrast,:],'_Con{}_subTemplate_from_sub{}'.format(contrast,i))
+            if plot_scales:
+                p.plot(hutils.aligner_get_scale_map(aligners.estimators[0])) #plot scale parameter for Procrustes aligner
 
             del aligners
             vprint('{} Template transform done'.format(c.time()))
@@ -192,9 +194,10 @@ if __name__=='__main__':
                 vprint('Subgroup mean classification accuracy {:.2f}'.format(np.mean([np.mean(i) for i in classification_scores])))  
             """
         
-        if plot_any and plot_impulse_response and method == 'pairwise': 
+        if plot_impulse_response and method == 'pairwise': 
             aligner = next(iter(aligners.values()))
-            hutils.do_plot_impulse_responses(p,'',aligner)
+            ratio_within_roi = hutils.do_plot_impulse_responses(p,'',aligner)
+            t.print(f'Ratio within ROI {ratio_within_roi:.2f}')
         
         vprint(hutils.memused())
         vprint(f'{c.time()} Classifications done')
@@ -209,52 +212,61 @@ if __name__=='__main__':
         c=hutils.clock()   
 
         #### General Parameters
-        sub_slice = slice(0,2)
+        sub_slice = slice(0,10)
         parcellation_string = 'S300' #S300, K1000, MMP
         MSMAll=False
         save_pickle=False
         load_pickle=False #use saved aligner
-        verbose=False
+        verbose=True
         post_decode_fwhm=0
+
+        #### Parameters for doing functional alignment
+        method='template' #anat, intra_subject, pairwise, template
+        alignment_method='scaled_orthogonal' #scaled_orthogonal, permutation, optimal_transport, ridge_cv
+        alignment_kwargs = {}
+        per_parcel_kwargs={}
+        n_bags=1
+        gamma=0
 
         #### Parameters for alignment data
         align_with='movie'
-        runs=[0]
+        runs=[0,1,2,3]
         align_fwhm=0
         align_clean=True
 
         #### Parameters for making template (ignored if method!='template')
-        subs_template_slice=slice(0,2)
+        subs_template_slice=slice(10,20)
         lowdim_template=False
-        args_template = {'n_iter':1,'do_level_1':False,'normalize_imgs':None,'normalize_template':None,'remove_self':False,'level1_equal_weight':False}
+        n_bags_template=1
+        gamma_template=0
+        args_template_dict = {'hyperalignment':{'n_iter':1,'do_level_1':True, 'normalize_imgs':'zscore', 'normalize_template':'zscore', 'remove_self':True, 'level1_equal_weight':False},\
+                              'GPA': {'n_iter':1,'do_level_1':False,'normalize_imgs':'rescale','normalize_template':'rescale','remove_self':False,'level1_equal_weight':False}}
+        args_template = args_template_dict['GPA']
 
-        #### Parameters for doing functional alignment
-        method='pairwise' #anat, intra_subject, pairwise, template
-        alignment_method='scaled_orthogonal' #scaled_orthogonal, permutation, optimal_transport, ridge_cv
-        alignment_kwargs = {'scaling':True}
-        per_parcel_kwargs={}
-        #gamma=0
-
-        subs,sub_slice_string,subs_template,subs_template_slice_string = hutils.get_subjects(sub_slice,subs_template_slice) #get subject IDs
+        subs,sub_slice_string = hutils.get_subjects(sub_slice) #get subject IDs
         imgs_align,imgs_decode,align_string,decode_string = hutils.get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle)
-        imgs_template,template_string = hutils.get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template)
+
+        subs_template,subs_template_slice_string = hutils.get_subjects(subs_template_slice) 
+        imgs_template,template_string = hutils.get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template)
 
         print(f"{c.time()} Getting all data done")
-        print(hutils.memused())
-        for gamma in [0,0.1]:
-            method_string=hutils.alignment_method_string(method,alignment_method,alignment_kwargs,per_parcel_kwargs,gamma)
+        print(hutils.memused())   
+
+        method="pairwise"
+        alignment_method='optimal_transport'
+        for reg in [0.001,0.01,0.1,1,10,100,100,1000]: 
+            alignment_kwargs = {'reg':reg}  
+            method_string=hutils.alignment_method_string(method,alignment_method,alignment_kwargs,per_parcel_kwargs,n_bags,gamma)
             save_string = f"A{align_string}_D{decode_string}_{parcellation_string}{template_string}_{method_string}_{sub_slice_string}_{post_decode_fwhm}"
 
-            t.print(f"Start {save_string}")
-            scores = align_and_classify(c,t,verbose,save_string, subs, imgs_align, imgs_decode, method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma,post_decode_fwhm=post_decode_fwhm,save_pickle=save_pickle,load_pickle=load_pickle,n_jobs=+1,imgs_template=imgs_template,lowdim_template=lowdim_template,args_template=args_template,plot_any=False, plot_impulse_response=False, plot_contrast_maps=False)
-
-            t.print(f"\nDone with {save_string}")
-            t.print(f'Classification accuracies: ', end= "")
+            t.print(f"{c.time()}: Start {save_string}")
+            scores = align_and_classify(c,t,verbose,save_string, subs, imgs_align, imgs_decode, method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma,post_decode_fwhm=post_decode_fwhm,save_pickle=save_pickle,load_pickle=load_pickle,n_bags=n_bags,n_jobs=+1,imgs_template=imgs_template,lowdim_template=lowdim_template,n_bags_template=n_bags_template,gamma_template=gamma_template,args_template=args_template,plot_type='save_as_html',plot_impulse_response=False, plot_contrast_maps=False)
+            print('\n')
+            t.print(f"{c.time()}: Done with {save_string}")
+            mean_accuracy = np.mean([np.mean(i) for i in scores])
+            t.print(f'Classification accuracies: mean {mean_accuracy:.2f}, [', end= "")
             for score in scores:
-                t.print(f"{score:.2f} ", end="")
-            t.print('\nMean classification accuracy {:.2f}'.format(np.mean([np.mean(i) for i in scores])))
-
-            t.print('')  
-
-    
+                t.print(f"{score:.2f},", end="")
+            t.print(']')
+        
     print('\a') #beep sounds 

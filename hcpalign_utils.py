@@ -220,14 +220,19 @@ def get_task_data(subs,tasks,MSMAll=False):
     labels = [np.array(range(i.shape[0])) for i in imgs_decode] #since the exact label names are not important, just use the contrast number as the label     
     return imgs_decode, decode_string  
 
+def get_subjects(sub_slice):
+    subs=all_subs[sub_slice]
+    sub_slice_string = f'sub{sub_slice.start}to{sub_slice.stop}'
+    return subs,sub_slice_string
 
+"""
 def get_subjects(sub_slice,subs_template_slice):
     subs=all_subs[sub_slice]
     sub_slice_string = f'sub{sub_slice.start}to{sub_slice.stop}'
     subs_template = all_subs[subs_template_slice] 
     subs_template_slice_string = f'sub{subs_template_slice.start}to{subs_template_slice.stop}'
     return subs,sub_slice_string,subs_template,subs_template_slice_string
-
+"""
 def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle):
     #### Get alignment data. List (nsubjects) of alignment data (nsamples,nvertices)
     print(f"{c.time()} Get alignment data start")
@@ -250,28 +255,46 @@ def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMA
     """
     return imgs_align,imgs_decode,align_string,decode_string
 
-def get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template):
+def get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template):
     #### Get template-making alignment data. List (nsubjects) of data (nsamples,nvertices)
     print(f"{c.time()} Get template-making data start")  
     if method=='template':
-        imgs_template, template_imgtype_string = get_movie_or_rest_data(subs_template,align_with,run=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle) #load_pickle=True means return string only
-        template_string = f'_T{template_imgtype_string}{subs_template_slice_string}_{get_template_making_string(lowdim_template,args_template)}'
+        imgs_template, template_imgtype_string = get_movie_or_rest_data(subs_template,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle) #load_pickle=True means return string only
+        template_string = f'_T{template_imgtype_string}{subs_template_slice_string}_{get_template_making_string(lowdim_template,args_template,n_bags_template,gamma_template)}'
     else:
         imgs_template, template_string = None, ''
     return imgs_template,template_string
 
-def get_template_making_string(lowdim_template,args):
+def get_template_making_string(lowdim_template,args,n_bags_template,gamma_template):
     """
     Return short string describing how template was made
     """
     dict2 = {'rescale':'r','zscore':'z',None:'n'}
-    return f"{logical2str[lowdim_template]}{args['n_iter']}{logical2str[args['do_level_1']]}{logical2str[args['remove_self']]}{logical2str[args['level1_equal_weight']]}{dict2[args['normalize_imgs']]}{dict2[args['normalize_template']]}"
+    string=""
+    if lowdim_template:
+        string = 'L'
+    else:
+        if args['do_level_1']==True:
+            template_type_string = 'H'
+        else:
+            template_type_string = 'G'
+        string += f"{template_type_string}{args['n_iter']}{logical2str[args['remove_self']]}{logical2str[args['level1_equal_weight']]}{dict2[args['normalize_imgs']]}{dict2[args['normalize_template']]}"
+        if gamma_template!=0:
+            string+=f"gam{gamma_template}"
+    if n_bags_template!=1:
+        string+=f"b{n_bags_template}"
 
-def alignment_method_string(method,alignment_method,alignment_kwargs,per_parcel_kwargs,gamma):
+    return string
+
+def alignment_method_string(method,alignment_method,alignment_kwargs,per_parcel_kwargs,n_bags,gamma):
     """
     Returns a string describing keyword arguments passed to SurfacePairwiseAlignment
     """
     string=f"{method[0:4].capitalize()}{alignment_method[0:4].capitalize()}_"
+    if n_bags!=1:
+        string+=f"b{n_bags}"
+    if gamma!=0:
+        string+=f"gam{gamma}"
     if 'scaling' in alignment_kwargs:
         string += f"sc{logical2str[alignment_kwargs['scaling']]}"
     if 'scca_alpha' in alignment_kwargs:
@@ -279,18 +302,16 @@ def alignment_method_string(method,alignment_method,alignment_kwargs,per_parcel_
     if 'promises_k' in alignment_kwargs:
         string += f"ProM{alignment_kwargs['promises_k']}"
     if 'alphas' in alignment_kwargs:
-        string += f"alphas"
+        string += f"alphas{alignment_kwargs['alphas']}"
     if 'reg' in alignment_kwargs:
         string += f"reg{alignment_kwargs['reg']}"
     if 'max_iter' in alignment_kwargs:
         string += f"maxiter{alignment_kwargs['max_iter']}"
     if 'tol' in alignment_kwargs:
         string += f"tol{alignment_kwargs['tol']}"
-    if gamma:
-        string+=f"gam{gamma}"
     return string
 
-def get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_jobs,alignment_kwargs,per_parcel_kwargs,gamma,absValueOfAligner):
+def get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_bags,n_jobs,alignment_kwargs,per_parcel_kwargs,gamma,absValueOfAligner):
     """
     Calculate alignment transformations between all pairs of subjects. First find all aligners for all pairs of subjects and put them in a list 'temp'. Then assign each aligner to a dictionary 'aligners' with keys '100610-102310', '100610-102816', etc.
     INPUTS:
@@ -306,9 +327,10 @@ def get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_jobs
     import itertools
     subs_indices = np.arange(len(subs))
     def initialise_aligner():
-        aligner=SurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads. MAKE IT PROCESSES!???
+        aligner=SurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_bags=n_bags,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads. MAKE IT PROCESSES!???
         return aligner
     def fit_aligner(source_align, target_align, absValueOfAligner, aligner):
+        #print(memused()) 
         aligner.fit(source_align, target_align)
         if absValueOfAligner: aligner_absvalue(aligner)
         return aligner
@@ -1129,22 +1151,28 @@ def plot_parc_multi(p,align_parc_matrix,strings,values):
         plot_parc(p,align_parc_matrix,value,string)
 
 
-def do_plot_impulse_responses(p,plot_prefix,aligner):
+def do_plot_impulse_responses(p,plot_prefix,aligner,radius=1,vertices=None):
     """
-    Show the impulse response of a functional alignment matrix. That is, how a small circular ROI activation is transformed by alignment.
+    Show the impulse response of a functional alignment matrix. That is, how a small circular ROI activation is transformed by alignment. Also return the ratio of the vector norm of the map that is contained within the original ROI.
 
     Parameters
     ----------
     p: hcpalign_utils.surfplot instance
     plot_prefix: string
     aligner: fmralign.SurfacePairwiseAlignment object
+    radius: float
+        radius of the ROI in mm
     """
-    verticesx=[1,2,3,4,5,6,7,8,29696+1,29696+2,29696+3,29696+4,29696+5,29696+6,29696+7,29696+8]
-    for radius in [1]: #default [0,2]
-        s=surfgeoroi(verticesx,radius)
-        t=aligner.transform(s[None,:])[0]     
-        p.plot(s, f"{plot_prefix}_roi_source{radius}",symmetric_cmap=True)
-        p.plot(np.squeeze(t),f"{plot_prefix}_roi_target{radius}",symmetric_cmap=True)
+    if vertices is None:
+        vertices_L = [1,2,5,6,8,9,17500] #[1,2,3,4,5,6,7,8,29696+1,29696+2,29696+3,29696+4,29696+5,29696+6,29696+7,29696+8]
+        vertices_R = [29696 + i for i in vertices_L]
+        vertices = vertices_L + vertices_R
+    s=surfgeoroi(vertices,radius)
+    t=aligner.transform(s[None,:])[0]     
+    p.plot(s, f"x{plot_prefix}_roi_source{radius}",symmetric_cmap=True)
+    p.plot(np.squeeze(t),f"x{plot_prefix}_roi_target{radius}",symmetric_cmap=True)
+    ratio_within_roi = np.linalg.norm(t[s!=0]) / np.linalg.norm(t) #what proportion of the spatial map's 'norm' is within the original ROI? High value means the aligner is highly spatially regularized
+    return ratio_within_roi
 
 
 

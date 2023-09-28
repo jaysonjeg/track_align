@@ -6,30 +6,14 @@ import hcpalign_utils as hutils
 from joblib import Parallel, delayed
 #from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
-
-"""
-from fmralign.pairwise_alignment import fit_one_piece
-X = np.random.random((100,200))
-Y = np.random.random((100,200))
-z = fit_one_piece(X, Y, 2, 'ridge_cv',{'alphas':[0.1]})
-assert(0)
-"""
-
-
-"""
-
-[i[0].R[0,1] for i in alignment_algos_per_bag]
-np.mean([i.R[0,1] for i in alignment_algos_per_bag])
-alignment_algo.R[0,1]
-"""
-
 p=hutils.surfplot('',plot_type='open_in_browser')
 c=hutils.clock()
 hcp_folder=hutils.hcp_folder
 intermediates_path=hutils.intermediates_path
 results_path=hutils.results_path
 
-subs=hutils.subs[slice(0,2)]
+subs=hutils.all_subs[slice(0,2)]
+subs_template=hutils.all_subs[slice(3,6)]
 nsubs = np.arange(len(subs)) #number of subjects
 
 post_decode_smooth=hutils.make_smoother_100610(0)
@@ -44,16 +28,22 @@ classifier=LinearSVC(max_iter=10000,dual='auto')
 print(f'{c.time()}: Done loading data')
 
 
-#Example: Template alignment
+#Example: Template alignmentx
 """
 from fmralign.template_alignment import TemplateAlignment
+imgs_template,template_align_string = hutils.get_movie_or_rest_data(subs_template,'movie',runs=[0],fwhm=0,clean=True,MSMAll=False)
 aligners = TemplateAlignment('scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':True})
-#aligners.make_template(imgs_align,n_iter=1,do_level_1=False,level1_equal_weight=False,normalize_imgs=None,normalize_template=None,remove_self=False,gamma=0.3)
-aligners.make_lowdim_template(clustering,imgs_align)
-aligners.fit_to_template(imgs_align,gamma=0.3)
-print(aligners.estimators[0].fit_[0].R[0:2,0:2])
-"""
+#aligners.make_template(imgs_template,n_iter=1,do_level_1=False,level1_equal_weight=False,normalize_imgs='zscore',normalize_template='zscore',remove_self=False,gamma=0)
+#aligners.template = np.mean(imgs_template,axis=0)
+aligners.make_lowdim_template(imgs_template,clustering,n_bags=1)
+print(f'{c.time()}: Start fitting')
 
+aligners.fit_to_template(imgs_align,n_bags=1,gamma=0)
+print(aligners.estimators[0].fit_[0].R[0:2,0:2])
+ratio_within_roi = hutils.do_plot_impulse_responses(p,'',aligners.estimators[0])
+print(f'Ratio within ROI: {ratio_within_roi:.2f}')
+assert(0)
+"""
 
 #Preparation for ProMises model
 nparcs=parcellation_string[1:]
@@ -66,17 +56,15 @@ promises_F = [np.exp(-i) for i in gdists] #local distance matrix in ProMises mod
 
 #Procrustes alignment with SCCA parameter alpha, and ProMises model
 from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
-#aligner = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',n_bags=1,clustering=clustering,alignment_kwargs ={'scaling':True,'scca_alpha':1,'promises_k':promises_k},per_parcel_kwargs={'promises_F':promises_F}) 
-
-aligner = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',n_bags=3,clustering=clustering,alignment_kwargs ={}) 
-
+#aligner = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',n_bags=1,clustering=clustering,alignment_kwargs ={'scaling':True,'scca_alpha':1,'promises_k':promises_k},per_parcel_kwargs={'promises_F':promises_F},gamma=1) 
+aligner = SurfacePairwiseAlignment(alignment_method='optimal_transport',n_bags=1,clustering=clustering,gamma=1) 
 aligner.fit(imgs_align[0],imgs_align[1]) 
-print(aligner.fit_[0].R[0,0:2])
+print(aligner.fit_[0].R[0:3,0:3])
+
+ratio_within_roi = hutils.do_plot_impulse_responses(p,'',aligner)
+print(f'Ratio within ROI: {ratio_within_roi:.2f}')
 
 print(f'{c.time()}: Done fitting alignment')
-
-hutils.do_plot_impulse_responses(p,'',aligner)
-
 
 #Old methods
 """
