@@ -35,12 +35,14 @@ for n_clusters in [100,200,300,400,500,600,700,800,900,1000]:
 """  
 
 #visualise
-"""
-labels=hutils.Schaefer(300)
-matrix=hutils.Schaefer_matrix(300)
-p=hutils.surfplot('',mesh=hcp.mesh.inflated,plot_type='open_in_browser',cmap='prism')
-p.plot(labels,cmap='prism')
-"""
+p=hutils.surfplot(hutils.results_path,mesh=hcp.mesh.inflated,plot_type='save_as_html',cmap='prism')
+shuf_cmap = hutils.shuffle_colormap('tab20',upsample=500)
+
+
+for nparcs in [100,300,600,1000]:
+    labels=hutils.Schaefer(nparcs)
+    matrix=hutils.Schaefer_matrix(nparcs)
+    p.plot(labels,cmap=shuf_cmap,savename=f'schaefer_{nparcs}parcs')
 
 #Code to find mean diameter (max euc dist between two points) across parcels in a parcellation
 """

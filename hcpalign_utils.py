@@ -93,6 +93,24 @@ class cprint():
         print(*args,**kwargs)
         sys.stdout=temp #set stdout back to console output
 
+def shuffle_colormap(cmap_string,upsample=500):
+    """
+    Given a named matplotlib colormap, upsample the indices then shuffle the indices to return a new colormap where the colors are shuffled. This has the effect that adjacent indices are likely to be mapped to different colors
+    Parameters
+    ----------
+    cmap_string: string, name of a matplotlib colormap, e.g. 'tab20'
+    upsample: int, number of indices in the new colormap 
+    """
+
+    import matplotlib as mpl
+    from matplotlib.colors import ListedColormap
+    cmap=mpl.colormaps[cmap_string].resampled(upsample)
+    inds = np.arange(cmap.N)
+    np.random.shuffle(inds)
+    shuf_cols = cmap(inds)
+    shuf_cmap = ListedColormap(shuf_cols)
+    return shuf_cmap 
+
 def get_filenames(func_type,func_nruns):
     if func_type=='movie':
         filenames = [movies[i] for i in func_nruns]
@@ -117,6 +135,7 @@ def get_timeseries_cachepath(sub,ts_type,filename,MSMAll,dtype):
     MSMString=MSMlogical2str[MSMAll]
     return f'{intermediates_path}/hcp_timeseries/{sub}_{filename}{MSMString}'
 
+
 def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_preproc):
     """
     Returns an array containing fMRI time series
@@ -132,7 +151,8 @@ def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_preproc):
     imgs_align_sub=[from_cache(get_timeseries_cachepath,get_timeseries,sub,ts_type,filename,MSMAll,dtype,load=True,save=True) for filename in filenames]   
     if ts_type=='movie':   
         movieVidVols = [movieVolumeSelect(v,10,10) for v in movieVidTimes] #get list of all movie volumes to be included  
-        imgs_align_sub = [imgs_align_sub[i][movieVidVols[i],:] for i in range(len(imgs_align_sub))]
+        movie_index = lambda string: np.where([string==i for i in movies])[0][0] 
+        imgs_align_sub = [imgs_align_sub[i][movieVidVols[movie_index(filenames[i])],:] for i in range(len(imgs_align_sub))]
     #Following only relevant if X_clean=True
     clean_each_movie_separately=True
     if clean_each_movie_separately:
@@ -233,8 +253,73 @@ def get_subjects(sub_slice,subs_template_slice):
     subs_template_slice_string = f'sub{subs_template_slice.start}to{subs_template_slice.stop}'
     return subs,sub_slice_string,subs_template,subs_template_slice_string
 """
+
+def get_decode_data(c,subs,decode_with,align_fwhm,align_clean,MSMAll,decode_ncomponents=None,standardize=None,demean=True,unit_variance=False,parcellation_string=None,use_parcelmeanstds=False):
+    """
+    Get decoding data. List (nsubjects) of decode data (ncontrasts, nvertices)
+
+    Parameters:
+    ----------
+    subs: list of subject IDs
+    decode_with: string, 'task' or 'movie'
+    align_fwhm: float, spatial smoothing kernel mm
+    align_clean: bool, True for standardization and detrending
+    MSMAll: bool, True/False
+    decode_ncomponents: int
+        if int is provided, do PCA to reduce nsamples
+    standardize: None, 'wholebrain', 'parcel'
+        if 'wholebrain', standardize each sample across all vertices
+        if 'parcel', standardize each sample within each parcel
+    demean: bool, True/False
+        relevant if standardize!=None
+    unit_variance: bool, True/False
+        relevant if standardize!=None
+    parcellation_string: string , e.g. 'S300'
+        relevant if standardize!=None
+    use_parcelmeanstds: bool, True/False
+        if True, return parcel mean and std for each sample for usage in classification later
+    """
+    print(f"{c.time()} Get decoding data start")
+    if decode_with=='tasks': #task fMRI contrasts
+        imgs_decode,decode_string = get_task_data(subs,tasks[0:7],MSMAll=MSMAll)
+    elif decode_with=='movie': #### Decode movie viewing data instead
+        print("Decode data is movie viewing runs 2 and 3")
+        imgs_decode,decode_string = get_movie_or_rest_data(subs,'movie',runs=[2,3],fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll)
+    if decode_ncomponents is not None:
+        print(f"{c.time()} Decode data, PCA start")
+        imgs_decode, string = reduce_dimensionality_samples(c,imgs_decode,ncomponents=decode_ncomponents,method='pca')
+        print(f"Keep last 20 out of {decode_ncomponents} components")
+        imgs_decode=[i[-20:] for i in imgs_decode] #only keep last 20 out of decode_ncomponents PCA components, to make classification task harder
+        string+=f"to20"
+        print(f"{c.time()} Decode data, PCA, end")
+        decode_string = f'{decode_string}{string}'
+
+    if use_parcelmeanstds: 
+        clustering = parcellation_string_to_parcellation(parcellation_string)
+        imgs_decode_meanstds = [get_parcelwise_mean_and_std(img,clustering) for img in imgs_decode]
+        decode_string = f'{decode_string}&ms'
+    else: 
+        imgs_decode_meanstds = None
+
+    if standardize == 'wholebrain':
+        if unit_variance:
+            from scipy.stats import zscore
+            imgs_decode = [zscore(i,axis=1) for i in imgs_decode]
+        else:
+            imgs_decode = [i - np.mean(i, axis=1, keepdims=True) for i in imgs_decode]
+    elif standardize == 'parcel':
+        clustering = parcellation_string_to_parcellation(parcellation_string)
+        parc_matrix = parcellation_string_to_parcmatrix(parcellation_string)
+        imgs_decode = [standardize_image_parcelwise(img,clustering,parc_matrix,demean=demean,unit_variance=unit_variance) for img in imgs_decode]
+    if standardize is not None:
+        decode_string = f'{decode_string}{standardize[0].capitalize()}{logical2str[demean]}{logical2str[unit_variance]}'
+
+    return imgs_decode,decode_string, imgs_decode_meanstds
+
 def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle):
-    #### Get alignment data. List (nsubjects) of alignment data (nsamples,nvertices)
+    """
+    Get alignment data. List (nsubjects) of alignment data (nsamples,nvertices)
+    """
     print(f"{c.time()} Get alignment data start")
     if method=='anat': 
         align_string='anat'
@@ -242,18 +327,9 @@ def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMA
     else:
         imgs_align, align_string = get_movie_or_rest_data(subs,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle) #load_pickle=True means return string only
     #imgs_align,align_string = get_aligndata_highres_connectomes(c,subs,MSMAll,{'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':16000 , 'fwhm_circ':3 })  
-        
-    #### Get decoding data. List (nsubjects) of decode data (ncontrasts, nvertices)
-    print(f"{c.time()} Get decoding data start")
-    imgs_decode,decode_string = get_task_data(subs,tasks[0:7],MSMAll=MSMAll)
 
-    #### Decode movie viewing data instead
-    """
-    imgs_decode,decode_string = hutils.get_movie_or_rest_data(subs,'movie',runs=[1],fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll)
-    imgs_decode, string = hutils.reduce_dimensionality_samples(c,imgs_decode,ncomponents=20,method='pca')
-    decode_string = f'{decode_string}{string}'
-    """
-    return imgs_align,imgs_decode,align_string,decode_string
+    return imgs_align,align_string
+
 
 def get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template):
     #### Get template-making alignment data. List (nsubjects) of data (nsamples,nvertices)
@@ -326,15 +402,13 @@ def get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_bags
     from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
     import itertools
     subs_indices = np.arange(len(subs))
-    def initialise_aligner():
-        aligner=SurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_bags=n_bags,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma)  #faster if fmralignbench/surf_pairwise_alignment.py/fit_parcellation uses processes not threads. MAKE IT PROCESSES!???
-        return aligner
-    def fit_aligner(source_align, target_align, absValueOfAligner, aligner):
-        #print(memused()) 
+    def init_and_fit_aligner(source_align, target_align, absValueOfAligner):
+        aligner=SurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_bags=n_bags,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma)
         aligner.fit(source_align, target_align)
         if absValueOfAligner: aligner_absvalue(aligner)
         return aligner
-    temp=Parallel(n_jobs=-1,prefer='processes')(delayed(fit_aligner)(imgs_align[source],imgs_align[target], absValueOfAligner, initialise_aligner()) for source,target in itertools.permutations(subs_indices,2))
+    temp=Parallel(n_jobs=-1,prefer='processes')(delayed(init_and_fit_aligner)(imgs_align[source],imgs_align[target], absValueOfAligner) for source,target in itertools.permutations(subs_indices,2))
+
     aligners={}
     index=0
     for source,target in itertools.permutations(subs_indices,2):
@@ -342,6 +416,7 @@ def get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_bags
         index +=1
     del temp
     return aligners
+
 
 from sklearn.base import clone
 def classify_pairwise(target,subs_indices,labels,target_decode,aligned_sources_decode,classifier):
@@ -361,7 +436,7 @@ def classify_pairwise(target,subs_indices,labels,target_decode,aligned_sources_d
     return clf.score(target_decode, target_labels)
 
 
-def transform_all_decode_data(subs,imgs_decode,aligners,post_decode_smooth):
+def transform_all_decode_data(subs,imgs_decode,aligners,post_decode_smooth,imgs_decode_meanstds=None,stack=True):
     """
     Transform decode data for all non-target subjects to the functional space of a target subject. Repeat this, using a different target subject each time.
 
@@ -376,6 +451,10 @@ def transform_all_decode_data(subs,imgs_decode,aligners,post_decode_smooth):
         Key "100610-102310" points to the transformation from subject 100610 to subject 102310    
     post_decode_smooth: function
         To spatially smooth data after transformation
+    imgs_decode_meanstds: list
+        list (nsubjects) of parcel mean and std for each sample for usage in classification later
+    stack: bool
+        if True, stack the decode data of all non-target subjects
 
     Returns
     ----------
@@ -390,8 +469,13 @@ def transform_all_decode_data(subs,imgs_decode,aligners,post_decode_smooth):
         for source in sources:
             source_decode = imgs_decode[source]
             aligner=aligners[f'{subs[source]}-{subs[target]}'] 
-            aligned_sources_decode.append( post_decode_smooth(aligner.transform(source_decode)) )
-        aligned_sources_decode = np.vstack(aligned_sources_decode) #(ncontrasts*nleftoutsubjects,nvertices)
+            source_decode_aligned = post_decode_smooth(aligner.transform(source_decode))
+            if imgs_decode_meanstds is not None:
+                source_decode_meanstds = imgs_decode_meanstds[source]
+                source_decode_aligned = np.hstack([source_decode_aligned,source_decode_meanstds])
+            aligned_sources_decode.append(source_decode_aligned)
+        if stack:
+            aligned_sources_decode = np.vstack(aligned_sources_decode) #(ncontrasts*nleftoutsubjects,nvertices)
         all_aligned_sources_decode.append(aligned_sources_decode)
     return all_aligned_sources_decode
 
@@ -462,18 +546,16 @@ def get_all_FC(subs,args):
 
 def reduce_dimensionality_samples(c,imgs_align,ncomponents,method):
     """
-    Reduce alignment data dimensionality in axis 0 (nsamples,ntimepoints)
+    Reduce data dimensionality in axis 0 (nsamples,ntimepoints)
     """
     from sklearn.decomposition import PCA,FastICA
-    print(f"{c.time()} reduce_dimensionality_samples start") 
     if method=='pca':
-        decomp=PCA(n_components=ncomponents,whiten=False)
+        decomp=PCA(n_components=ncomponents,whiten=False,random_state=0)
     elif method=='ica':
-        decomp=FastICA(n_components=ncomponents,max_iter=100000)
+        decomp=FastICA(n_components=ncomponents,max_iter=100000,random_state=0)
     temp=np.dstack(imgs_align).mean(axis=2) #mean of all subjects
     decomp.fit(temp.T)
-    imgs_align=[decomp.transform(i.T).T for i in imgs_align]
-    print(f"{c.time()} reduce_dimensionality_samples done") 
+    imgs_align=[decomp.transform(i.T).T for i in imgs_align]     
     return imgs_align, f'{method}{ncomponents}'
 
 
@@ -582,6 +664,28 @@ def jaccard_binomtest(x,y):
     result_binom=stats.binom_test(binom_k,binom_n,binom_p,alternative='greater')
     return result_binom
 
+def corr_rows_parcel(imgs_decode_parcel):
+    return np.dstack(Parallel(n_jobs=-1,prefer='processes')(delayed(corr_rows)(i,prefer='threads') for i in imgs_decode_parcel)) #array (nsamples,nsubjectpairs,nparcels)
+
+import itertools
+
+def corr_rows(x,prefer='threads'):
+    """
+    Given a list of 2D arrays (nsamples,nfeatures), one array for each subject, for each row index, for each pair of subjects, calculate the correlation coefficient between their corresponding rows
+
+    Parameters:
+    ----------
+    x: list (nsubjects) of arrays (nsamples,nfeatures)
+
+    Returns:
+    ----------
+    correlations: array (nsamples,nsubjectpairs)
+        correlations between rows of x
+    """
+    nsubjects=len(x)
+    #temp = [rowcorr_nonsparse(x[i].T,x[j].T) for i,j in itertools.combinations(range(nsubjects),2)] #list (nsubjectpairs) of arrays (nfeatures). Each array containing correlations between rows of x[i] and x[j]
+    temp = Parallel(n_jobs=-1,prefer=prefer)(delayed(rowcorr_nonsparse)(x[i].T,x[j].T) for i,j in itertools.combinations(range(nsubjects),2))
+    return np.vstack(temp).T
 
 def rowcorr(sp1, sp2):
     '''
@@ -602,7 +706,7 @@ def rowcorr(sp1, sp2):
         )
 
 def rowcorr_nonsparse(sp1,sp2):
-    """Non-sparse array version of above"""
+    """Non-sparse array version of above. Row here means axis 0 so it is actually columns"""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return np.divide(
@@ -917,6 +1021,50 @@ def standardize(array):
     array -= np.mean(array)
     array /= np.std(array)   
     return array
+
+
+def get_parcelwise_mean_and_std(img,clustering):
+        img_parcel = [img[:,clustering==i] for i in np.unique(clustering)] #divided into parcels
+        img_parcelsamplemeans = np.hstack([np.mean(array,axis=1,keepdims=True) for array in img_parcel]) #array (nsamples,nparcels) containing mean value for each parcel in each sample
+        img_parcelsamplestds = np.hstack([np.std(array,axis=1,keepdims=True) for array in img_parcel]) 
+        return np.hstack([img_parcelsamplemeans,img_parcelsamplestds]) #array (nsamples,2*nparcels) containing mean and std for each parcel in each sample
+
+def standardize_image_parcelwise(img,clustering,parc_matrix,demean=True,unit_variance=True):
+    """
+    Given some samples of brain images, standardize the data corresponding to each sample and each parcel. 
+    Parameters:
+    -----------
+    img: array of shape (nsamples,nfeatures)
+    clustering: array of shape (nfeatures,) 
+        Containing the parcel number for each feature
+    parc_matrix: array of shape (nfeatures,nvertices)
+        Each row contains a 1 in the columns corresponding to the vertices in the parcel
+    demean: bool
+        If True, subtract the mean of each parcel from each sample
+    unit_variance: bool 
+        If True, divide each sample by the standard deviation of each parcel
+
+    Returns:
+    ----------
+    img: array of shape (nsamples,nfeatures)
+        Standardized image data
+    img_parcelsamplemeans: array of shape (nsamples,nparcels)
+        Mean value for each parcel in each sample (return None if demean==False)
+    img_parcelsamplestds: array of shape (nsamples,nparcels)
+        Standard deviation for each parcel in each sample (return None if unit_variance==False)
+    """
+
+    img_parcel = [img[:,clustering==i] for i in np.unique(clustering)] #divided into parcels
+
+    if demean:
+        img_parcelsamplemeans = np.hstack([np.mean(array,axis=1,keepdims=True) for array in img_parcel]) #array (nsamples,nparcels) containing mean value for each parcel in each sample
+        img_parcelsamplemeans_vertices = img_parcelsamplemeans @ parc_matrix #array of same size as 'img', except now containing the means
+        img = img - img_parcelsamplemeans_vertices #means for each parcel and sample have been subtracted 
+    if unit_variance:
+        img_parcelsamplestds = np.hstack([np.std(array,axis=1,keepdims=True) for array in img_parcel]) 
+        img_parcelsamplestds_vertices = img_parcelsamplestds @ parc_matrix 
+        img = img / img_parcelsamplestds_vertices #divide by standard deviation to produce z-scores
+    return img
 
 def make_preproc(fwhm,ToClean,standardize,detrend,low_pass,high_pass,t_r):
     if ToClean:
@@ -1243,8 +1391,7 @@ def getloadavg():
 def memused(): #By Python
     import os, psutil
     process = psutil.Process(os.getpid())
-    return f'Python mem: {process.memory_info().rss/1e9:.1f} GB, PC mem: {psutil.virtual_memory()[3]/1e9:.1f}/{psutil.virtual_memory()[0]/1e9:.0f} GB'
-
+    return f'Python mem: {process.memory_info().rss/1e9:.2f} GB, PC mem: {psutil.virtual_memory()[3]/1e9:.2f}/{psutil.virtual_memory()[0]/1e9:.0f} GB'
 
 from scipy.stats import spearmanr as sp
 def corr2(a,b,corr_type='pearson'):

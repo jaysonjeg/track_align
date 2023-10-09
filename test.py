@@ -28,6 +28,27 @@ classifier=LinearSVC(max_iter=10000,dual='auto')
 print(f'{c.time()}: Done loading data')
 
 
+
+parc_matrix = hutils.parcellation_string_to_parcmatrix(parcellation_string)
+img = imgs_decode[0]
+img2 = hutils.standardize_image_parcelwise(img,clustering,parc_matrix,demean=True,unit_variance=True)
+
+print(img2[:,clustering==4].mean(axis=1)[0:3])
+print(img2[:,clustering==4].std(axis=1)[0:3])
+
+
+
+
+
+
+rowmeans = np.mean(img,axis=1,keepdims=True)
+rowstds = np.std(img,axis=1,keepdims=True)
+
+img_demeaned=img-rowmeans
+from scipy.stats import zscore
+img_standardized = zscore(img,axis=1)
+assert(0)
+
 #Example: Template alignmentx
 """
 from fmralign.template_alignment import TemplateAlignment
@@ -45,6 +66,7 @@ print(f'Ratio within ROI: {ratio_within_roi:.2f}')
 assert(0)
 """
 
+
 #Preparation for ProMises model
 nparcs=parcellation_string[1:]
 gdists_path=hutils.ospath(f'/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/AWS_studies/files0/intermediates/geodesic_distances/gdist_full_100610.midthickness.32k_fs_LR.S{nparcs}.p') #Get saved geodesic distances between vertices (for vertices in each parcel separately)
@@ -54,11 +76,15 @@ with open(gdists_path,'rb') as file:
 promises_k=0 #k parameter in ProMises model
 promises_F = [np.exp(-i) for i in gdists] #local distance matrix in ProMises model
 
-#Procrustes alignment with SCCA parameter alpha, and ProMises model
+#Procrustes alignment 
 from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
-#aligner = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',n_bags=1,clustering=clustering,alignment_kwargs ={'scaling':True,'scca_alpha':1,'promises_k':promises_k},per_parcel_kwargs={'promises_F':promises_F},gamma=1) 
-aligner = SurfacePairwiseAlignment(alignment_method='optimal_transport',n_bags=1,clustering=clustering,gamma=1) 
+aligner = SurfacePairwiseAlignment(alignment_method='ridge_cv',clustering=clustering,alignment_kwargs={'alphas':[1000]}) 
 aligner.fit(imgs_align[0],imgs_align[1]) 
+
+print(aligner.fit_[0].R.sum(axis=1)[0:3])
+print(aligner.fit_[0].R.sum(axis=0)[0:3])
+assert(0)
+
 print(aligner.fit_[0].R[0:3,0:3])
 
 ratio_within_roi = hutils.do_plot_impulse_responses(p,'',aligner)
