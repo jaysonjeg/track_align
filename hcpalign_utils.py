@@ -2,9 +2,9 @@
 Contains all the utility functions
 """
 
+
 import numpy as np, pandas as pd
 import os, pickle
-import hcp_utils as hcp
 import nibabel as nib
 nib.imageglobals.logger.level = 40  #suppress pixdim error msg
 from nilearn import signal
@@ -36,7 +36,8 @@ all_top_block_labels=0 #for hcpalign.py using top most connected blocks for DA
 #global parameters for HCP dataset
 
 movies=['MOVIE1_7T_AP','MOVIE2_7T_PA','MOVIE3_7T_PA','MOVIE4_7T_AP']
-rests=['REST1_7T_PA','REST2_7T_AP','REST3_7T_PA','REST4_7T_AP']
+#rests=['REST1_7T_PA','REST2_7T_AP','REST3_7T_PA','REST4_7T_AP']
+rests=['REST1_LR','REST1_RL','REST2_LR','REST2_RL']
 tasks=['WM','GAMBLING','RELATIONAL','MOTOR','EMOTION','LANGUAGE','SOCIAL']
 all_subs=['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823','115017','115825','116726','118225','125525']
 all_subs=list(np.loadtxt('included_subs_minus3.csv',dtype='str')) #made from findpts.py
@@ -92,6 +93,20 @@ class cprint():
         sys.stdout=self.resultsfile #assign console output to a text file
         print(*args,**kwargs)
         sys.stdout=temp #set stdout back to console output
+
+def getvalue(df,subject,column):
+    """
+    Get value from dataframe df, for subject and column
+    Parameters:
+        df: dataframe
+        subject: subject number or string
+        column: column name
+    Returns:
+        value
+    """
+    if type(subject)==str:
+        subject = int(subject)
+    return df.loc[df['Subject']==subject,column].values[0]
 
 def shuffle_colormap(cmap_string,upsample=500):
     """
@@ -185,13 +200,14 @@ def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,cle
     if string_only:
         return  [[] for sub in subs],align_string
     else:
-        align_preproc = make_preproc(fwhm,clean,'zscore_sample',True,None,None,1.0)
-        filenames = get_filenames(align_with,runs)
         if align_with in ['movie','rest']:
+            align_preproc = make_preproc(fwhm,clean,'zscore_sample',True,None,None,1.0)
+            filenames = get_filenames(align_with,runs)
             func = lambda sub: get_all_timeseries_sub(sub,align_with,filenames,MSMAll,align_preproc)
             imgs_align=Parallel(n_jobs=-1,prefer="threads")(delayed(func)(sub) for sub in subs)
-        if 'FC' in align_with:         
-            imgs_align=get_all_FC(subs,[align_with,MSMAll,align_preproc,FC_parcellation_string,filenames,'pxn'])
+        elif 'FC' in align_with:     
+            filenames = get_filenames(align_with[:-3],runs)
+            imgs_align=get_all_FC(subs,[align_with,MSMAll,clean,fwhm,FC_parcellation_string,filenames,'pxn'])
 
         if False: #circular shift imgs_align to scramble
             imgs_align.append(imgs_align.pop(0)) 
@@ -211,7 +227,7 @@ def get_tasks_cachepath(tasks,sub,MSMAll=False):
 def gettasks(tasks,sub,vertices=slice(0,59412),MSMAll=False):
     #Get 3T task analysis contrast map data
     MSMString=MSMlogical2str[MSMAll]
-    task_files=[ospath(f'{hcp_folder}/{sub}/MNINonLinear/Results/tfMRI_{task}/tfMRI_{task}_hp200_s2_level2{MSMString}.feat/{sub}_tfMRI_{task}_level2_hp200_s2{MSMString}.dscalar.nii') for task in tasks]
+    task_files=[ospath(f'{hcp_folder}/{sub}/MNINonLinear/Results/tfMRI_{task}/tfMRI_{task}_hp200_s2_level2{MSMString}.feat/{sub}_tfMRI_{task}_level2_hp200_s2{MSMString}.dscalar.nii') for task in tasks]   
     task_data=[get(task_files[i])[allowed_labels_dict[tasks[i]],vertices] for i in range(len(tasks))]
     return np.vstack(task_data).astype(np.float32)
 
@@ -235,15 +251,31 @@ def gettasklabels(tasks,sub):
 def get_task_data(subs,tasks,MSMAll=False):
     #Given a list of subjects and some tasks, return a list (nsubjects) of task data arrays (ncontrasts,nvertices), and a description string
     decode_string = f'{len(tasks)}tasks{logical2str[MSMAll]}'
-    imgs_decode=[from_cache(get_tasks_cachepath,gettasks,tasks,sub,MSMAll=MSMAll) for sub in subs]  
+    func = lambda sub: from_cache(get_tasks_cachepath,gettasks,tasks,sub,MSMAll=MSMAll)
+    imgs_decode=Parallel(n_jobs=-1,prefer="threads")(delayed(func)(sub) for sub in subs)
+    #imgs_decode=[from_cache(get_tasks_cachepath,gettasks,tasks,sub,MSMAll=MSMAll) for sub in subs]  
     #labels=[from_cache(get_tasklabels_cachepath,gettasklabels,tasks,sub) for sub in subs] #list (nsubjects) of labels (ncontrasts,)
     labels = [np.array(range(i.shape[0])) for i in imgs_decode] #since the exact label names are not important, just use the contrast number as the label     
     return imgs_decode, decode_string  
 
-def get_subjects(sub_slice):
-    subs=all_subs[sub_slice]
+def get_saved_task_data(foldername,subs):
+    """
+    Given a foldername and list of subject IDs, return a list (nsubjects) of task data arrays (ncontrasts,nvertices)
+    Parameters:
+    ----------
+    foldername: str
+        foldername containing task data. The folder contains a .npy file for each subject in format {subname}.npy
+    subs: list of str
+        list of subject IDs
+    """
+    return Parallel(n_jobs=-1,prefer='threads')(delayed(np.load)(ospath(f'{intermediates_path}/alignpickles2/{foldername}/{sub}.npy')) for sub in subs)
+
+"""
+def get_subjects(sub_slice,subjects):
+    subs=subjects[sub_slice]
     sub_slice_string = f'sub{sub_slice.start}to{sub_slice.stop}'
     return subs,sub_slice_string
+"""
 
 """
 def get_subjects(sub_slice,subs_template_slice):
@@ -316,7 +348,7 @@ def get_decode_data(c,subs,decode_with,align_fwhm,align_clean,MSMAll,decode_ncom
 
     return imgs_decode,decode_string, imgs_decode_meanstds
 
-def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle):
+def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,FC_parcellation_string=None):
     """
     Get alignment data. List (nsubjects) of alignment data (nsamples,nvertices)
     """
@@ -325,17 +357,17 @@ def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMA
         align_string='anat'
         imgs_align = [[] for sub in subs] #irrelevant anyway
     else:
-        imgs_align, align_string = get_movie_or_rest_data(subs,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle) #load_pickle=True means return string only
+        imgs_align, align_string = get_movie_or_rest_data(subs,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle,FC_parcellation_string=FC_parcellation_string) #load_pickle=True means return string only
     #imgs_align,align_string = get_aligndata_highres_connectomes(c,subs,MSMAll,{'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':16000 , 'fwhm_circ':3 })  
 
     return imgs_align,align_string
 
 
-def get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template):
+def get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template,FC_parcellation_string):
     #### Get template-making alignment data. List (nsubjects) of data (nsamples,nvertices)
     print(f"{c.time()} Get template-making data start")  
     if method=='template':
-        imgs_template, template_imgtype_string = get_movie_or_rest_data(subs_template,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle) #load_pickle=True means return string only
+        imgs_template, template_imgtype_string = get_movie_or_rest_data(subs_template,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle,FC_parcellation_string=FC_parcellation_string) #load_pickle=True means return string only
         template_string = f'_T{template_imgtype_string}{subs_template_slice_string}_{get_template_making_string(lowdim_template,args_template,n_bags_template,gamma_template)}'
     else:
         imgs_template, template_string = None, ''
@@ -369,8 +401,11 @@ def alignment_method_string(method,alignment_method,alignment_kwargs,per_parcel_
     string=f"{method[0:4].capitalize()}{alignment_method[0:4].capitalize()}_"
     if n_bags!=1:
         string+=f"b{n_bags}"
-    if gamma!=0:
-        string+=f"gam{gamma}"
+    if type(gamma) in [list,np.ndarray]:
+        string+=f"gamcustom"
+    else:
+        if gamma!=0:
+            string+=f"gam{gamma}"
     if 'scaling' in alignment_kwargs:
         string += f"sc{logical2str[alignment_kwargs['scaling']]}"
     if 'scca_alpha' in alignment_kwargs:
@@ -404,7 +439,9 @@ def get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_bags
     subs_indices = np.arange(len(subs))
     def init_and_fit_aligner(source_align, target_align, absValueOfAligner):
         aligner=SurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_bags=n_bags,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma)
+        print(memused())
         aligner.fit(source_align, target_align)
+        print(memused())
         if absValueOfAligner: aligner_absvalue(aligner)
         return aligner
     temp=Parallel(n_jobs=-1,prefer='processes')(delayed(init_and_fit_aligner)(imgs_align[source],imgs_align[target], absValueOfAligner) for source,target in itertools.permutations(subs_indices,2))
@@ -513,7 +550,7 @@ def get_FC_filepath(
     else: assert(0)
     align_clean_string = logical2str[align_clean]    
     MSMtypestring = MSMlogical2str[MSMAll]    
-    return f'{intermediates_path}/functional_connectivity/{get_func_type(align_with)}{MSMtypestring}_{len(filenames)}runs_{align_clean_string}_fwhm{align_fwhm}_{targets_parcellation}{parcellation_string[1:]}_{FC_type}_sub{sub}.p'
+    return f'{intermediates_path}/functional_connectivity/{get_func_type(align_with)}3T_{MSMtypestring}_{len(filenames)}runs_{align_clean_string}_fwhm{align_fwhm}_{targets_parcellation}{parcellation_string[1:]}_{FC_type}_sub{sub}.p'
 
 def get_FC(
     sub,
@@ -541,6 +578,11 @@ def get_FC(
 
 def get_all_FC(subs,args):
     imgs_align = Parallel(n_jobs=-1,prefer='threads')(delayed(from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
+    from sklearn.preprocessing import StandardScaler
+    print('normalizing FC arrays start')
+    imgs_align = Parallel(n_jobs=-1,prefer='threads')(delayed(StandardScaler().fit_transform)(i) for i in imgs_align)
+    print('normalizing FC arrays done')
+
     return [i.astype(np.float16) for i in imgs_align] 
 
 
@@ -558,6 +600,37 @@ def reduce_dimensionality_samples(c,imgs_align,ncomponents,method):
     imgs_align=[decomp.transform(i.T).T for i in imgs_align]     
     return imgs_align, f'{method}{ncomponents}'
 
+def dataframe_get_subs(df,subjects):
+    """
+    Extract rows from dataframe corresponding to subjects. Make sure that rows of df are sorted in same order as subjects
+    Parameters:
+    ----------
+    df: pandas dataframe with a column 'Subject' with dtype int
+    subjects: list of subject IDs (str)
+
+    Returns:
+    --------
+    df2: subset of original pandas dataframe with rows corresponding to subjects
+    """
+    subjects = [int(i) for i in subjects]
+    df2 = df[df['Subject'].isin(subjects)].copy()
+    # Specify a custom sort order for the 'Subject' column using pandas.Categorical
+    df2['Subject'] = pd.Categorical(df2['Subject'], categories=subjects, ordered=True)
+    # Now sort by 'Subject' using the custom order
+    df2 = df2.sort_values(by='Subject').reset_index(drop=True)
+    return df2
+
+def do_quantile_transform(y):
+    """
+    Transform list of values to quantiles on a uniform distribution
+    """
+    from sklearn.preprocessing import QuantileTransformer
+    import warnings
+    quantile_transformer = QuantileTransformer(output_distribution='uniform', random_state=0)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="n_quantiles .* is set to n_samples.")
+        y = quantile_transformer.fit_transform(y.reshape(-1, 1)).ravel()
+    return y
 
 def get_thickness(sub):
     #Get cortical thickness. Returns an array (59412,)
@@ -665,17 +738,18 @@ def jaccard_binomtest(x,y):
     return result_binom
 
 def corr_rows_parcel(imgs_decode_parcel):
-    return np.dstack(Parallel(n_jobs=-1,prefer='processes')(delayed(corr_rows)(i,prefer='threads') for i in imgs_decode_parcel)) #array (nsamples,nsubjectpairs,nparcels)
+    return np.dstack(Parallel(n_jobs=-1,prefer='processes')(delayed(corr_rows)(i,prefer='noparallel') for i in imgs_decode_parcel)) #array (nsamples,nsubjectpairs,nparcels)
 
 import itertools
 
-def corr_rows(x,prefer='threads'):
+def corr_rows(x,prefer='noparallel'):
     """
     Given a list of 2D arrays (nsamples,nfeatures), one array for each subject, for each row index, for each pair of subjects, calculate the correlation coefficient between their corresponding rows
 
     Parameters:
     ----------
     x: list (nsubjects) of arrays (nsamples,nfeatures)
+    prefer: 'processes', 'threads', or 'noparallel'
 
     Returns:
     ----------
@@ -683,9 +757,13 @@ def corr_rows(x,prefer='threads'):
         correlations between rows of x
     """
     nsubjects=len(x)
-    #temp = [rowcorr_nonsparse(x[i].T,x[j].T) for i,j in itertools.combinations(range(nsubjects),2)] #list (nsubjectpairs) of arrays (nfeatures). Each array containing correlations between rows of x[i] and x[j]
-    temp = Parallel(n_jobs=-1,prefer=prefer)(delayed(rowcorr_nonsparse)(x[i].T,x[j].T) for i,j in itertools.combinations(range(nsubjects),2))
-    return np.vstack(temp).T
+    if prefer=='noparallel':
+        temp = [rowcorr_nonsparse(x[i].T,x[j].T) for i,j in itertools.combinations(range(nsubjects),2)] #list (nsubjectpairs) of arrays (nfeatures). Each array containing correlations between rows of x[i] and x[j]
+    else:
+        temp = Parallel(n_jobs=-1,prefer=prefer)(delayed(rowcorr_nonsparse)(x[i].T,x[j].T) for i,j in itertools.combinations(range(nsubjects),2))
+    result = np.vstack(temp).T
+    del temp
+    return result
 
 def rowcorr(sp1, sp2):
     '''
@@ -870,6 +948,7 @@ def vertexmap_59kto64k(hemi='both'):
     List of 59k cortical vertices in fsLR32k, with their mapping onto 64k cortex mesh
     hemi='both','L','R'
     """
+    import hcpalign_utils as hcp
     grayl=hcp.vertex_info.grayl
     grayr=hcp.vertex_info.grayr
     grayr_for_appending=hcp.vertex_info.grayr+hcp.vertex_info.num_meshl
@@ -884,6 +963,7 @@ def vertexmap_64kto59k(hemi='both'):
     List of 64k cortex mesh vertices, with their mapping onto 59k vertices in fsLR32k. Vertices not present in 59k version are given value 0
     hemi='both','L','R'
     """
+    import hcpalign_utils as hcp
     gray=vertexmap_59kto64k(hemi=hemi)
     if hemi=='both':
         num_mesh_64k = hcp.vertex_info.num_meshl+hcp.vertex_info.num_meshr
@@ -956,7 +1036,7 @@ def set_axes_equal(ax):
     ax.set_ylim3d([y_middle - plot_radius, y_middle + plot_radius])
     ax.set_zlim3d([z_middle - plot_radius, z_middle + plot_radius])
 
-def surfgeodistances(source_vertices_59k, surf=hcp.mesh.midthickness):
+def surfgeodistances(source_vertices_59k, surf=None):
     """
     Given geodesic surface distances
     Inputs: source_vertices_59k - array(n,) of source vertices in 59k cortex space
@@ -964,18 +1044,24 @@ def surfgeodistances(source_vertices_59k, surf=hcp.mesh.midthickness):
     Output: array(59k,) of distances from source vertices
     """
     import gdist
+    if surf is None: 
+        import hcp_utils as hcp
+        surf = hcp.mesh.midthickness
     source_vertices_64k=vertex_59kto64k(source_vertices_59k).astype('int32')
     distances_64k=gdist.compute_gdist(surf[0].astype('float64'),surf[1],source_vertices_64k)
     distances_59k=cortex_64kto59k(distances_64k)
     return distances_59k
 
-def surfgeoroi(source_vertices_59k,limit=0,surf=hcp.mesh.midthickness):
+def surfgeoroi(source_vertices_59k,limit=0,surf=None):
     """
     Like wb_command -surface-geodesic-rois
     Output list of all vertices within limit mm of source vertices
     If limit==0, then just output source vertices
     If limit==0, return entire cortex
     """
+    if surf is None: 
+        import hcp_utils as hcp
+        surf = hcp.mesh.midthickness
     if limit==0: 
         return makesurfmap(source_vertices_59k)
     elif limit==np.inf:
@@ -1123,6 +1209,7 @@ def kmeans_matrix(nparcs):
 def parcellation_string_to_parcellation(parcellation_string):
     #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'M' for HCP multimodal parcellation
     #Returns an array of size (59412,) with parcel labels for each vertex in fs32k cortex
+    import hcp_utils as hcp
     nparcs = int(parcellation_string[1:])
     if parcellation_string[0]=='S':      
         parcellation = Schaefer(nparcs)
@@ -1135,6 +1222,7 @@ def parcellation_string_to_parcellation(parcellation_string):
 def parcellation_string_to_parcmatrix(parcellation_string):
     #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'M' for HCP multimodal parcellation
     #Returns parcellation matrix (nparcs,nvertices)
+    import hcp_utils as hcp
     nparcs = int(parcellation_string[1:])
     if parcellation_string[0]=='S':      
         matrix = Schaefer_matrix(nparcs).astype(bool)
@@ -1235,9 +1323,11 @@ class surfplot():
     p=surfplot('/mnt/d/Users/Jayson/Figures')
     p.plot(data,'Figure1')
     """
-    import hcp_utils as hcp
     from pathlib import Path
-    def __init__(self, figpath,mesh=hcp.mesh.midthickness,vmin=None,vmax=None,cmap='inferno',symmetric_cmap=True,plot_type='open_in_browser'):
+    def __init__(self, figpath,mesh=None,vmin=None,vmax=None,cmap='inferno',symmetric_cmap=True,plot_type='open_in_browser'):
+        if mesh is None:
+            import hcp_utils as hcp
+            mesh = hcp.mesh.midthickness
         self.mesh=mesh
         self.figpath=figpath
         if plot_type=='save_as_html':
@@ -1251,6 +1341,7 @@ class surfplot():
         self.plot_type=plot_type
     def plot(self,data,savename=None,vmin=None,vmax=None,cmap=None,symmetric_cmap=None):
         from nilearn import plotting
+        import hcp_utils as hcp
         """
         if data.shape[0]<59412: #fill missing data
             ones=np.ones((59412))*(min(data)-0.5*(max(data)-min(data)))
@@ -1415,6 +1506,7 @@ def maxcorrfit(source_array,target_array,dists,max_dist,nverts=59412,typeof=1):
     3. use gdist_full. sparse dist precalculated
 
     """
+    import hcp_utils as hcp
     result=np.zeros((nverts),int)
     precalc=True #better when max_dist >= 7
     if precalc:
@@ -1500,3 +1592,4 @@ def movieVolumeSelect(time_list,start=0, end=0):
     """
     temp=[list(range(x+start,y+end)) for x,y in time_list]
     return [item for sublist in temp for item in sublist]
+

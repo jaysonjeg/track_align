@@ -6,19 +6,28 @@ import hcpalign_utils as hutils
 from joblib import Parallel, delayed
 #from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
+
+def func():
+    import hcpalign_utils as hutils
+    return 1
+z = Parallel(n_jobs=-1, prefer='processes')(delayed(func)() for i in range(10))
+assert(0)
+
+
 p=hutils.surfplot('',plot_type='open_in_browser')
 c=hutils.clock()
 hcp_folder=hutils.hcp_folder
 intermediates_path=hutils.intermediates_path
 results_path=hutils.results_path
 
-subs=hutils.all_subs[slice(0,2)]
-subs_template=hutils.all_subs[slice(3,6)]
+subs=hutils.all_subs[slice(0,5)]
+subs_template=hutils.all_subs[slice(5,10)]
 nsubs = np.arange(len(subs)) #number of subjects
 
 post_decode_smooth=hutils.make_smoother_100610(0)
 
-imgs_align,align_string = hutils.get_movie_or_rest_data(subs,'movie',runs=[0],fwhm=0,clean=True,MSMAll=False)
+runs = [0,1]
+imgs_align,align_string = hutils.get_movie_or_rest_data(subs,'movie',runs=runs,fwhm=0,clean=True,MSMAll=False)
 imgs_decode,decode_string = hutils.get_task_data(subs,hutils.tasks[0:7],MSMAll=False)
 labels = [np.array(range(i.shape[0])) for i in imgs_decode] 
 
@@ -27,49 +36,63 @@ clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
 classifier=LinearSVC(max_iter=10000,dual='auto')     
 print(f'{c.time()}: Done loading data')
 
+#Example: Template alignment
 
-
-parc_matrix = hutils.parcellation_string_to_parcmatrix(parcellation_string)
-img = imgs_decode[0]
-img2 = hutils.standardize_image_parcelwise(img,clustering,parc_matrix,demean=True,unit_variance=True)
-
-print(img2[:,clustering==4].mean(axis=1)[0:3])
-print(img2[:,clustering==4].std(axis=1)[0:3])
-
-
-
-
-
-
-rowmeans = np.mean(img,axis=1,keepdims=True)
-rowstds = np.std(img,axis=1,keepdims=True)
-
-img_demeaned=img-rowmeans
-from scipy.stats import zscore
-img_standardized = zscore(img,axis=1)
-assert(0)
-
-#Example: Template alignmentx
-"""
 from fmralign.template_alignment import TemplateAlignment
-imgs_template,template_align_string = hutils.get_movie_or_rest_data(subs_template,'movie',runs=[0],fwhm=0,clean=True,MSMAll=False)
-aligners = TemplateAlignment('scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':True})
+imgs_template,template_align_string = hutils.get_movie_or_rest_data(subs_template,'movie',runs=runs,fwhm=0,clean=True,MSMAll=False)
+aligners = TemplateAlignment('scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':False})
+args_template_dict = {'hyperalignment':{'n_iter':1,'do_level_1':True, 'normalize_imgs':'zscore', 'normalize_template':'zscore', 'remove_self':True, 'level1_equal_weight':False},\
+                    'GPA': {'n_iter':1,'do_level_1':False,'normalize_imgs':'rescale','normalize_template':'rescale','remove_self':False,'level1_equal_weight':False}}
+args_template = args_template_dict['GPA']
+aligners.make_template(imgs_template,**args_template)
 #aligners.make_template(imgs_template,n_iter=1,do_level_1=False,level1_equal_weight=False,normalize_imgs='zscore',normalize_template='zscore',remove_self=False,gamma=0)
 #aligners.template = np.mean(imgs_template,axis=0)
-aligners.make_lowdim_template(imgs_template,clustering,n_bags=1)
+#aligners.make_lowdim_template(imgs_template,clustering,n_bags=1)
 print(f'{c.time()}: Start fitting')
+aligners.fit_to_template(imgs_align,gamma=0.1)
 
-aligners.fit_to_template(imgs_align,n_bags=1,gamma=0)
+imgs_decode_aligned=[aligners.transform(imgs_decode[i],i) for i in range(len(imgs_decode))]
+
+def ploto(img,vmax=None):
+    p.plot(img,vmax=vmax)
+
+ploto(imgs_align[0][100,:],vmax=None) #movie
+ploto(imgs_align[1][100,:],vmax=None) #movie
+ploto(imgs_align[2][100,:],vmax=None) #movie
+ploto(aligners.template[100,:],vmax=None) #template movie
+
+ploto(imgs_decode[0][8+3]) #RH
+ploto(imgs_decode[1][8+3]) 
+ploto(imgs_decode[2][8+3])
+ploto(imgs_decode[0][12]) #Emotion Faces
+ploto(imgs_decode[1][12]) 
+ploto(imgs_decode[2][12]) 
+ploto(imgs_decode[0][13]) #Emotion Shapes
+ploto(imgs_decode[1][13]) 
+ploto(imgs_decode[2][13]) 
+
+ploto(imgs_decode_aligned[0][8+3]) #RH
+ploto(imgs_decode_aligned[1][8+3]) 
+ploto(imgs_decode_aligned[2][8+3]) 
+ploto(imgs_decode_aligned[0][12]) #Emotion faces
+ploto(imgs_decode_aligned[1][12]) 
+ploto(imgs_decode_aligned[2][12]) 
+ploto(imgs_decode_aligned[0][13]) #Emotion faces
+ploto(imgs_decode_aligned[1][13]) 
+ploto(imgs_decode_aligned[2][13]) 
+
+assert(0)
+
 print(aligners.estimators[0].fit_[0].R[0:2,0:2])
 ratio_within_roi = hutils.do_plot_impulse_responses(p,'',aligners.estimators[0])
 print(f'Ratio within ROI: {ratio_within_roi:.2f}')
-assert(0)
-"""
+
+
 
 
 #Preparation for ProMises model
 nparcs=parcellation_string[1:]
-gdists_path=hutils.ospath(f'/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/AWS_studies/files0/intermediates/geodesic_distances/gdist_full_100610.midthickness.32k_fs_LR.S{nparcs}.p') #Get saved geodesic distances between vertices (for vertices in each parcel separately)
+gdists_path=hutils.ospath(f'{hutils.intermediates_path}/geodesic_distances/gdist_full_100610.midthickness.32k_fs_LR.S{nparcs}.p') #Get saved geodesic distances between vertices (for vertices in each parcel separately)
 import pickle
 with open(gdists_path,'rb') as file:
     gdists = pickle.load(file)
@@ -78,17 +101,47 @@ promises_F = [np.exp(-i) for i in gdists] #local distance matrix in ProMises mod
 
 #Procrustes alignment 
 from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
-aligner = SurfacePairwiseAlignment(alignment_method='ridge_cv',clustering=clustering,alignment_kwargs={'alphas':[1000]}) 
+aligner = SurfacePairwiseAlignment(alignment_method='scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':False}) 
 aligner.fit(imgs_align[0],imgs_align[1]) 
+
+
+#FOR METHODS FIGURE
+ims=imgs_decode[0]
+imst=aligner.transform(ims)
+p.plot(ims[8+3]) #right hand
+p.plot(imst[8+3])
+hutils.do_plot_impulse_responses(p,'',aligner,radius=1,vertices=None)
+assert(0)
+
+print(f'Corr bw images: {np.corrcoef(ims[0],ims[1]):.3f}')
+print(f'Corr bw transformed images: {np.corrcoef(imst[0],imst[1]):.3f}')
+
+imsp = [ims[:,clustering==i] for i in np.unique(clustering)]
+imstp = [imst[:,clustering==i] for i in np.unique(clustering)]
+
+
+imspc = [np.corrcoef(imsp[i][0,:],imsp[i][10,:])[0,1] for i in range(len(np.unique(clustering)))]
+imstpc = [np.corrcoef(imstp[i][0,:],imstp[i][10,:])[0,1] for i in range(len(np.unique(clustering)))]
+print(f'Within-parcel corr bw images: {np.mean(imspc):.3f}')
+print(f'Within-parcel corr bw transformed images: {np.mean(imstpc):.3f}')
+
+scmap=hutils.aligner_get_scale_map(aligner)
+p.plot(scmap)
+
+
+
+
 
 print(aligner.fit_[0].R.sum(axis=1)[0:3])
 print(aligner.fit_[0].R.sum(axis=0)[0:3])
-assert(0)
+
 
 print(aligner.fit_[0].R[0:3,0:3])
 
 ratio_within_roi = hutils.do_plot_impulse_responses(p,'',aligner)
 print(f'Ratio within ROI: {ratio_within_roi:.2f}')
+
+assert(0)
 
 print(f'{c.time()}: Done fitting alignment')
 
