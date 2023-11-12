@@ -6,13 +6,52 @@ import hcpalign_utils as hutils
 from joblib import Parallel, delayed
 #from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
+#Given r^2 scores for each fold in each parcel, plot them on surface
+import hcpalign_utils as hutils
+def plot_r2(filename):
+    x = np.load(hutils.ospath(f'{hutils.intermediates_path}/predict/{filename}.npy'))
+    xm = x.mean(axis=1) #mean across folds
+    xmp = xm.copy()
+    xmp[xmp<0]=0 #set negative r2 values to 0
+    parc_matrix = hutils.parcellation_string_to_parcmatrix('S300')
+    p=hutils.surfplot('',plot_type='open_in_browser')
+    p.plot(xmp @ parc_matrix, savename = '')
 
-def func():
-    import hcpalign_utils as hutils
-    return 1
-z = Parallel(n_jobs=-1, prefer='processes')(delayed(func)() for i in range(10))
+def plot_r2_anat_and_func(suffix):
+    plot_r2(f"{'7tasksf'}_{suffix}")
+    plot_r2(f"{'Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0'}_{suffix}")
+
+"""
+#Task anat vs TempScal
+plot_r2_anat_and_func('sub50to450_S300_ridgeCV_yf_Xffft_ar2') #default
+plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0CIRCSHIFT_sub50to450_S300_ridgeCV_yf_Xffft_ar2') #circshifted
+plot_r2_anat_and_func('sub450toNone_S300_ridgeCV_yf_Xffft_ar2') #subs 450 to max
+plot_r2_anat_and_func('sub50toNone_S300_ridgeCV_yf_Xffft_ar2') #subs 50 to max
+plot_r2('7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2') #MSMAll
+
+plot_r2_anat_and_func('sub50to450_S300_ridgeCV_yf_Xfttt_ar2') #PCA
+plot_r2_anat_and_func('sub50to450_S300_ridgeCV_yf_Xfftt_ar2') #standard scaler
+plot_r2_anat_and_func('sub450toNone_S300_ridgeCV_yf_Xfftt_ar2') #standard scaler, subs 450 to max
+
+plot_r2_anat_and_func('sub50to450_S300_ridgeCV_yf_Xffff_ar2') #not demean
+plot_r2('7tasksf&Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0_sub50to450_S300_ridgeCV_yf_Xffff_ar2') #not demean, both anat and func align
+"""
+
+"""
+#Task TempRidg vs TempScal
+plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_alphas[1000]_0_sub50to450_S300_ridgeCV_yf_Xffft_ar2') #TempRidge, ffft
+plot_r2('Aresfcf0123t0S1000_D7tasksf& ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0_sub50to450_S300_ridgeCV_yf_Xffft_ar2') #TempScal, ffft
+plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_alphas[1000]_0_sub50to450_S300_ridgeCV_yf_Xffff_ar2') #TempRidge, ffff
+plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0_sub50to450_S300_ridgeCV_yf_Xffff_ar2') #TempScal, ffff
+plot_r2('7tasksf&Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_alphas[1000]_0_sub50to450_S300_ridgeCV_yf_Xffff_ar2')
+"""
+
+#rsFMRI vs TempScal
+plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0_sub50to450_S300_ridgeCV_yf_Xffff_ar2') #TempScal, ffff
+plot_r2('resfcf0123t0S1000_sub50to450_S300_ridgeCV_yf_Xffft_ar2')
+plot_r2('resfcf0123t0S1000_sub50to450_S300_ridgeCV_yf_Xffff_ar2')
+plot_r2('resfcf0123t0S1000_sub50to450_S300_ridgeCV_yf_Xffff_a_norm_r2')
 assert(0)
-
 
 p=hutils.surfplot('',plot_type='open_in_browser')
 c=hutils.clock()

@@ -17,7 +17,6 @@ from joblib import Parallel,delayed
 from Connectome_Spatial_Smoothing import CSS as css
 
 ###
-
 import socket
 hostname=socket.gethostname()
 if hostname=='DESKTOP-EGSQF3A':
@@ -126,6 +125,26 @@ def shuffle_colormap(cmap_string,upsample=500):
     shuf_cmap = ListedColormap(shuf_cols)
     return shuf_cmap 
 
+def get_hcp_behavioral_data():
+    df=pd.read_csv(ospath(f'{intermediates_path}/BehavioralData.csv'))
+    df.loc[df['Subject']==179548,'3T_Full_Task_fMRI']  = False #does not have MSMAll data for WM task
+    return df
+
+def get_rows_in_behavioral_data():
+    """
+    In the HCP dataset (behavioral data dataframe), get the row indices of subjects who have completed different MRI tasks
+    """
+    df = get_hcp_behavioral_data()
+    cognitive_measures = ['Flanker_AgeAdj', 'CardSort_AgeAdj', 'PicSeq_AgeAdj', 'ListSort_AgeAdj', 'ProcSpeed_AgeAdj','PicVocab_AgeAdj', 'ReadEng_AgeAdj','PMAT24_A_CR','IWRD_TOT','VSPLOT_TC'] 
+    rows_with_cognitive = ~df[cognitive_measures].isna().any(axis=1)
+    rows_with_3T_taskfMRI = (df['3T_Full_Task_fMRI']==True)
+    rows_with_3T_rsfmri = (df['3T_RS-fMRI_Count']==4)
+    rows_with_7T_rsfmri = (df['7T_RS-fMRI_Count']==4)
+    rows_with_7T_movie = (df['fMRI_Movie_Compl']==True)
+    return cognitive_measures, rows_with_cognitive, rows_with_3T_taskfMRI, rows_with_3T_rsfmri, rows_with_7T_rsfmri, rows_with_7T_movie
+
+
+
 def get_filenames(func_type,func_nruns):
     if func_type=='movie':
         filenames = [movies[i] for i in func_nruns]
@@ -176,15 +195,17 @@ def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_preproc):
         temp=ts_preproc(np.vstack(imgs_align_sub))
     return temp.astype(dtype)
 
-def get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string):
+def get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string,FC_normalize):
     runs_string = ''.join([str(i) for i in runs])
     dict1 = {'movie':'mov','rest':'res','movie_FC':'movfc','rest_FC':'resfc','diffusion':'diff'}
     string = f'{dict1[align_with]}{logical2str[MSMAll]}{runs_string}{logical2str[clean]}{fwhm}'
     if 'FC' in align_with:
-        string=f'{string}{FC_parcellation_string}'
+        if FC_normalize: FC_normalize_string=''
+        else: FC_normalize_string='f'
+        string=f'{string}{FC_parcellation_string}{logical2str[FC_normalize]}'
     return string
 
-def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,clean=True,MSMAll=False,FC_parcellation_string=None, string_only=False):
+def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,clean=True,MSMAll=False,FC_parcellation_string=None, FC_normalize=None, string_only=False):
     """
     Returns movie viewing or resting state fMRI data, and a string describing the movie or rest data
     align_with: 'movie', 'rest', 'movie_FC', 'rest_FC', 'diffusion'
@@ -194,9 +215,10 @@ def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,cle
     clean: True for standardization and detrending
     MSMAll: True/False
     FC_parcellation_string: e.g. 'S300', 'K1000'
+    FC_normalize: bool
     string_only: bool
     """
-    align_string = get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string)
+    align_string = get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string,FC_normalize)
     if string_only:
         return  [[] for sub in subs],align_string
     else:
@@ -207,9 +229,10 @@ def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,cle
             imgs_align=Parallel(n_jobs=-1,prefer="threads")(delayed(func)(sub) for sub in subs)
         elif 'FC' in align_with:     
             filenames = get_filenames(align_with[:-3],runs)
-            imgs_align=get_all_FC(subs,[align_with,MSMAll,clean,fwhm,FC_parcellation_string,filenames,'pxn'])
+            imgs_align=get_all_FC(subs,[align_with,MSMAll,clean,fwhm,FC_parcellation_string,filenames,'pxn'],FC_normalize)
 
         if False: #circular shift imgs_align to scramble
+            print('circular shift imgs_align to scramble')
             imgs_align.append(imgs_align.pop(0)) 
             imgs_align.append(imgs_align.pop(0))
         if False: #reduce dimensionality of alignment data in ntimepoints/nsamples axis using PCA
@@ -258,13 +281,13 @@ def get_task_data(subs,tasks,MSMAll=False):
     labels = [np.array(range(i.shape[0])) for i in imgs_decode] #since the exact label names are not important, just use the contrast number as the label     
     return imgs_decode, decode_string  
 
-def get_saved_task_data(foldername,subs):
+def get_pre_aligned_X_data(foldername,subs):
     """
     Given a foldername and list of subject IDs, return a list (nsubjects) of task data arrays (ncontrasts,nvertices)
     Parameters:
     ----------
     foldername: str
-        foldername containing task data. The folder contains a .npy file for each subject in format {subname}.npy
+        foldername containing data. The folder contains a .npy file for each subject in format {subname}.npy
     subs: list of str
         list of subject IDs
     """
@@ -348,7 +371,7 @@ def get_decode_data(c,subs,decode_with,align_fwhm,align_clean,MSMAll,decode_ncom
 
     return imgs_decode,decode_string, imgs_decode_meanstds
 
-def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,FC_parcellation_string=None):
+def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,FC_parcellation_string=None,FC_normalize=None):
     """
     Get alignment data. List (nsubjects) of alignment data (nsamples,nvertices)
     """
@@ -357,17 +380,17 @@ def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMA
         align_string='anat'
         imgs_align = [[] for sub in subs] #irrelevant anyway
     else:
-        imgs_align, align_string = get_movie_or_rest_data(subs,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle,FC_parcellation_string=FC_parcellation_string) #load_pickle=True means return string only
+        imgs_align, align_string = get_movie_or_rest_data(subs,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle,FC_parcellation_string=FC_parcellation_string,FC_normalize=FC_normalize) #load_pickle=True means return string only
     #imgs_align,align_string = get_aligndata_highres_connectomes(c,subs,MSMAll,{'sift2':False , 'tckfile':'tracks_5M_sift1M.tck' , 'targets_nparcs':False , 'targets_nvertices':16000 , 'fwhm_circ':3 })  
 
     return imgs_align,align_string
 
 
-def get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template,FC_parcellation_string):
+def get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template,FC_parcellation_string,FC_normalize):
     #### Get template-making alignment data. List (nsubjects) of data (nsamples,nvertices)
     print(f"{c.time()} Get template-making data start")  
     if method=='template':
-        imgs_template, template_imgtype_string = get_movie_or_rest_data(subs_template,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle,FC_parcellation_string=FC_parcellation_string) #load_pickle=True means return string only
+        imgs_template, template_imgtype_string = get_movie_or_rest_data(subs_template,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle,FC_parcellation_string=FC_parcellation_string,FC_normalize=FC_normalize) #load_pickle=True means return string only
         template_string = f'_T{template_imgtype_string}{subs_template_slice_string}_{get_template_making_string(lowdim_template,args_template,n_bags_template,gamma_template)}'
     else:
         imgs_template, template_string = None, ''
@@ -576,12 +599,23 @@ def get_FC(
     elif FC_type=='pxp':
         return corr4(nap,nap,b_blocksize=parc_matrix.shape[0])
 
-def get_all_FC(subs,args):
+def get_all_FC(subs,args,normalize):
+    """
+    Given a list of subjects, get functional connectivity data for each subject. Returns a list (nsubjects) of FC arrays (nparcels,nparcels) or (ntargets,nparcels)
+    Parameters:
+    ----------
+    subs: list of subject IDs (str)
+    args: list of arguments to pass to get_FC
+    normalize: bool
+        if True, normalize columns of FC arrays, so that each vertex's distribution of connectivities (to targets) is 0-centred 
+    """
     imgs_align = Parallel(n_jobs=-1,prefer='threads')(delayed(from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
-    from sklearn.preprocessing import StandardScaler
-    print('normalizing FC arrays start')
-    imgs_align = Parallel(n_jobs=-1,prefer='threads')(delayed(StandardScaler().fit_transform)(i) for i in imgs_align)
-    print('normalizing FC arrays done')
+
+    if normalize:
+        from sklearn.preprocessing import StandardScaler
+        print('normalizing FC arrays start')
+        imgs_align = Parallel(n_jobs=-1,prefer='threads')(delayed(StandardScaler().fit_transform)(i) for i in imgs_align)
+        print('normalizing FC arrays done')
 
     return [i.astype(np.float16) for i in imgs_align] 
 
@@ -1114,6 +1148,11 @@ def get_parcelwise_mean_and_std(img,clustering):
         img_parcelsamplemeans = np.hstack([np.mean(array,axis=1,keepdims=True) for array in img_parcel]) #array (nsamples,nparcels) containing mean value for each parcel in each sample
         img_parcelsamplestds = np.hstack([np.std(array,axis=1,keepdims=True) for array in img_parcel]) 
         return np.hstack([img_parcelsamplemeans,img_parcelsamplestds]) #array (nsamples,2*nparcels) containing mean and std for each parcel in each sample
+
+def get_parcelwise_mean(img,clustering):
+        img_parcel = [img[:,clustering==i] for i in np.unique(clustering)] #divided into parcels
+        img_parcelsamplemeans = np.hstack([np.mean(array,axis=1,keepdims=True) for array in img_parcel]) #array (nsamples,nparcels) containing mean value for each parcel in each sample
+        return img_parcelsamplemeans 
 
 def standardize_image_parcelwise(img,clustering,parc_matrix,demean=True,unit_variance=True):
     """

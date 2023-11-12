@@ -147,7 +147,8 @@ if __name__=='__main__':
             vprint(f'{c.time()}: Classification start')  
             classification_scores = Parallel(n_jobs=-1)(delayed(hutils.classify_pairwise)(target,subs_indices,labels,imgs_decode[target],all_aligned_sources_decode[target],classifier) for target in subs_indices)  
 
-            imgs_decode_aligned = [imgs_decode,all_aligned_sources_decode] #for the return value             
+            imgs_decode_aligned = [imgs_decode,all_aligned_sources_decode] #for the return value
+            aligners = None  #for return value           
 
         elif method=='template':
         ###TEMPLATE ALIGNMENT###          
@@ -187,7 +188,14 @@ if __name__=='__main__':
             if plot_scales:
                 p.plot(hutils.aligner_get_scale_map(aligners.estimators[0])) #plot scale parameter for Procrustes aligner
 
-            del aligners
+            if True:
+                pass
+                #print('Skip decoding. Only saving aligners')
+                #return [0], [0], [0], aligners
+            else:
+                del aligners
+
+
             vprint('{} Template transform done'.format(c.time()))
             hutils.getloadavg()
            
@@ -256,7 +264,7 @@ if __name__=='__main__':
         
         vprint(hutils.memused())
         vprint(f'{c.time()} Classifications done')
-        return classification_scores, corrs_mean_parcel,imgs_decode_aligned
+        return classification_scores, corrs_mean_parcel,imgs_decode_aligned, aligners
 
 
 ###########################################################
@@ -292,9 +300,8 @@ if __name__=='__main__':
 
         #### Parameters for doing functional alignment
         method='template' #anat, intra_subject, pairwise, template
-
-        alignment_method='scaled_orthogonal' #scaled_orthogonal, permutation, optimal_transport, ridge_cv
-        alignment_kwargs = {}
+        alignment_method='ridge_cv' #scaled_orthogonal, permutation, optimal_transport, ridge_cv
+        alignment_kwargs = {'alphas':[1000]}
         per_parcel_kwargs={}
         n_bags=1
         gamma=0
@@ -305,6 +312,7 @@ if __name__=='__main__':
         align_fwhm=0
         align_clean=True
         FC_parcellation_string = 'S1000'
+        FC_normalize=True
 
         #### Parameters for decode data
         decode_with = 'tasks' #movie
@@ -316,8 +324,8 @@ if __name__=='__main__':
         use_parcelmeanstds = True #add parcel-specific means and stds back for classification
 
         #### Parameters for making template (ignored if method!='template')
-        subs_template_slice=slice(0,20)
-        lowdim_template=False
+        subs_template_slice=slice(0,50)
+        lowdim_template=True
 
         n_bags_template=1
         gamma_template=0
@@ -326,9 +334,9 @@ if __name__=='__main__':
         args_template = args_template_dict['GPA']
         subs_template = subjects[subs_template_slice]
         subs_template_slice_string = f'sub{subs_template_slice.start}to{subs_template_slice.stop}'
-        imgs_template,template_string = hutils.get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template,FC_parcellation_string)
+        imgs_template,template_string = hutils.get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template,FC_parcellation_string,FC_normalize)
 
-        sub_slices = [slice(i, i + 50) for i in range(500, 1050, 50)]
+        sub_slices = [slice(i, i + 50) for i in range(450, 500, 50)]
         for sub_slice in sub_slices:
             subs = subjects[sub_slice] #get subject IDs
             sub_slice_string = f'sub{sub_slice.start}to{sub_slice.stop}'
@@ -338,10 +346,7 @@ if __name__=='__main__':
 
             imgs_decode,decode_string,imgs_decode_meanstds = hutils.get_decode_data(c,subs,decode_with,align_fwhm,align_clean,MSMAll,decode_ncomponents,decode_standardize,decode_demean,decode_unit_variance,parcellation_string,use_parcelmeanstds)
         
-            imgs_align,align_string = hutils.get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,FC_parcellation_string=FC_parcellation_string)
-
-
-
+            imgs_align,align_string = hutils.get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,FC_parcellation_string=FC_parcellation_string,FC_normalize=FC_normalize)
 
             print(f"{c.time()} Getting all data done")
             print(hutils.memused())  
@@ -350,7 +355,7 @@ if __name__=='__main__':
             #gammas_folder = 'gammasAmovf0123t0_D7tasksf&ms_S300_Tmovf0123t0sub20to40_L_TempRidg_gam1alphas[1000]_sub0to20_0'
             #gammas_parcel = np.load(ospath(f'{results_path}/figures/hcpalign/{gammas_folder}/best_gamma.npy'))
 
-            gammas = [0]
+            gammas = [.02,.05,.1,.2,.5,1]
 
             accs = []
             corrs = []
@@ -372,7 +377,7 @@ if __name__=='__main__':
                 save_string = f"A{align_string}_D{decode_string}_{parcellation_string}{template_string}_{method_string}_{sub_slice_string}_{post_decode_fwhm}"
 
                 t.print(f"{c.time()}: Start {save_string}")
-                scores, corrs_mean_parcel, imgs_decode_aligned = align_and_classify(c,t,verbose,save_string, subs, imgs_align, imgs_decode, method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma,post_decode_fwhm=post_decode_fwhm,save_pickle=save_pickle,load_pickle=load_pickle,n_bags=n_bags,n_jobs=+1,imgs_template=imgs_template,lowdim_template=lowdim_template,n_bags_template=n_bags_template,gamma_template=gamma_template,args_template=args_template,plot_type='open_in_browser',plot_impulse_response=False, plot_contrast_maps=False,imgs_decode_meanstds=imgs_decode_meanstds)
+                scores, corrs_mean_parcel, imgs_decode_aligned, aligners = align_and_classify(c,t,verbose,save_string, subs, imgs_align, imgs_decode, method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma,post_decode_fwhm=post_decode_fwhm,save_pickle=save_pickle,load_pickle=load_pickle,n_bags=n_bags,n_jobs=+1,imgs_template=imgs_template,lowdim_template=lowdim_template,n_bags_template=n_bags_template,gamma_template=gamma_template,args_template=args_template,plot_type='open_in_browser',plot_impulse_response=False, plot_contrast_maps=False,imgs_decode_meanstds=imgs_decode_meanstds)
                 t.print(f"{c.time()}: Done with {save_string}")
                 mean_accuracy = np.mean([np.mean(i) for i in scores])
                 t.print(f'Classification accuracies: mean {mean_accuracy:.3f}, [', end= "")
@@ -382,6 +387,25 @@ if __name__=='__main__':
 
                 corrs.append(corrs_mean_parcel)
                 accs.append(np.mean(scores))
+
+                if True: #save aligner for each subject separately in alignpickles3
+                    save_string3 = f"A{align_string}_{parcellation_string}{template_string}_{method_string}"
+                    hutils.mkdir(f'{intermediates_path}/alignpickles3')
+                    hutils.mkdir(f'{intermediates_path}/alignpickles3/{save_string3}')
+                    import pickle
+                    prefix = ospath(f'{intermediates_path}/alignpickles3/{save_string3}')
+                    save_sub_aligner = lambda estimator,sub: pickle.dump(estimator,open(f'{prefix}/{sub}.p',"wb"))
+                    _=Parallel(n_jobs=-1,prefer='threads')(delayed(save_sub_aligner)(estimator,sub) for estimator,sub in zip(aligners.estimators,subs))
+                    #load_sub_aligner = lambda sub: pickle.load(open(f'{prefix}/{sub}.p',"rb"))
+                    #_=Parallel(n_jobs=-1,prefer='threads')(delayed(pickle.load(open(f'{prefix}/{sub}.p',"wb")))(sub) for sub in subs)
+
+                if True: #save aligned decode data
+                    imgs_decode_aligned = [i[:,0:59412] for i in imgs_decode_aligned] #remove mean and stds
+                    save_string2 = f"A{align_string}_D{decode_string}_{parcellation_string}{template_string}_{method_string}_{post_decode_fwhm}"
+                    hutils.mkdir(f'{intermediates_path}/alignpickles2')
+                    hutils.mkdir(f'{intermediates_path}/alignpickles2/{save_string2}')
+                    _=Parallel(n_jobs=-1,prefer='threads')(delayed(np.save)(ospath(f'{intermediates_path}/alignpickles2/{save_string2}/{sub}.npy'),img) for sub,img in zip(subs,imgs_decode_aligned))
+                    #_ = Parallel(n_jobs=-1,prefer='threads')(delayed(np.load)(ospath(f'{intermediates_path}/alignpickles2/{save_string2}/{sub}.npy')) for sub in subs)
 
             corrs = np.stack(corrs)
             corrsm = np.mean(corrs,axis=1) #mean across parcels
@@ -403,18 +427,6 @@ if __name__=='__main__':
             np.save(ospath(f'{plot_dir}/gammas.npy'),np.array(gammas))
             z = np.load(ospath(f'{plot_dir}/corrs.npy'))
             """
-
-            imgs_decode_aligned = [i[:,0:59412] for i in imgs_decode_aligned] #remove mean and stds
-
-            save_string2 = f"A{align_string}_D{decode_string}_{parcellation_string}{template_string}_{method_string}_{post_decode_fwhm}"
-            hutils.mkdir(f'{intermediates_path}/alignpickles2')
-            hutils.mkdir(f'{intermediates_path}/alignpickles2/{save_string2}')
-
-            _=Parallel(n_jobs=-1,prefer='threads')(delayed(np.save)(ospath(f'{intermediates_path}/alignpickles2/{save_string2}/{sub}.npy'),img) for sub,img in zip(subs,imgs_decode_aligned))
-            #_ = Parallel(n_jobs=-1,prefer='threads')(delayed(np.load)(ospath(f'{intermediates_path}/alignpickles2/{save_string2}/{sub}.npy')) for sub in subs)
-
-
-
 
 
 
