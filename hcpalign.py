@@ -189,9 +189,9 @@ if __name__=='__main__':
                 p.plot(hutils.aligner_get_scale_map(aligners.estimators[0])) #plot scale parameter for Procrustes aligner
 
             if True:
-                pass
-                #print('Skip decoding. Only saving aligners')
-                #return [0], [0], [0], aligners
+                #pass
+                print('Skip decoding. Only saving aligners')
+                return [0], [0], imgs_decode_aligned, aligners
             else:
                 del aligners
 
@@ -292,7 +292,7 @@ if __name__=='__main__':
         #### General Parameters
         #sub_slice=slice(0,5)
         parcellation_string = 'S300' #S300, K1000, MMP
-        MSMAll=False
+        MSMAll=True
         save_pickle=False
         load_pickle=False #use saved aligner
         verbose=True
@@ -336,7 +336,7 @@ if __name__=='__main__':
         subs_template_slice_string = f'sub{subs_template_slice.start}to{subs_template_slice.stop}'
         imgs_template,template_string = hutils.get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template,FC_parcellation_string,FC_normalize)
 
-        sub_slices = [slice(i, i + 50) for i in range(450, 500, 50)]
+        sub_slices = [slice(i, i + 50) for i in range(0, 500, 50)]
         for sub_slice in sub_slices:
             subs = subjects[sub_slice] #get subject IDs
             sub_slice_string = f'sub{sub_slice.start}to{sub_slice.stop}'
@@ -355,7 +355,7 @@ if __name__=='__main__':
             #gammas_folder = 'gammasAmovf0123t0_D7tasksf&ms_S300_Tmovf0123t0sub20to40_L_TempRidg_gam1alphas[1000]_sub0to20_0'
             #gammas_parcel = np.load(ospath(f'{results_path}/figures/hcpalign/{gammas_folder}/best_gamma.npy'))
 
-            gammas = [.02,.05,.1,.2,.5,1]
+            gammas = [0]
 
             accs = []
             corrs = []
