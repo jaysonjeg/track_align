@@ -7,7 +7,10 @@ import matplotlib.pyplot as plt
 import warnings
 import itertools
 
-def extract_nsubs(string):
+def extract_nsubs_alignpickles1(string):
+    """
+    Given a filename from intermediates/alignpickles, extract the number of subjects
+    """
     pattern=r'hcpalign\w*_(\d+)-\d+-\d+_TF_0_0_0_\w*'
     match=re.search(pattern,string)
     if match:
@@ -15,8 +18,10 @@ def extract_nsubs(string):
     else:
         return None
 
-
-def extract_nparcs(string):
+def extract_nparcs_alignpickles1(string):
+    """
+    Given a filename from intermediates/alignpickles, extract the number of parcels
+    """
     pattern = r'_FFF_S(.*?)_False'
     match = re.search(pattern, string)
     if match:
@@ -24,11 +29,21 @@ def extract_nparcs(string):
     else:
         return None
 
+def get_smoother(fwhm):
+    return sparse.load_npz(ospath(f'{hutils.intermediates_path}/smoothers/100610_{fwhm}_0.01.npz')).astype(np.float32)
+
 def makesorter(labels):
     """
     Given list of unordered labels (59412,), return sorting indices, unsorting indices, and labelslice. labelslice is list containing slice for each label in the sorted list
+    Parameters:
+    -----------
+    labels: array of labels (59412,)    
+    Returns:
+    -----------
+    sorter: array of indices to sort labels. e.g. labels[sorter] is sorted
+    unsorter: array of indices to go from sorted labels to original ordering
+    labelslice: list of slices for each label in the sorted list, e.g. [slice(0,767),slice(767,1534),...)]
     """
-    #Makes labelslice for unique labels only
     unique_labels=np.unique(labels)
     sorter=np.argsort(labels,kind='stable')
     unsorter=np.argsort(sorter)
@@ -56,10 +71,10 @@ def get_hps(hp):
     hpsxa=hpsx.toarray()
     return hps,hpsx,hpsxa
 def get_blocks_largest(nblocks,parcel_pair_type,hps,hpsx):
-    if parcel_pair_type=='i':
+    if parcel_pair_type=='intra':
         temp=hutils.indices_of_largest_values_in_array(sparse.csr_matrix.diagonal(hps),nblocks)  
         blocks = np.vstack([temp,temp])
-    elif parcel_pair_type=='o': 
+    elif parcel_pair_type=='inter': 
         blocks = hutils.indices_of_largest_values_in_array(hpsx,nblocks)
     return blocks
 def get_blocks_source(align_labels,hpsxa,nblocks,nparcs,type_rowcol):
@@ -81,7 +96,7 @@ def get_blocks_all():
     inds=np.triu_indices(nparcs)
     blocks=np.vstack(inds)
     return blocks
-def get_blocks_maxhpmult(nblocks,hpsxa,nparcs):
+def get_blocks_few_from_each_vertex(nblocks,hpsxa,nparcs):
     nblocks_per_parcel=nblocks
     inds=np.argpartition(hpsxa,-nblocks_per_parcel,axis=0)[-nblocks_per_parcel:,:]
     temp2=inds.ravel()
