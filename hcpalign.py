@@ -188,8 +188,7 @@ if __name__=='__main__':
             if plot_scales:
                 p.plot(hutils.aligner_get_scale_map(aligners.estimators[0])) #plot scale parameter for Procrustes aligner
 
-            if False:
-                #pass
+            if True:
                 print('Skip decoding. Only saving aligners')
                 return [0], [0], imgs_decode_aligned, aligners
             else:
@@ -275,21 +274,20 @@ if __name__=='__main__':
         c=hutils.clock()     
 
 
-
-        df=pd.read_csv(hutils.ospath(f'{hutils.intermediates_path}/BehavioralData.csv'))
-        df.loc[df['Subject']==179548,'3T_Full_Task_fMRI']  = False #does not have MSMAll data for WM task
-
-        cognitive_measures = ['Flanker_AgeAdj', 'CardSort_AgeAdj', 'PicSeq_AgeAdj', 'ListSort_AgeAdj', 'ProcSpeed_AgeAdj','PicVocab_AgeAdj', 'ReadEng_AgeAdj','PMAT24_A_CR','IWRD_TOT','VSPLOT_TC'] 
-        rows_with_3T_taskfMRI = (df['3T_Full_Task_fMRI']==True)
-        rows_with_3T_rsfmri = (df['3T_RS-fMRI_Count']==4)
-        rows_with_7T_rsfmri = (df['7T_RS-fMRI_Count']==4)
-        rows_with_7T_movie = (df['fMRI_Movie_Compl']==True)
-        rows_with_cognitive = ~df[cognitive_measures].isna().any(axis=1)
-        eligible_rows = rows_with_3T_rsfmri & rows_with_3T_taskfMRI
-        subjects = [str(i) for i in df.loc[eligible_rows,'Subject']]
-
-        subjects = hutils.all_subs
-        print("USING HTUILS.ALL_SUBS (NEEDED FOR TKALIGN)")
+        if True: 
+            subjects = hutils.all_subs
+            print("USING HTUILS.ALL_SUBS (NEEDED FOR TKALIGN)")
+        else:
+            df=pd.read_csv(hutils.ospath(f'{hutils.intermediates_path}/BehavioralData.csv'))
+            df.loc[df['Subject']==179548,'3T_Full_Task_fMRI']  = False #does not have MSMAll data for WM task
+            cognitive_measures = ['Flanker_AgeAdj', 'CardSort_AgeAdj', 'PicSeq_AgeAdj', 'ListSort_AgeAdj', 'ProcSpeed_AgeAdj','PicVocab_AgeAdj', 'ReadEng_AgeAdj','PMAT24_A_CR','IWRD_TOT','VSPLOT_TC'] 
+            rows_with_3T_taskfMRI = (df['3T_Full_Task_fMRI']==True)
+            rows_with_3T_rsfmri = (df['3T_RS-fMRI_Count']==4)
+            rows_with_7T_rsfmri = (df['7T_RS-fMRI_Count']==4)
+            rows_with_7T_movie = (df['fMRI_Movie_Compl']==True)
+            rows_with_cognitive = ~df[cognitive_measures].isna().any(axis=1)
+            eligible_rows = rows_with_3T_rsfmri & rows_with_3T_taskfMRI
+            subjects = [str(i) for i in df.loc[eligible_rows,'Subject']]
 
         #### General Parameters
         sub_slice=slice(0,10)
@@ -302,15 +300,15 @@ if __name__=='__main__':
 
         #### Parameters for doing functional alignment
         method='template' #anat, intra_subject, pairwise, template
-        alignment_method='ridge_cv' #scaled_orthogonal, permutation, optimal_transport, ridge_cv
-        alignment_kwargs = {'alphas':[1000]}
+        alignment_method='scaled_orthogonal' #scaled_orthogonal, permutation, optimal_transport, ridge_cv
+        alignment_kwargs = {}
         per_parcel_kwargs={}
         n_bags=1
         gamma=0
 
         #### Parameters for alignment data
         align_with='movie'
-        runs=[0]
+        runs=[0,1,2,3]
         align_fwhm=0
         align_clean=True
         FC_parcellation_string = 'S1000'
@@ -327,7 +325,7 @@ if __name__=='__main__':
 
         #### Parameters for making template (ignored if method!='template')
         subs_template_slice=slice(0,10)
-        lowdim_template=True
+        lowdim_template=False
 
         n_bags_template=1
         gamma_template=0
@@ -352,7 +350,7 @@ if __name__=='__main__':
         #gammas_folder = 'gammasAmovf0123t0_D7tasksf&ms_S300_Tmovf0123t0sub20to40_L_TempRidg_gam1alphas[1000]_sub0to20_0'
         #gammas_parcel = np.load(ospath(f'{results_path}/figures/hcpalign/{gammas_folder}/best_gamma.npy'))
 
-        gammas = [0]
+        gammas = [0,.1]
 
         accs = []
         corrs = []
@@ -374,7 +372,7 @@ if __name__=='__main__':
             save_string = f"A{align_string}_D{decode_string}_{parcellation_string}{template_string}_{method_string}_{sub_slice_string}_{post_decode_fwhm}"
 
             t.print(f"{c.time()}: Start {save_string}")
-            scores, corrs_mean_parcel, imgs_decode_aligned, aligners = align_and_classify(c,t,verbose,save_string, subs, imgs_align, imgs_decode, method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma,post_decode_fwhm=post_decode_fwhm,save_pickle=save_pickle,load_pickle=load_pickle,n_bags=n_bags,n_jobs=+1,imgs_template=imgs_template,lowdim_template=lowdim_template,n_bags_template=n_bags_template,gamma_template=gamma_template,args_template=args_template,plot_type='open_in_browser',plot_impulse_response=True, plot_contrast_maps=True,imgs_decode_meanstds=imgs_decode_meanstds)
+            scores, corrs_mean_parcel, imgs_decode_aligned, aligners = align_and_classify(c,t,verbose,save_string, subs, imgs_align, imgs_decode, method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma,post_decode_fwhm=post_decode_fwhm,save_pickle=save_pickle,load_pickle=load_pickle,n_bags=n_bags,n_jobs=+1,imgs_template=imgs_template,lowdim_template=lowdim_template,n_bags_template=n_bags_template,gamma_template=gamma_template,args_template=args_template,plot_type='open_in_browser',plot_impulse_response=False, plot_contrast_maps=False,imgs_decode_meanstds=imgs_decode_meanstds)
             t.print(f"{c.time()}: Done with {save_string}")
             mean_accuracy = np.mean([np.mean(i) for i in scores])
             t.print(f'Classification accuracies: mean {mean_accuracy:.3f}, [', end= "")
@@ -385,7 +383,7 @@ if __name__=='__main__':
             corrs.append(corrs_mean_parcel)
             accs.append(np.mean(scores))
 
-            if False: #save aligner for each subject separately in alignpickles3
+            if True: #save aligner for each subject separately in alignpickles3
                 save_string3 = f"A{align_string}_{parcellation_string}{template_string}_{method_string}"
                 hutils.mkdir(f'{intermediates_path}/alignpickles3')
                 hutils.mkdir(f'{intermediates_path}/alignpickles3/{save_string3}')

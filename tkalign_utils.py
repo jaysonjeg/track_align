@@ -34,6 +34,29 @@ def extract_nparcs_alignpickles1(string):
     else:
         return None
 '''
+
+def extract_alignpickles3(string,what):
+    """
+    Given a filename from intermediates/alignpickles, extract some content
+    Parameters:
+    -----------
+    string: filename
+    what: string
+    """
+    pattern = r'A(mov|res|movfc|resfc|diff)(t|f)(\d*)(t|f)(\d*)_([A-Z]\d*)_T'
+    dictionary = {'align_with':1,'MSMAll':2,'runs_string':3,'clean':4,'fwhm':5,'parcellation_string':6}
+    match = re.search(pattern, string)
+    if match:
+        value = match.group(dictionary[what])
+        if what in ['MSMAll','clean']:
+            str2logical={'t':True,'f':False}
+            value = str2logical[value]
+        elif what in ['fwhm']:
+            value = int(value)
+        return value
+    else:
+        return None
+
 def get_smoother(fwhm):
     return sparse.load_npz(ospath(f'{hutils.intermediates_path}/smoothers/100610_{fwhm}_0.01.npz')).astype(np.float32)
 
@@ -58,13 +81,12 @@ def makesorter(labels):
         where=np.where(labelsort==unique_labels[i])[0]
         labelslice[i]=slice(where[0],where[-1]+1)
     return sorter,unsorter,labelslice
-
-def load_f_and_a(save_path):
+    
+def load_a(save_path):
     temp=np.load(save_path,allow_pickle=True)
     blocks=temp[()]['blocks']
-    f=temp[()]['f']
     a=temp[()]['a']
-    return blocks,f,a
+    return blocks,a
 
 def get_blocks(c,tckfile, MSMAll, sift2, align_parc_matrix, subs, block_choice,nblocks,parcel_pair_type,align_labels,nparcs,type_rowcol,par_prefer_hrc):
     """

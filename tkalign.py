@@ -61,7 +61,7 @@ if __name__=='__main__':
         Parameters:
         -----------
         subs_inds: dict
-            keys are 'temp', 'test', 'aligner'. Values are lists of subject indices in hutils.all_subs
+            keys are 'temp', 'test', 'blocks'. Values are lists of subject indices in hutils.all_subs
         nblocks: int
         alignfile: str
             name of pickle file in intermediates/alignpickles containing functional aligners
@@ -89,12 +89,10 @@ if __name__=='__main__':
         ### Parameters 
         parcel_pair_type='inter' #'inter' for inter-parcel connections (default) or 'intra' for intra-parcel connections
         type_rowcol = 'col' # 'col' or 'row'. Only relevant for inferring directionality with block_choice=='fromsourcevertex' 
-
         get_similarity_average=True #correlations between X aligned with Y, and mean(all W aligned with W). Default True
         aligner2sparsearray=False #bool, default False. Make functional aligner into a sparse array. 
         aligner_descale=False #bool, Default False. make R transformations orthogonal again (doesn't make any difference to correlations). 
         aligner_negatives='abs' #str. What to do with negative values in R matrix. 'abs' to use absolute value (default). 'zero' to make it zero (performance slightly worse). 'leave' to leave as is.
-
         par_prefer_hrc='threads'  #'threads' (default) or 'processes' for getting high-res connectomes from file
 
         print(hutils.memused())
@@ -134,7 +132,8 @@ if __name__=='__main__':
         #assert( set(subs['temp']).isdisjoint(subs['test']) )
 
         ### Set up filenames and folders for saving and figures
-        save_prefix = f"corrs_{subs_inds['aligner'].start}-{subs_inds['aligner'].stop}_{len(subs['temp'])}s_{subs_inds['test'].start}-{subs_inds['test'].stop}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{parcellation_string}_{nblocks}b_{block_choice[0:2]}_{howtoalign}{text}"
+        save_prefix = f"{alignfile}_B{nblocks}{block_choice[0:2]}{subs_inds['blocks'].start}-{subs_inds['blocks'].stop}_D{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{howtoalign}{text}_S{len(subs['temp'])}_{subs_inds['test'].start}-{subs_inds['test'].stop}"
+        #save_prefix = f"corrs_{subs_inds['blocks'].start}-{subs_inds['blocks'].stop}_{len(subs['temp'])}s_{subs_inds['test'].start}-{subs_inds['test'].stop}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{parcellation_string}_{nblocks}b_{block_choice[0:2]}_{howtoalign}{text}"
         #save_prefix = f"corrs_0-{alignfile_nsubs}_{len(subs['temp'])}s_{min(subs_inds['test'])}-{max(subs_inds['test'])}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{parcellation_string}_{nblocks}b_{block_choice[0:2]}_{howtoalign}{text}"
         #save_prefix = f'r{hutils.datetime_for_filename()}'
         print(save_prefix)
@@ -143,10 +142,9 @@ if __name__=='__main__':
         if to_plot and plot_type=='save_as_html': hutils.mkdir(figures_subfolder)
         p=hutils.surfplot(figures_subfolder,plot_type=plot_type)
 
-        save_folder=f'{hutils.intermediates_path}/tkalign_corrs' #save results data in this folder
+        save_folder=f'{hutils.intermediates_path}/tkalign_corrs2' #save results data in this folder
         hutils.mkdir(save_folder)
         save_path=ospath(f"{save_folder}/{save_prefix}.npy")
-        print(save_path)
 
         ### Set up smoothing kernels
         sorter,unsorter,slices=tutils.makesorter(align_labels) # Sort vertices by parcel membership, for speed
@@ -154,11 +152,11 @@ if __name__=='__main__':
         smoother_post = tutils.get_smoother(post_hrc_fwhm)[sorter[:,None],sorter]
 
         if load_file and os.path.exists(save_path):
-            print('loading f and a')
-            blocks,f,a = tutils.load_f_and_a(save_path)
+            print('loading a')
+            blocks,a = tutils.load_a(save_path)
         else:
             print(f'{c.time()}: Get parcellated connectomes and blocks',end=", ")  
-            blocks = tutils.get_blocks(c,tckfile, MSMAll, sift2, align_parc_matrix, subs['aligner'], block_choice,nblocks,parcel_pair_type,align_labels,nparcs,type_rowcol,par_prefer_hrc)
+            blocks = tutils.get_blocks(c,tckfile, MSMAll, sift2, align_parc_matrix, subs['blocks'], block_choice,nblocks,parcel_pair_type,align_labels,nparcs,type_rowcol,par_prefer_hrc)
             print(f'{c.time()}: Get high-res connectomes',end=", ")  
             hr = {group : hutils.get_highres_connectomes(c,subs[group],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefer_hrc,n_jobs=-1) for group in groups} # Get high-res connectomes for test and template subjects. hr[group] is a list of sparse arrays, Each array is a connectome for a subject
             print(f'{c.time()}: Reorder connectomes', end=", ")
@@ -168,14 +166,20 @@ if __name__=='__main__':
 
             ### Get func aligners 
             print(f'{c.time()}: GetAligners', end=", ")
-            aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
-            #all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) 
+
             if aligned_method=='template':                                                    
                 fa={} #fa[group] is a list of functional aligners
                 for group in groups:
+                    func1 = lambda sub_ind: pickle.load(open(ospath(f'{hutils.intermediates_path}/alignpickles3/{alignfile}/{hutils.all_subs[sub_ind]}.p'), "rb" ))
+                    all_aligners = [func1(sub_ind) for sub_ind in subs_inds[group]] #load each time because func(i) will modify arrays in all_aligners
+                    func2 = lambda aligner: tutils.get_template_aligners(aligner,slices,aligner2sparsearray=aligner2sparsearray,aligner_descale=aligner_descale,aligner_negatives=aligner_negatives)
+                    fa[group] = [func2(aligner) for aligner in all_aligners]
+                    """
+                    aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
                     all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) #load each time because func(i) will modify arrays in all_aligners            
                     func = lambda nsub: tutils.get_template_aligners(all_aligners.estimators[nsub],slices,aligner2sparsearray=aligner2sparsearray,aligner_descale=aligner_descale,aligner_negatives=aligner_negatives)
                     fa[group] = [func(i) for i in subs_inds[group]]
+                    """
 
             def get_aligner_parcel(group,sub_ind,nparcel):
                 """       
@@ -289,7 +293,7 @@ if __name__=='__main__':
             else: a=None
 
         if save_file:
-            np.save(save_path,{'blocks':blocks,'f':f,'a':a})
+            np.save(save_path,{'blocks':blocks,'a':a})
 
         print(f'{c.time()}: Calculations',end='')
         if get_similarity_average:    
@@ -405,43 +409,32 @@ if __name__=='__main__':
         print(hutils.memused())
 
 
-    nblocks=10 #how many (parcel x parcel) blocks to examine
+    nblocks=100 #how many (parcel x parcel) blocks to examine
     block_choice='largest' #'largest', 'fromsourcevertex', 'all','few_from_each_vertex'
     howtoalign = 'RDRT' #'RDRT','RD','RD+','RT','RT+'     
     pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
     post_hrc_fwhm=3 #smoothing kernel after alignment. Default 3
 
-    save_file=False  
-    load_file=False
-    to_plot=True
+    save_file=True  
+    load_file=True
+    to_plot=False
     plot_type='open_in_browser' #save_as_html
 
- 
-    """
-    regv=0.2
-    pcatemp=False
-    FCparcellation in ['Schaefer1000'] #'kmeans3000'
-    if regv==0: regstr=''
-    else:regstr=f'_reg{regv}'
-    if pcatemp: pcatempstr='_pcatemp'
-    else: pcatrempstr=''
-    alignfile = f'hcpalign_rest_FC_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_FC{FCparcellation}_niter1{pcatempstr}{regstr}'
-    """
-
-
     #alignfile='hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_niter1'
-    alignfile='hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False_niter1'
-    parcellation_string = 'S300' #make sure it is the same as  alignfile
-    MSMAll=False
+    alignfile='Amovf0t0_S300_Tmovf0t0sub0to3_G0ffrr_TempScal_gam0.1'
+    #parcellation_string = 'S300' #make sure it is the same as  alignfile
+    #MSMAll=False
 
-    subs_aligner_range = tutils.extract_sub_range_alignpickles1(alignfile)
-    for subs_test_range in [range(0,5)]:
-        temp = [i for i in subs_aligner_range if i not in subs_test_range]
-        subs_inds={'temp': temp, 'test': subs_test_range, 'aligner': subs_aligner_range}
+    parcellation_string = tutils.extract_alignpickles3(alignfile,'parcellation_string')
+    MSMAll = tutils.extract_alignpickles3(alignfile,'MSMAll')
+    subs_blocks_range = range(3,10) #subjects to use to determine blocks with most streamlines
+
+    for subs_test_range in [range(3,6)]:
+        temp = [i for i in subs_blocks_range if i not in subs_test_range]
+        subs_inds={'temp': temp, 'test': subs_test_range, 'blocks': subs_blocks_range}
 
         print('')
         print(f"{subs_inds['test']} - {howtoalign}")
-
         #func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,text=FCparcellation) #for FCparcellation 
         func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll) #tckfile='tracks_5M_1M_end.tck'
 
