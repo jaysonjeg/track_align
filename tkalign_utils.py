@@ -422,7 +422,7 @@ def count_nonnans(array,func):
 def count_negs(array):
     return count_nonnans(array, lambda x: x<0)
 
-
+"""
 def plotter(axis,x,aligned_method,show_same_aligner,title,subs_test,subs_template,drawhorzline=False): 
     n_subs_template = x.shape[0]
     n_subs_test = x.shape[1]
@@ -449,7 +449,7 @@ def plotter(axis,x,aligned_method,show_same_aligner,title,subs_test,subs_templat
     axis.set_ylabel('Correlation')
     if drawhorzline:
         axis.axhline(0) #draw horizontal line
-
+"""
 
 def plot_id(axis,x,title='title'):
     colors=['tab:blue','tab:orange','tab:green','tab:purple','tab:brown','tab:pink','tab:gray','tab:olive','tab:cyan','k','m','b']

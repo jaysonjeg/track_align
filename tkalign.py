@@ -90,12 +90,10 @@ if __name__=='__main__':
         parcel_pair_type='inter' #'inter' for inter-parcel connections (default) or 'intra' for intra-parcel connections
         type_rowcol = 'col' # 'col' or 'row'. Only relevant for inferring directionality with block_choice=='fromsourcevertex' 
 
-        get_similarity_pairwise=True #correlations bw X aligned with Y, and W aligned with W. Default False
         get_similarity_average=True #correlations between X aligned with Y, and mean(all W aligned with W). Default True
         aligner2sparsearray=False #bool, default False. Make functional aligner into a sparse array. 
         aligner_descale=False #bool, Default False. make R transformations orthogonal again (doesn't make any difference to correlations). 
         aligner_negatives='abs' #str. What to do with negative values in R matrix. 'abs' to use absolute value (default). 'zero' to make it zero (performance slightly worse). 'leave' to leave as is.
-        show_same_aligner=True #plots show nxR==nyR (both aligned by same aligner). Default False. Only relevant if template group and test group have the same subjects
 
         par_prefer_hrc='threads'  #'threads' (default) or 'processes' for getting high-res connectomes from file
 
@@ -121,10 +119,7 @@ if __name__=='__main__':
         else:
             ident_grouped_type='wholebrain'
 
-        aligned_method = 'template' if (('temp' in alignfile) or ('Temp' in alignfile)) else 'pairwise'
-        if aligned_method=='pairwise': 
-            get_similarity_pairwise=True
-            get_similarity_average=False
+        aligned_method='template'
 
         ### Get parcellation 
         assert(parcellation_string in alignfile)
@@ -181,10 +176,6 @@ if __name__=='__main__':
                     all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) #load each time because func(i) will modify arrays in all_aligners            
                     func = lambda nsub: tutils.get_template_aligners(all_aligners.estimators[nsub],slices,aligner2sparsearray=aligner2sparsearray,aligner_descale=aligner_descale,aligner_negatives=aligner_negatives)
                     fa[group] = [func(i) for i in subs_inds[group]]
-            elif aligned_method=='pairwise':          
-                all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) 
-                allowed_keys = [f'{i}-{j}' for i in subs['test'] for j in subs['temp'] if i!=j] #only aligners which transform test subjects to template subjects
-                fa={'test':{key:value for key,value in all_aligners.items() if key in allowed_keys}}
 
             def get_aligner_parcel(group,sub_ind,nparcel):
                 """       
@@ -254,7 +245,7 @@ if __name__=='__main__':
                 norm=np.linalg.norm(X)
                 return (X/norm).astype(np.float32)
 
-            par_prefer='processes' #default 'threads', but processes makes faster when aligned_method=='pairwise'
+            par_prefer='threads' #default 'threads', but processes makes faster when aligned_method=='pairwise'
             aligned_blocks={} #aligned_blocks is a dict with keys ['test','template']. aligned_blocks['test'] is a 3-dim array with elements [nD,nR,nblock]. aligned_blocks['template'] is a 2-dim array with elements [nD,nblock]. Each element is an block of a connectome transformed with a functional aligner.
             if aligned_method=='template':
                 for group in groups:
@@ -265,16 +256,6 @@ if __name__=='__main__':
                     elif group=='temp':
                         aligned_blocks['temp']=np.reshape(np.array(temp,dtype=object),(len(subs['temp']),blocks.shape[1]))
                         aligned_blocks_template_mean = np.mean(aligned_blocks['temp'],axis=0) #1-dim array with elements [nblock].
-            elif aligned_method=='pairwise':
-                def yield_args_pairwise():
-                    for nDtarget,nD,nR in itertools.product(range(len(subs['temp'])),range(len(subs['test'])),range(len(subs['test']))):
-                        key = f"{subs['test'][nR]}-{subs['temp'][nDtarget]}"
-                        for n in range(blocks.shape[1]):
-                            yield get_vals(howtoalign,'test',nD,key,n)       
-                temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args_pairwise())
-                aligned_blocks['test']=np.reshape(np.array(temp,dtype=object),(len(subs['temp']),len(subs['test']),len(subs['test']),blocks.shape[1])) #element nD,nR,nDtarget,nblock has nD's connectivity for nblock transformed using the aligner that takes subject 'nR' to 'nDtarget'.
-                temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args(None,'temp',cache_offdiag_blocks=False)) #howtoalign set to None so we don't transform template hrcs at all
-                aligned_blocks['temp']=np.reshape(np.array(temp,dtype=object),(len(subs['temp']),blocks.shape[1]))
             del temp
 
             #aligned_blocks['test']=np.roll(aligned_blocks['test'],1,axis=2)
@@ -290,8 +271,6 @@ if __name__=='__main__':
                 for nblock in range(N):
                     if aligned_method=='template':
                         Y=aligned_blocks['test'][sub_ind_hr,sub_ind_fa,nblock]
-                    elif aligned_method=='pairwise':
-                        Y=aligned_blocks['test'][nxD,sub_ind_hr,sub_ind_fa,nblock] #hrc of nyD is transformed using nyR->nxD (from subs['test']) aligner
                     if nxD is None and nxR is None: #with average
                         X = aligned_blocks_template_mean[nblock]
                     else: #with pairwise
@@ -299,46 +278,7 @@ if __name__=='__main__':
                     coeffs[nblock]=correlate_block(X,Y) 
                 return coeffs
 
-            ### Get similarity between person X and Y's connectomes (functionally aligned)
-
-            """
-            Template:
-            For each pair of subjects nxD and nyD, use his own aligner (nxR) on nxD, and iterate through every subject's nyR to align nyD. Of course, there's no point comparing 2 subjects aligned with the same aligner (nxR==nyR) as this will be be very similar to original connectomes (except maybe with some smoothing). For example, if len(subs['test'])==5, nxD==2 and nyD==4, then align nxD with his own aligner (so nxR==2) but try nyR in [0,1,3,4]. nyR==4 will be the 'unscrambled' version which is hopefully than the other 3 options
-
-            Pairwise:
-            Subject nxD's diffusion map compared to subject nyD's diffusion map (aligned via nY->nX aligner)
-            """          
-            if get_similarity_pairwise:
-                print(f'{c.time()}: GetSimilarity (pair)',end=", ")
-                #store correlation for each block in each subject-pair 
-                pair_type=0 #0 and 1, similar speed, 1 with 'processes' seems slower
-                if pair_type==0:
-                    f=np.zeros((len(subs['temp']),len(subs['test']),len(subs['test']),blocks.shape[1]),dtype=np.float32) 
-                    f[:]=np.nan 
-                    def yield_indices():
-                        for nyD,nyR in itertools.product(range(len(subs['test'])),range(len(subs['test']))):
-                            for nxD in range(len(subs['temp'])):
-                                if subs['temp'][nxD] != subs['test'][nyD]:
-                                    nxR = nxD
-                                    yield nyD,nyR,nxD,nxR
-                    def enter_values(nyD,nyR,nxD,nxR,blocks):
-                        f[nxD,nyD,nyR,:]=correlate(aligned_method,nyD,nyR,blocks,nxD,nxR)
-                    Parallel(n_jobs=-1,require='sharedmem')(delayed(enter_values)(*args,blocks) for args in yield_indices())
-                
-                elif pair_type==1:
-                    print("code not edited for len(subs['temp']) vs len(subs['test'])")
-                    def yield_aligned_blocks():
-                        for nxD, nyD, nyR in itertools.product(range(len(subs['test'])),range(len(subs['test'])),range(len(subs['test']))):  
-                            nxR=nxD
-                            Xs = aligned_blocks['test'][nxD,nxR,:]
-                            Ys = aligned_blocks['test'][nyD,nyR,:]
-                            yield Xs,Ys    
-                    temp=Parallel(n_jobs=-1,prefer='threads')(delayed(correlate_blocks)(*args) for args in yield_aligned_blocks())
-                    f=np.reshape(np.array(temp,dtype=np.float32),(len(subs['test']),len(subs['test']),len(subs['test']),blocks.shape[1]))  
-                    f[np.eye(f.shape[0],dtype=bool),:,:]=np.nan #set diagonals in dims 0 and 1 to np.nan  
-            else: f=None           
-
-            
+            ### Get similarity between person X and Y's connectomes (functionally aligned)     
             if get_similarity_average:
                 #a is an array of shape (test subjects, test subjects, nblocks). Stores correlations of each test_subject's connectome (dim 0) aligned with each subject's aligner (dim 1), for each block (dim 2), with the (mean of template subject's connectomes each aligned with their own aligner)
                 print(f'{c.time()}: GetSimilarity (av)',end=", ")            
@@ -348,79 +288,10 @@ if __name__=='__main__':
                         a[sub_ind_hr,sub_ind_fa,:]=correlate(aligned_method,sub_ind_hr,sub_ind_fa,blocks)
             else: a=None
 
-        assert(0)
-
         if save_file:
             np.save(save_path,{'blocks':blocks,'f':f,'a':a})
 
         print(f'{c.time()}: Calculations',end='')
-        if get_similarity_pairwise:   
-            fn=tutils.subtract_nonscrambled_from_z(f) #4-dim array with elements [nxD,nyD,nyR,nblock]. Nonscrambled elements set to nan
-            fn2=tutils.unaligned_to_nan(fn,subs['test'],subs['temp']) #Set elements where X and Y are aligned with same aligner to nan. Size (nxD,nyD,nyR,block) = (3,3,3,200)
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore",category=RuntimeWarning)
-                #average across nyR (different subjects' aligners). Ignore nans. That means where same aligner used for nxD and nyD (nxR==nyR), and where aligner belongs to the same subject so it is not scrambled (nyR==nyD). 3-dim array with elements [nxD, nyD, nblock]. If 'template', this is upper triangular. If 'pairwise', this has diagonal zeros
-                fnm=np.nanmean(fn2,axis=2) #size (nxD,nyD, block)=(3,3,200)
-                fnmm=np.nanmean(fnm,axis=(0,1)) #Mean across subjects nxD and nyD . Size (block) = (200)  
-                
-                if ident_grouped_type=='perparcel':
-                    f2=np.zeros(( f.shape[:-1] + (nparcs,nparcs)) , dtype=np.float32)
-                    f2[:]=np.nan
-                    for n in range(blocks.shape[1]):
-                        i=blocks[0,n]
-                        j=blocks[1,n]
-                        f2[:,:,:,i,j]=f[:,:,:,n]
-                    f=f2
-                    del f2
-
-                fx=tutils.unaligned_to_nan(f,subs['test'],subs['temp'])
-
-                #Average across blocks. Ignore nans. That means blocks with no connections in one of the subject pairs. 3-dim array with elements [nxD, nyD, nyR]
-                mf=np.nanmean(f,axis=3) #size (nxD,nyD,nyR)=(3,3,3)
-                mfn=np.nanmean(fn,axis=3)
-                m_unscram_ranks=tutils.get_unscram_ranks(ranks(mf),aligned_method) 
-
-
-                mean0 = lambda array: np.nanmean(array,axis=0)
-                mfx=np.nanmean(fx,axis=3)
-                mfom=mean0(ranks(mf))
-                mfxmr=reg(mean0(mfx))
-                
-                mfomi=ident(mean0(ranks(mf)))
-                mfmri=ident(reg(mean0(mf)))
-                mfxmi=ident(mean0(mfx))
-                mfxomi=ident(mean0(ranks(mfx)))
-                mfxmri=ident(reg(mean0(mfx)))   
-                mfxomri=ident(reg(mean0(ranks(mfx))))
-                mfxromi=ident(mean0(ranks(reg(mfx))))                
-
-                
-                if not(ident_grouped_type=='perparcel'):
-                    fomi=ident(mean0(ranks(f)))
-                    fmri=ident(reg(mean0(f)))
-                    fxmi=ident(mean0(fx))
-                    fxomi=ident(mean0(ranks(fx))) #might be best
-                    fxmri=ident(reg(mean0(fx)))   
-                    fxomri=ident(reg(mean0(ranks(fx)))) #no.2
-                    fxromi=ident(mean0(ranks(reg(fx)))) #no.2
-
-                fxo=ranks(fx)
-                fxoM=np.nanmean(fxo,axis=3)
-                fxoMm=mean0(fxoM)
-                fxoMmi = ident(fxoMm) 
-
-            
-            print(f' pairs grouped {ident_grouped_type}: ', end="")
-            for string in ['mfomi','mfmri','mfxmi','mfxomi','mfxmri','mfxomri','mfxromi','fxoMmi']:
-                print(f"{string} {eval(f'{string}.mean()'):.0f}, ", end="")    
-            
-            if not(ident_grouped_type=='perparcel'):
-                print('\n pairs blockwise: ', end="")
-                for string in ['fomi','fmri','fxmi','fxomi','fxmri','fxomri','fxromi']:
-                #for string in ['fmri','fxromi']: 
-                    print(f"{string} {eval(f'{string}.mean()'):.0f}, ",end="")
-
         if get_similarity_average:    
             if ident_grouped_type=='perparcel':
                 a2=np.zeros(( a.shape[:-1] + (nparcs,nparcs)) , dtype=np.float32)
@@ -490,9 +361,6 @@ if __name__=='__main__':
 
         print(f'{c.time()}: Calculations done, Ident start')
         if to_plot and ident_grouped_type=='perparcel':
-
-            if get_similarity_pairwise:
-                hutils.plot_parc_multi(p,align_parc_matrix,['mfxomi','fxoMmi'],[mfxomi,fxoMmi])
             if get_similarity_average:
                 hutils.plot_parc_multi(p,align_parc_matrix,['mai','maoi','maroi','anN','arnN'],[mai,maoi,maroi,anN,arnN])
 
@@ -529,41 +397,15 @@ if __name__=='__main__':
                 plt.subplots_adjust(hspace=0.5) 
                 fig.suptitle(f'Similarity average', fontsize=16)
 
-        def plots_pairwise(show_same_aligner):         
-            
-            print(f"PAIR { 100*(np.sum(np.array(m_unscram_ranks)>=(len(subs['test'])-2)) / len(m_unscram_ranks)):.1f} % of sub-pairs had orig> all scram possibilities")
-            print(f'PAIR {count_negs(fnmm):.1f}% of blocks (mean across sub-pairs, nyR) had original > scrambled')        
-            print(f'PAIR {count_negs(fnm):.1f} % of (sub-pairs)*blocks (mean across nyR)') 
-            
-            print(f'PAIR {count_negs(fn2):.1f} % of (sub-pairs)*nyR*blocks') 
-            #print(f'Identifiability with pairs {mfomi:.1f}%, per block average {fmri.mean():.1f}%')
-            if not(ident_grouped_type=='perparcel'):
-                fig,axs=plt.subplots(5)
-                tutils.plotter(axs[0],mf,aligned_method,show_same_aligner,'m',subs['test'],subs['temp'])
-                tutils.plot_id(axs[1],mfom,title='mfom: pairwise')
-                tutils.plot_id(axs[2],mfxmr,title='mfxmr: pairwise')
-                tutils.plot_id(axs[3],fxoMm,title='fxoMm: pairwise') 
-                axs[4].hist(fnmm)
-                axs[4].set_title('Distribution of scrambled minus nonscrambled \nacross blocks')
-                #axs[0].hist(m_unscram_ranks)
-                #axs[0].set_title('m: Rank order of unscrambled \namong scrambled: Bigger is better')
-                #tutils.plotter(axis_mn,mfn,aligned_method,show_same_aligner,'mfn',,subs_test,subs_temp,drawhorzline=True)    
-                plt.subplots_adjust(hspace=0.5)
-                fig.suptitle(f'Similarity pairwise', fontsize=16)
-
-        if get_similarity_pairwise:
-            plots_pairwise(show_same_aligner)
-            if to_plot and plot_type=='save_as_html': plt.savefig(f'{figures_subfolder}/pair')
         if get_similarity_average:
             plots_average()
             if to_plot and plot_type=='save_as_html': plt.savefig(f'{figures_subfolder}/av')
         if to_plot: plt.show()
         hutils.getloadavg()
         print(hutils.memused())
-        assert(0)
 
 
-    nblocks=50 #how many (parcel x parcel) blocks to examine
+    nblocks=10 #how many (parcel x parcel) blocks to examine
     block_choice='largest' #'largest', 'fromsourcevertex', 'all','few_from_each_vertex'
     howtoalign = 'RDRT' #'RDRT','RD','RD+','RT','RT+'     
     pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
