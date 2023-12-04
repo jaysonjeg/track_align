@@ -18,6 +18,11 @@ def extract_nsubs_alignpickles1(string):
     else:
         return None
 
+def extract_sub_range_alignpickles1(string):
+    nsubs = extract_nsubs_alignpickles1(string)
+    return range(0,nsubs)
+
+'''
 def extract_nparcs_alignpickles1(string):
     """
     Given a filename from intermediates/alignpickles, extract the number of parcels
@@ -28,7 +33,7 @@ def extract_nparcs_alignpickles1(string):
         return int(match.group(1))
     else:
         return None
-
+'''
 def get_smoother(fwhm):
     return sparse.load_npz(ospath(f'{hutils.intermediates_path}/smoothers/100610_{fwhm}_0.01.npz')).astype(np.float32)
 
@@ -61,7 +66,45 @@ def load_f_and_a(save_path):
     a=temp[()]['a']
     return blocks,f,a
 
-def get_hps(hp):       
+def get_blocks(c,tckfile, MSMAll, sift2, align_parc_matrix, subs, block_choice,nblocks,parcel_pair_type,align_labels,nparcs,type_rowcol,par_prefer_hrc):
+    """
+    Return blocks
+    """
+    parcellated_connectomes = get_parcellated_connectomes(c,tckfile, MSMAll, sift2, align_parc_matrix, subs, par_prefer_hrc)    
+    hps, hpsx, hpsxa = reduce_parcellated_connectomes(parcellated_connectomes)    
+    blocks = get_blocks_from_parcellated_connectomes(block_choice, nblocks, parcel_pair_type, align_labels, nparcs, type_rowcol, hps, hpsx, hpsxa)
+    return blocks
+
+def get_blocks_from_parcellated_connectomes(block_choice, nblocks, parcel_pair_type, align_labels, nparcs, type_rowcol, hps, hpsx, hpsxa):
+    if block_choice=='largest': 
+        blocks=get_blocks_largest(nblocks,parcel_pair_type,hps,hpsx)
+    elif block_choice=='fromsourcevertex':
+        blocks=get_blocks_source(align_labels,hpsxa,nblocks,nparcs,type_rowcol)
+    elif block_choice=='all':
+        blocks=get_blocks_all()
+    elif block_choice=='few_from_each_vertex':
+        blocks=get_blocks_few_from_each_vertex(nblocks,hpsxa,nparcs)
+    return blocks
+
+def get_parcellated_connectomes(c,tckfile, MSMAll, sift2, align_parc_matrix, subs, par_prefer_hrc):
+    """
+    Return parcellated connectomes
+    """
+    from Connectome_Spatial_Smoothing import CSS as css
+    connectomes_highres = hutils.get_highres_connectomes(c,subs,tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefer_hrc,n_jobs=-1) 
+    parcellated_connectomes=[css.downsample_high_resolution_structural_connectivity_to_atlas(hrs, align_parc_matrix) for hrs in connectomes_highres] 
+    del connectomes_highres
+    return parcellated_connectomes
+
+def reduce_parcellated_connectomes(hp): 
+    """
+    Given a list of sparse arrays, return the following:
+    Return:
+    -------
+    hps: elementwise sum of all sparse arrays in list
+    hpsx: remove diagonal elements from hps
+    hpsxa: hpsx converted to array
+    """      
     hps=sum(hp)
     hpsx=hps.copy()
     with warnings.catch_warnings():
@@ -70,6 +113,7 @@ def get_hps(hp):
         hpsx.eliminate_zeros() 
     hpsxa=hpsx.toarray()
     return hps,hpsx,hpsxa
+
 def get_blocks_largest(nblocks,parcel_pair_type,hps,hpsx):
     if parcel_pair_type=='intra':
         temp=hutils.indices_of_largest_values_in_array(sparse.csr_matrix.diagonal(hps),nblocks)  
@@ -106,34 +150,38 @@ def get_blocks_few_from_each_vertex(nblocks,hpsxa,nparcs):
     blocks=np.vstack([temp1,temp2])
     return blocks
 
-import fmralign
-def aligner2sparse(a,slices,fa_sparse=False,aligned_descale=False,aligned_negs='abs'):
+def get_template_aligners(a,slices,aligner2sparsearray=False,aligner_descale=False,aligner_negatives='abs'):
     """
-    Convert pairwise aligner a into a sparse csc matrix
-    aligned_descale=True will descale so that output is purely a rotation matrix
-    aligned_negs: options 'abs' (default), 'zero', 'leave'. What to do with negative values in R matrix. 'abs' to use absolute value. 'zero' to make it zero. 'leave' to leave as is.
-    For RidgeAlignment, R.coef_ is (ntargetverts,nsourceverts). For all others, R is (nsourceverts,ntargetverts). That is, given X(nsamples,nsourceverts), X is transformed with XR by the transform method.
-    """  
-    if fa_sparse:   
+    Get alignment transformations from a TemplateAlignment object, and perform some processing. For RidgeAlignment, R.coef_ is (ntargetverts,nsourceverts). For all others, R is (nsourceverts,ntargetverts). That is, given X(nsamples,nsourceverts), X is transformed with XR by the transform method.
+    Parameters:
+    -----------
+    a: TemplateAlignment object
+    slices: list of slices for each parcel in the ordered list
+    aligner2sparsearray: if True, convert each aligner to a sparse array
+    aligner_descale: if True, descale each aligner so that output is purely a rotation matrix
+    aligner_negatives: options 'abs' (default), 'zero', 'leave'. What to do with negative values in R matrix. 'abs' to use absolute value. 'zero' to make it zero. 'leave' to leave as is.
+    """
+    import fmralign
+    if aligner2sparsearray:   
         from scipy.sparse import lil_matrix
         mat=lil_matrix((59412,59412),dtype=np.float32)
     for i in range(len(a.fit_)):
         pairwise_method=type(a.fit_[0])
         if pairwise_method in [fmralign.alignment_methods.ScaledOrthogonalAlignment , fmralign.alignment_methods.OptimalTransportAlignment,fmralign.alignment_methods.Hungarian]:
             R_i=a.fit_[i].R.T
-            if aligned_descale:
+            if aligner_descale:
                 scale=a.fit_[i].scale
                 R_i /= scale
         elif pairwise_method==fmralign.alignment_methods.RidgeAlignment:
             R_i=a.fit_[i].R.coef_  
-        if aligned_negs=='abs': 
+        if aligner_negatives=='abs': 
             R_i=np.abs(R_i)
-        elif aligned_negs=='zero':
+        elif aligner_negatives=='zero':
             R_i[R_i<0]=0                 
-        if fa_sparse: mat[slices[i],slices[i]]=R_i
+        if aligner2sparsearray: mat[slices[i],slices[i]]=R_i
         else: a.fit_[i].R=R_i        
     
-    if fa_sparse:
+    if aligner2sparsearray:
         matr=mat.tocsc()
         return matr
     else:
@@ -295,7 +343,14 @@ def prep(y,include_axis_2=True):
                 num += 1
     return X,x
 def regress(y,include_axis_2=False):
-    #Linear regression where each dimension of y is a different categorical variable, and the elements in y are the values of the single dependent variable. Returns beta weights and residuals
+    """
+    Linear regression where each dimension of y is a different categorical variable, and the elements in y are the values of the single dependent variable. Returns residuals.
+    For example, if y has shape (3,4,5), then the dependent variable is a function of 3 categorical variables, each with 3, 4, and 5 levels respectively.
+    Parameters:
+    -----------
+    y: numpy array with 2 to 3 dimensions
+    include_axis_2: if True, include axis 2 in the regression. If False, ignore axis 2 (only do axes 0 and 1)
+    """
     
     if y.ndim==2:
         return np.squeeze(regress(np.expand_dims(y,axis=2)))

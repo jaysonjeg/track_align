@@ -982,7 +982,7 @@ def vertexmap_59kto64k(hemi='both'):
     List of 59k cortical vertices in fsLR32k, with their mapping onto 64k cortex mesh
     hemi='both','L','R'
     """
-    import hcpalign_utils as hcp
+    import hcp_utils as hcp
     grayl=hcp.vertex_info.grayl
     grayr=hcp.vertex_info.grayr
     grayr_for_appending=hcp.vertex_info.grayr+hcp.vertex_info.num_meshl

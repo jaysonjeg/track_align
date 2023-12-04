@@ -188,7 +188,7 @@ if __name__=='__main__':
             if plot_scales:
                 p.plot(hutils.aligner_get_scale_map(aligners.estimators[0])) #plot scale parameter for Procrustes aligner
 
-            if True:
+            if False:
                 #pass
                 print('Skip decoding. Only saving aligners')
                 return [0], [0], imgs_decode_aligned, aligners
@@ -264,7 +264,7 @@ if __name__=='__main__':
         
         vprint(hutils.memused())
         vprint(f'{c.time()} Classifications done')
-        return classification_scores, corrs_mean_parcel,imgs_decode_aligned, aligners
+        return classification_scores, corrs_mean_parcel,imgs_decode_aligned, None
 
 
 ###########################################################
@@ -292,9 +292,9 @@ if __name__=='__main__':
         print("USING HTUILS.ALL_SUBS (NEEDED FOR TKALIGN)")
 
         #### General Parameters
-        sub_slice=slice(0,5)
+        sub_slice=slice(0,10)
         parcellation_string = 'S300' #S300, K1000, MMP
-        MSMAll=True
+        MSMAll=False
         save_pickle=False
         load_pickle=False #use saved aligner
         verbose=True
@@ -309,8 +309,8 @@ if __name__=='__main__':
         gamma=0
 
         #### Parameters for alignment data
-        align_with='rest_FC'
-        runs=[0,1,2,3]
+        align_with='movie'
+        runs=[0]
         align_fwhm=0
         align_clean=True
         FC_parcellation_string = 'S1000'
@@ -326,7 +326,7 @@ if __name__=='__main__':
         use_parcelmeanstds = True #add parcel-specific means and stds back for classification
 
         #### Parameters for making template (ignored if method!='template')
-        subs_template_slice=slice(0,5)
+        subs_template_slice=slice(0,10)
         lowdim_template=True
 
         n_bags_template=1
@@ -374,7 +374,7 @@ if __name__=='__main__':
             save_string = f"A{align_string}_D{decode_string}_{parcellation_string}{template_string}_{method_string}_{sub_slice_string}_{post_decode_fwhm}"
 
             t.print(f"{c.time()}: Start {save_string}")
-            scores, corrs_mean_parcel, imgs_decode_aligned, aligners = align_and_classify(c,t,verbose,save_string, subs, imgs_align, imgs_decode, method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma,post_decode_fwhm=post_decode_fwhm,save_pickle=save_pickle,load_pickle=load_pickle,n_bags=n_bags,n_jobs=+1,imgs_template=imgs_template,lowdim_template=lowdim_template,n_bags_template=n_bags_template,gamma_template=gamma_template,args_template=args_template,plot_type='open_in_browser',plot_impulse_response=False, plot_contrast_maps=False,imgs_decode_meanstds=imgs_decode_meanstds)
+            scores, corrs_mean_parcel, imgs_decode_aligned, aligners = align_and_classify(c,t,verbose,save_string, subs, imgs_align, imgs_decode, method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma,post_decode_fwhm=post_decode_fwhm,save_pickle=save_pickle,load_pickle=load_pickle,n_bags=n_bags,n_jobs=+1,imgs_template=imgs_template,lowdim_template=lowdim_template,n_bags_template=n_bags_template,gamma_template=gamma_template,args_template=args_template,plot_type='open_in_browser',plot_impulse_response=True, plot_contrast_maps=True,imgs_decode_meanstds=imgs_decode_meanstds)
             t.print(f"{c.time()}: Done with {save_string}")
             mean_accuracy = np.mean([np.mean(i) for i in scores])
             t.print(f'Classification accuracies: mean {mean_accuracy:.3f}, [', end= "")
@@ -385,7 +385,7 @@ if __name__=='__main__':
             corrs.append(corrs_mean_parcel)
             accs.append(np.mean(scores))
 
-            if True: #save aligner for each subject separately in alignpickles3
+            if False: #save aligner for each subject separately in alignpickles3
                 save_string3 = f"A{align_string}_{parcellation_string}{template_string}_{method_string}"
                 hutils.mkdir(f'{intermediates_path}/alignpickles3')
                 hutils.mkdir(f'{intermediates_path}/alignpickles3/{save_string3}')
@@ -396,7 +396,7 @@ if __name__=='__main__':
                 #load_sub_aligner = lambda sub: pickle.load(open(f'{prefix}/{sub}.p',"rb"))
                 #_=Parallel(n_jobs=-1,prefer='threads')(delayed(pickle.load(open(f'{prefix}/{sub}.p',"wb")))(sub) for sub in subs)
 
-            if True: #save aligned decode data
+            if False: #save aligned decode data
                 imgs_decode_aligned = [i[:,0:59412] for i in imgs_decode_aligned] #remove mean and stds
                 save_string2 = f"A{align_string}_D{decode_string}_{parcellation_string}{template_string}_{method_string}_{post_decode_fwhm}"
                 hutils.mkdir(f'{intermediates_path}/alignpickles2')

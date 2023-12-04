@@ -7,12 +7,28 @@ from joblib import Parallel, delayed
 #from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
 
+from sklearn.datasets import make_regression
+x,y = make_regression(n_samples=300, n_features=100, noise=0.0,n_targets=100)
+
+from sklearn.linear_model import RidgeCV
+model = RidgeCV(alphas=[1],scoring="r2",cv=4)
+model.fit(x,y)
+ypred1 = model.predict(x)
+ypred2 = x@model.coef_.T + model.intercept_
+
+
+xpred1 = (y - model.intercept_)@np.linalg.inv(model.coef_.T)
+xpred2 = (y - model.intercept_)@np.linalg.pinv(model.coef_.T)
+
+assert(0)
+
 """
 Machine learning (regression):
 X: input data, 2*2500 features, 100 samples
 y: output data: continuous variable, 100 samples
 """
 
+"""
 from sklearn.datasets import make_regression
 X, y = make_regression(n_samples=100, n_features=5000, noise=0.0)
 
@@ -37,6 +53,7 @@ kf = KFold(n_splits=5, shuffle=True, random_state=0)
 r2_scores = cross_val_score(est, X, y, cv=kf, scoring='r2',n_jobs=n_jobs_outer)
 print(r2_scores)
 assert(0)
+"""
 
 #Given r^2 scores for each fold in each parcel, plot them on surface
 import hcpalign_utils as hutils
@@ -59,7 +76,7 @@ vmax = 0.2
 #Task anat vs TempScal
 plot_r2_anat_and_func('sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax) #default
 #plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0CIRCSHIFT_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax) #circshifted
-plot_r2_anat_and_func('sub450toNone_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax) #subs 450 to max
+#plot_r2_anat_and_func('sub450toNone_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax) #subs 450 to max
 #plot_r2_anat_and_func('sub50toNone_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax) #subs 50 to max
 plot_r2('7taskst_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax) #MSMAll
 
@@ -67,7 +84,7 @@ plot_r2('7taskst_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax) #MSMAll
 #plot_r2_anat_and_func('sub50to450_S300_ridgeCV_yf_Xfftt_ar2',vmax=vmax) #standard scaler
 #plot_r2_anat_and_func('sub450toNone_S300_ridgeCV_yf_Xfftt_ar2',vmax=vmax) #standard scaler, subs 450 to max
 
-plot_r2_anat_and_func('sub50to450_S300_ridgeCV_yf_Xffff_ar2',vmax=vmax) #not demean
+#plot_r2_anat_and_func('sub50to450_S300_ridgeCV_yf_Xffff_ar2',vmax=vmax) #not demean
 #plot_r2('7tasksf&Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0_sub50to450_S300_ridgeCV_yf_Xffff_ar2',vmax=vmax) #not demean, both anat and func align
 
 
@@ -75,13 +92,13 @@ plot_r2_anat_and_func('sub50to450_S300_ridgeCV_yf_Xffff_ar2',vmax=vmax) #not dem
 #Task TempRidg vs TempScal
 plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_alphas[1000]_0_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax) #TempRidge, ffft
 #plot_r2('Aresfcf0123t0S1000_D7tasksf& ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax) #TempScal, ffft
-plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_alphas[1000]_0_sub50to450_S300_ridgeCV_yf_Xffff_ar2',vmax=vmax) #TempRidge, ffff
+#plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_alphas[1000]_0_sub50to450_S300_ridgeCV_yf_Xffff_ar2',vmax=vmax) #TempRidge, ffff
 #plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0_sub50to450_S300_ridgeCV_yf_Xffff_ar2',vmax=vmax) #TempScal, ffff
 #plot_r2('7tasksf&Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_alphas[1000]_0_sub50to450_S300_ridgeCV_yf_Xffff_ar2',vmax=vmax)
 
 
 
-#rsFMRI vs TempScal
+#Use rsfMRI to decode IQ
 #plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to20_G1ffrr_TempScal__0_sub50to450_S300_ridgeCV_yf_Xffff_ar2',vmax=vmax) #TempScal, ffff
 #plot_r2('resfcf0123t0S1000_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
 #plot_r2('resfcf0123t0S1000_sub50to450_S300_ridgeCV_yf_Xffff_ar2',vmax=vmax)
@@ -94,17 +111,17 @@ plot_r2('Aresfcf0123t0S1000_D7tasksf&ms_S300_Tresfcf0123t0S1000sub0to50_L_TempRi
 plot_r2('Aresfcf0123t0S1000f_D7tasksf&ms_S300_Tresfcf0123t0S1000fsub0to50_L_TempRidg_alphas[1000]_0_sub50to450_S300_ridgeCV_yf_Xffft_ar2')
 """
 
-#Gamma values
+#Gamma values. Alignment from rsfMRI applied to task fMRI
 plot_r2('Aresfcf0123t0S1000_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_alphas[1000]7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
 #plot_r2('Aresfcf0123t0S1000t_S300_Tresfcf0123t0S1000tsub0to50_L_TempRidg_gam0.02alphas[1000]7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
-#plot_r2('Aresfcf0123t0S1000t_S300_Tresfcf0123t0S1000tsub0to50_L_TempRidg_gam0.05alphas[1000]7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
+plot_r2('Aresfcf0123t0S1000t_S300_Tresfcf0123t0S1000tsub0to50_L_TempRidg_gam0.05alphas[1000]7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
 #plot_r2('Aresfcf0123t0S1000_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_gam0.1alphas[1000]7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
 plot_r2('Aresfcf0123t0S1000_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_gam0.2alphas[1000]7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
-#plot_r2('Aresfcf0123t0S1000_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_gam0.5alphas[1000]7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
+plot_r2('Aresfcf0123t0S1000_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_gam0.5alphas[1000]7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
 #plot_r2('Aresfcf0123t0S1000_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_gam1alphas[1000]7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
 
 
-#MSMAll False vs True
+#MSMAll True improves things further
 #plot_r2('Aresfcf0123t0S1000_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_alphas[1000]7tasksf_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
 plot_r2('Aresfct0123t0S1000t_S300_Tresfct0123t0S1000tsub0to50_L_TempRidg_alphas[1000]7taskst_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
 

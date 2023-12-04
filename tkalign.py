@@ -1,7 +1,6 @@
 """
 Formerly named tkfunc3
 Script to relate high-resolution diffusion connectomes to functional alignment
-hr: list of high resolution connectomes as sparse arrays (59412,59412)
 
 For all 10 subjects...
 Get high-resolution connectomes and smooth them
@@ -47,7 +46,6 @@ def correlate_blocks(Xs,Ys,corr_args=['pearson','ravel']):
 if __name__=='__main__':
 
     import os, pickle, warnings, itertools
-    from Connectome_Spatial_Smoothing import CSS as css
     from scipy import sparse
     import hcpalign_utils as hutils
     from hcpalign_utils import ospath
@@ -58,12 +56,12 @@ if __name__=='__main__':
     print(hutils.memused())
     c=hutils.clock()
 
-    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,tckfile=None,text=''):
+    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll, tckfile=None,text=''):
         """
         Parameters:
         -----------
         subs_inds: dict
-            keys are 'temp' and 'test'. Values are lists of subject indices in hutils.all_subs
+            keys are 'temp', 'test', 'aligner'. Values are lists of subject indices in hutils.all_subs
         nblocks: int
         alignfile: str
             name of pickle file in intermediates/alignpickles containing functional aligners
@@ -81,6 +79,7 @@ if __name__=='__main__':
             'save_as_html' or 'open_in_browser'
         pre_hrc_fwhm: int
         post_hrc_fwhm: int
+        MSMAll: bool
         tckfile: str
             name of tck file in intermediates/highres_connectomes
         text: str
@@ -88,17 +87,17 @@ if __name__=='__main__':
         """
 
         ### Parameters 
-        get_offdiag_blocks=True #pre-emptively calculate and cache aligned_blocks (faster but more RAM)
-        MSMAll=False
         parcel_pair_type='inter' #'inter' for inter-parcel connections (default) or 'intra' for intra-parcel connections
+        type_rowcol = 'col' # 'col' or 'row'. Only relevant for inferring directionality with block_choice=='fromsourcevertex' 
 
-        get_similarity_pairwise=False #correlations bw nxD*nxR (matched), and nyD*(all possible nyDs)
-        get_similarity_average=True #correlations between mean(nxD*nxR(matched)), and nyD*(all possible nyDs)
-        
-        fa_sparse=False #bool, default False. Make functional aligner into a sparse array. 
-        aligned_descale=False #bool, Default False. make R transformations orthogonal again (doesn't make any difference to correlations). 
-        aligned_negs='abs' #str. What to do with negative values in R matrix. 'abs' to use absolute value (default). 'zero' to make it zero (performance slightly worse). 'leave' to leave as is.
-        show_same_aligner=False #plots show nxR==nyR (both aligned by same aligner). Default False
+        get_similarity_pairwise=True #correlations bw X aligned with Y, and W aligned with W. Default False
+        get_similarity_average=True #correlations between X aligned with Y, and mean(all W aligned with W). Default True
+        aligner2sparsearray=False #bool, default False. Make functional aligner into a sparse array. 
+        aligner_descale=False #bool, Default False. make R transformations orthogonal again (doesn't make any difference to correlations). 
+        aligner_negatives='abs' #str. What to do with negative values in R matrix. 'abs' to use absolute value (default). 'zero' to make it zero (performance slightly worse). 'leave' to leave as is.
+        show_same_aligner=True #plots show nxR==nyR (both aligned by same aligner). Default False. Only relevant if template group and test group have the same subjects
+
+        par_prefer_hrc='threads'  #'threads' (default) or 'processes' for getting high-res connectomes from file
 
         print(hutils.memused())
         if howtoalign!='RDRT':
@@ -114,8 +113,9 @@ if __name__=='__main__':
 
         sift2=not('sift' in tckfile) #True, unless there is 'sift' in tckfile
 
-        if block_choice=='fromsourcevertex': type_rowcol = 'col' # Doing type_rowcol='row' and 'col' are relevant as comparing the two is related to directionality
-        if block_choice in ['fromsourcevertex','all']: nblocks=0
+
+        if block_choice in ['fromsourcevertex','all']: 
+            nblocks=0
         elif block_choice in ['all','few_from_each_vertex']: 
             ident_grouped_type='perparcel' #Do identifiability analyses at 'wholebrain' or 'perparcel' level?
         else:
@@ -133,18 +133,13 @@ if __name__=='__main__':
         nparcs=align_parc_matrix.shape[0]
 
         ### Set up subject lists 
-        # Variable subs is a dict, keys are 'temp', 'test', and 'aligner'. Values are subject IDs as strings
+        # Variable subs is a dict, keys are 'temp', 'test', and 'aligner'. Values are subject IDs as strings. 'aligner' subjects are used to determine the blocks with the most streamlines. 'temp' subjects are used to make the template connectome. 'test' subjects are aligned either with their own or other test subjects' aligners. Their correlation with the template connectome is calculated.
         groups=['temp','test']
-        subs = {group: [hutils.all_subs[i] for i in subs_inds[group]] for group in groups} 
-        alignfile_nsubs=tutils.extract_nsubs_alignpickles1(alignfile)
-        subs['aligner'] = [hutils.all_subs[i] for i in range(alignfile_nsubs)]
+        subs = {group: [hutils.all_subs[i] for i in subs_inds[group]] for group in subs_inds.keys()} 
+        #assert( set(subs['temp']).isdisjoint(subs['test']) )
 
-
-
-        assert( set(subs['temp']).isdisjoint(subs['test']) )
-        
         ### Set up filenames and folders for saving and figures
-        save_prefix = f"corrs_0-{alignfile_nsubs}_{len(subs['temp'])}s_{min(subs_inds['test'])}-{max(subs_inds['test'])}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{parcellation_string}_{nblocks}b_{block_choice[0:2]}_{howtoalign}{text}"
+        save_prefix = f"corrs_{subs_inds['aligner'].start}-{subs_inds['aligner'].stop}_{len(subs['temp'])}s_{subs_inds['test'].start}-{subs_inds['test'].stop}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{parcellation_string}_{nblocks}b_{block_choice[0:2]}_{howtoalign}{text}"
         #save_prefix = f"corrs_0-{alignfile_nsubs}_{len(subs['temp'])}s_{min(subs_inds['test'])}-{max(subs_inds['test'])}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{parcellation_string}_{nblocks}b_{block_choice[0:2]}_{howtoalign}{text}"
         #save_prefix = f'r{hutils.datetime_for_filename()}'
         print(save_prefix)
@@ -167,68 +162,71 @@ if __name__=='__main__':
             print('loading f and a')
             blocks,f,a = tutils.load_f_and_a(save_path)
         else:
-            #Get high-res connectomes
-            print(f'{c.time()}: Get highres connectomes and downsample',end=", ")
-            par_prefer_hrc='threads'        
-            hr_for_hp = hutils.get_highres_connectomes(c,subs['aligner'],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefer_hrc,n_jobs=-1) 
-            hp=[css.downsample_high_resolution_structural_connectivity_to_atlas(hrs, align_parc_matrix) for hrs in hr_for_hp] #most connected parcel pairs are determined from template subjects
-            del hr_for_hp
-            hps,hpsx,hpsxa = tutils.get_hps(hp)
-            hr = {group : hutils.get_highres_connectomes(c,subs[group],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefer_hrc,n_jobs=-1) for group in groups} 
-
-            print(f'{c.time()}: Reorder', end=", ")
+            print(f'{c.time()}: Get parcellated connectomes and blocks',end=", ")  
+            blocks = tutils.get_blocks(c,tckfile, MSMAll, sift2, align_parc_matrix, subs['aligner'], block_choice,nblocks,parcel_pair_type,align_labels,nparcs,type_rowcol,par_prefer_hrc)
+            print(f'{c.time()}: Get high-res connectomes',end=", ")  
+            hr = {group : hutils.get_highres_connectomes(c,subs[group],tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefer_hrc,n_jobs=-1) for group in groups} # Get high-res connectomes for test and template subjects. hr[group] is a list of sparse arrays, Each array is a connectome for a subject
+            print(f'{c.time()}: Reorder connectomes', end=", ")
             hr = {group: [array[sorter[:,None],sorter] for array in hr[group]] for group in groups}
-
-
-
             print(f'{c.time()}: Smooth hrc', end=", ")
             hr={group : hutils.smooth_highres_connectomes(hr[group],smoother_pre) for group in groups}
 
-            print(f'{c.time()}: GetBlocks', end=", ")       
-            if block_choice=='largest': 
-                blocks=tutils.get_blocks_largest(nblocks,parcel_pair_type,hps,hpsx)
-            elif block_choice=='fromsourcevertex':
-                blocks=tutils.get_blocks_source(align_labels,hpsxa,nblocks,nparcs,type_rowcol)
-            elif block_choice=='all':
-                blocks=tutils.get_blocks_all()
-            elif block_choice=='few_from_each_vertex':
-                blocks=tutils.get_blocks_few_from_each_vertex(nblocks,hpsxa,nparcs)
-
-            ### Get func aligners ###
+            ### Get func aligners 
             print(f'{c.time()}: GetAligners', end=", ")
             aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
             #all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) 
             if aligned_method=='template':                                                    
-                fa={}
+                fa={} #fa[group] is a list of functional aligners
                 for group in groups:
                     all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) #load each time because func(i) will modify arrays in all_aligners            
-                    func = lambda nsub: tutils.aligner2sparse(all_aligners.estimators[nsub],slices,fa_sparse=fa_sparse,aligned_descale=aligned_descale,aligned_negs=aligned_negs)
+                    func = lambda nsub: tutils.get_template_aligners(all_aligners.estimators[nsub],slices,aligner2sparsearray=aligner2sparsearray,aligner_descale=aligner_descale,aligner_negatives=aligner_negatives)
                     fa[group] = [func(i) for i in subs_inds[group]]
             elif aligned_method=='pairwise':          
                 all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) 
                 allowed_keys = [f'{i}-{j}' for i in subs['test'] for j in subs['temp'] if i!=j] #only aligners which transform test subjects to template subjects
                 fa={'test':{key:value for key,value in all_aligners.items() if key in allowed_keys}}
 
-            def get_aligner_parcel(group,key,i):
-                #group is 'temp' or 'test'
-                if fa_sparse:
-                    return fa[group][key][slices[i],slices[i]].toarray()
+            def get_aligner_parcel(group,sub_ind,nparcel):
+                """       
+                Parameters:
+                ----------
+                group: 'temp' or 'test'
+                sub_ind: int
+                    index of subject in subs[group]
+                nparcel: int
+                    index of parcel
+                """
+                if aligner2sparsearray:
+                    return fa[group][sub_ind][slices[nparcel],slices[nparcel]].toarray()
                 else:
-                    return fa[group][key].fit_[i].R    
-            def get_vals(howtoalign,group,nD,key,n):
-                #if group=='temp': howtoalign='RDRT' #RDRT to make template hrc with RDRT, or equals howtoalign
-                i,j=blocks[0,n],blocks[1,n]
-                D=hr[group][nD][slices[i],slices[j]] 
+                    return fa[group][sub_ind].fit_[nparcel].R    
+            def get_vals(howtoalign,group,sub_ind_hr,sub_ind_fa,nblock):
+                """
+                Return the connectome of 'sub_ind_hr', the functional aligner of 'sub_ind_fa', and pre and post-multiplying smoothing matrices, for block 'nblock'. 'sub_ind_hr' and 'sub_ind_fa' are within subject group 'group'. 
+                Parameters:
+                -----------
+                howtoalign: str
+                    'RDRT','RD','RD+','RT','RT+'
+                group: 'temp' or 'test'
+                sub_ind_hr: int
+                    index of high-res connectome subject in subs[group]
+                sub_ind_fa: int
+                    index of functional aligner subject in subs[group]
+                nblock: int
+                    index of block in blocks
+                """
+                i,j=blocks[0,nblock],blocks[1,nblock]
+                D=hr[group][sub_ind_hr][slices[i],slices[j]] 
                 if howtoalign is not None and '+' in howtoalign: #the other end will be self-aligned
-                    Ri=get_aligner_parcel(group,nD,i)
-                    Rj=get_aligner_parcel(group,nD,j)
+                    Ri=get_aligner_parcel(group,sub_ind_hr,i)
+                    Rj=get_aligner_parcel(group,sub_ind_hr,j)
                 else:
                     Ri=np.eye(D.shape[0],dtype=np.float32)
                     Rj=np.eye(D.shape[1],dtype=np.float32)   
                 if howtoalign in ['RD','RD+','RDRT']:
-                    Ri=get_aligner_parcel(group,key,i)
+                    Ri=get_aligner_parcel(group,sub_ind_fa,i)
                 if howtoalign in ['RT','RT+','RDRT']:
-                    Rj=get_aligner_parcel(group,key,j)
+                    Rj=get_aligner_parcel(group,sub_ind_fa,j)
                 if post_hrc_fwhm:
                     pre=smoother_post[slices[i],slices[i]]
                     post=smoother_post[slices[j],slices[j]]
@@ -236,14 +234,19 @@ if __name__=='__main__':
                     pre=np.eye(D.shape[0],dtype=np.float32)
                     post=np.eye(D.shape[1],dtype=np.float32) 
                 return i,j,D,Ri,Rj,pre,post 
-            def yield_args(howtoalign,group,get_offdiag_blocks=False): 
+            def yield_args(howtoalign,group,subject_pairs=False):
+                """
+                if subject_pairs==True, yield outputs of get_vals for each subject pair in 'group', for each block in blocks. 
+                If subject_pairs==False, yield outputs of get_vals for each subject in 'group' for each block in blocks. Pass the same subject as both 'sub_ind_hr' and 'sub_ind_fa' to get_vals
+                """ 
                 n_subs=len(subs[group])
-                for nD,nR in itertools.product(range(n_subs),range(n_subs)):
-                    if get_offdiag_blocks or (nD==nR):
-                        key = tutils.get_key(aligned_method,subs[group],nD,nR)
-                        for n in range(blocks.shape[1]):
-                            yield get_vals(howtoalign,group,nD,key,n)
+                for sub_ind_hr,nR in itertools.product(range(n_subs),range(n_subs)):
+                    if subject_pairs or (sub_ind_hr==nR):
+                        sub_ind_fa = tutils.get_key(aligned_method,subs[group],sub_ind_hr,nR)
+                        for nblock in range(blocks.shape[1]):
+                            yield get_vals(howtoalign,group,sub_ind_hr,sub_ind_fa,nblock)
             def get_aligned_block(i,j,D,Ri,Rj,pre,post):
+                #Given a connectome D, and aligners Ri and Rj, return the normalized aligned connectome
                 X=(Ri@D.toarray())@(Rj.T)
                 if i==j: #intra-parcel blocks have diagonal elements as zeros
                     np.fill_diagonal(X,0) 
@@ -251,18 +254,17 @@ if __name__=='__main__':
                 norm=np.linalg.norm(X)
                 return (X/norm).astype(np.float32)
 
-            get_offdiag_blocks_all={'temp':False,'test':True}
             par_prefer='processes' #default 'threads', but processes makes faster when aligned_method=='pairwise'
-            aligned_blocks={}
+            aligned_blocks={} #aligned_blocks is a dict with keys ['test','template']. aligned_blocks['test'] is a 3-dim array with elements [nD,nR,nblock]. aligned_blocks['template'] is a 2-dim array with elements [nD,nblock]. Each element is an block of a connectome transformed with a functional aligner.
             if aligned_method=='template':
                 for group in groups:
                     print(f'{c.time()}: GetAlignedBlocks{group}', end=", ")
-                    temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args(howtoalign,group,get_offdiag_blocks=get_offdiag_blocks_all[group]))
+                    temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args(howtoalign,group,subject_pairs={'temp':False,'test':True}[group]))
                     if group=='test':
                         aligned_blocks['test']=np.reshape(np.array(temp,dtype=object),(len(subs['test']),len(subs['test']),blocks.shape[1]))
                     elif group=='temp':
                         aligned_blocks['temp']=np.reshape(np.array(temp,dtype=object),(len(subs['temp']),blocks.shape[1]))
-                        aligned_blocks_template_mean = np.mean(aligned_blocks['temp'],axis=0) 
+                        aligned_blocks_template_mean = np.mean(aligned_blocks['temp'],axis=0) #1-dim array with elements [nblock].
             elif aligned_method=='pairwise':
                 def yield_args_pairwise():
                     for nDtarget,nD,nR in itertools.product(range(len(subs['temp'])),range(len(subs['test'])),range(len(subs['test']))):
@@ -271,13 +273,13 @@ if __name__=='__main__':
                             yield get_vals(howtoalign,'test',nD,key,n)       
                 temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args_pairwise())
                 aligned_blocks['test']=np.reshape(np.array(temp,dtype=object),(len(subs['temp']),len(subs['test']),len(subs['test']),blocks.shape[1])) #element nD,nR,nDtarget,nblock has nD's connectivity for nblock transformed using the aligner that takes subject 'nR' to 'nDtarget'.
-                temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args(None,'temp',get_offdiag_blocks=False)) #howtoalign set to None so we don't transform template hrcs at all
+                temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args(None,'temp',cache_offdiag_blocks=False)) #howtoalign set to None so we don't transform template hrcs at all
                 aligned_blocks['temp']=np.reshape(np.array(temp,dtype=object),(len(subs['temp']),blocks.shape[1]))
             del temp
 
             #aligned_blocks['test']=np.roll(aligned_blocks['test'],1,axis=2)
 
-            def correlate(aligned_method,nyD,nyR,blocks,nxD=None,nxR=None):
+            def correlate(aligned_method,sub_ind_hr,sub_ind_fa,blocks,nxD=None,nxR=None):
                 """
                 Take subject nxD's diffusion map aligned with sub nxR's template aligner. Compare this to subject nyD's diffusion map aligned with sub nyR's template aligner. Only consider parcel x parcel blocks in 'blocks'
                 nyD and nyR are indices in subs['test']
@@ -285,16 +287,16 @@ if __name__=='__main__':
                 """                             
                 N=blocks.shape[1]
                 coeffs=np.zeros((N),dtype=np.float32)
-                for n in range(N):
+                for nblock in range(N):
                     if aligned_method=='template':
-                        Y=aligned_blocks['test'][nyD,nyR,n]
+                        Y=aligned_blocks['test'][sub_ind_hr,sub_ind_fa,nblock]
                     elif aligned_method=='pairwise':
-                        Y=aligned_blocks['test'][nxD,nyD,nyR,n] #hrc of nyD is transformed using nyR->nxD (from subs['test']) aligner
+                        Y=aligned_blocks['test'][nxD,sub_ind_hr,sub_ind_fa,nblock] #hrc of nyD is transformed using nyR->nxD (from subs['test']) aligner
                     if nxD is None and nxR is None: #with average
-                        X = aligned_blocks_template_mean[n]
+                        X = aligned_blocks_template_mean[nblock]
                     else: #with pairwise
-                        X = aligned_blocks['temp'][nxD,n]
-                    coeffs[n]=correlate_block(X,Y) 
+                        X = aligned_blocks['temp'][nxD,nblock]
+                    coeffs[nblock]=correlate_block(X,Y) 
                 return coeffs
 
             ### Get similarity between person X and Y's connectomes (functionally aligned)
@@ -325,7 +327,6 @@ if __name__=='__main__':
                 
                 elif pair_type==1:
                     print("code not edited for len(subs['temp']) vs len(subs['test'])")
-                    assert(get_offdiag_blocks)
                     def yield_aligned_blocks():
                         for nxD, nyD, nyR in itertools.product(range(len(subs['test'])),range(len(subs['test'])),range(len(subs['test']))):  
                             nxR=nxD
@@ -339,12 +340,15 @@ if __name__=='__main__':
 
             
             if get_similarity_average:
+                #a is an array of shape (test subjects, test subjects, nblocks). Stores correlations of each test_subject's connectome (dim 0) aligned with each subject's aligner (dim 1), for each block (dim 2), with the (mean of template subject's connectomes each aligned with their own aligner)
                 print(f'{c.time()}: GetSimilarity (av)',end=", ")            
-                a=np.zeros((len(subs['test']),len(subs['test']),blocks.shape[1]),dtype=np.float32) #stores correlations or nyD*nyR with the average of other subjects nxDs each aligned with their own aligner nxR
-                for nyD in range(len(subs['test'])):
-                    for nyR in range(len(subs['test'])):
-                        a[nyD,nyR,:]=correlate(aligned_method,nyD,nyR,blocks)
+                a=np.zeros((len(subs['test']),len(subs['test']),blocks.shape[1]),dtype=np.float32) 
+                for sub_ind_hr in range(len(subs['test'])):
+                    for sub_ind_fa in range(len(subs['test'])):
+                        a[sub_ind_hr,sub_ind_fa,:]=correlate(aligned_method,sub_ind_hr,sub_ind_fa,blocks)
             else: a=None
+
+        assert(0)
 
         if save_file:
             np.save(save_path,{'blocks':blocks,'f':f,'a':a})
@@ -433,9 +437,15 @@ if __name__=='__main__':
                 #a=np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc
 
 
+            """
+            maro means (m)ean across blocks of values in (a) which were (r)egressed then made (o)rdinal (ie ranked)
+            arnm means values in (a) were (r)egressed, (n)ormalized against unscrambled, then (m)ean across subject pairs
+            ari means identifiability of values in (a) which were (r)egressed
+            """
+
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore",category=RuntimeWarning)
-                an=tutils.subtract_nonscrambled_from_a(a)
+                an=tutils.subtract_nonscrambled_from_a(a) #for those values where sub nyD was aligned with different subject nyR, subtract the nonscrambled value (where nyD==nyR)
                 anm=np.nanmean(an,axis=(0,1)) #mean across subject-pairs
                 man=np.nanmean(an,axis=-1) #mean across blocks
                 ma=np.nanmean(a,axis=-1) #nsubs*nsubs*nparcs
@@ -478,7 +488,7 @@ if __name__=='__main__':
             
             print('')
 
-        print(f'{c.time()}: Calculations done')
+        print(f'{c.time()}: Calculations done, Ident start')
         if to_plot and ident_grouped_type=='perparcel':
 
             if get_similarity_pairwise:
@@ -505,21 +515,19 @@ if __name__=='__main__':
                 print(f'AV R {count_negs(marn):.1f}% of sub-pairs (mean across blocks)')    
             print(f'AV R {count_negs(arn):.1f}% of (sub-pairs)*blocks')
 
-
             #print(f'Identifiability with mean template: {mai:.1f}%, per block average {ai.mean():.1f}')
             #print(f'reg: Identifiability with mean template: {mari:.1f}%, per block average {ari.mean():.1f}')
             if not(ident_grouped_type=='perparcel'):
-                fig,axs=plt.subplots(4)
+                fig,axs=plt.subplots(5)
                 #tutils.plot_id(axs[0],mao,title='mao')
                 #tutils.plot_id(axs[1],maro,title='maro')
                 tutils.plot_id(axs[0],ma,title='ma')
                 tutils.plot_id(axs[1],mar,title='mar')
-                tutils.plot_id(axs[2],a[:,:,0],title='a_block0')
-                tutils.plot_id(axs[3],ar[:,:,0],title='ar_block0')
+                tutils.plot_id(axs[2],maro,title='maro')
+                tutils.plot_id(axs[3],a[:,:,0],title='a_block0')
+                tutils.plot_id(axs[4],ar[:,:,0],title='ar_block0')
                 plt.subplots_adjust(hspace=0.5) 
                 fig.suptitle(f'Similarity average', fontsize=16)
-
-
 
         def plots_pairwise(show_same_aligner):         
             
@@ -555,7 +563,7 @@ if __name__=='__main__':
         assert(0)
 
 
-    nblocks=5 #how many (parcel x parcel) blocks to examine
+    nblocks=50 #how many (parcel x parcel) blocks to examine
     block_choice='largest' #'largest', 'fromsourcevertex', 'all','few_from_each_vertex'
     howtoalign = 'RDRT' #'RDRT','RD','RD+','RT','RT+'     
     pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
@@ -582,7 +590,21 @@ if __name__=='__main__':
     #alignfile='hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_niter1'
     alignfile='hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False_niter1'
     parcellation_string = 'S300' #make sure it is the same as  alignfile
+    MSMAll=False
 
+    subs_aligner_range = tutils.extract_sub_range_alignpickles1(alignfile)
+    for subs_test_range in [range(0,5)]:
+        temp = [i for i in subs_aligner_range if i not in subs_test_range]
+        subs_inds={'temp': temp, 'test': subs_test_range, 'aligner': subs_aligner_range}
+
+        print('')
+        print(f"{subs_inds['test']} - {howtoalign}")
+
+        #func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,text=FCparcellation) #for FCparcellation 
+        func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll) #tckfile='tracks_5M_1M_end.tck'
+
+
+    '''
     for test in [range(0,5)]:
         aligner_nsubs = tutils.extract_nsubs_alignpickles1(alignfile)
         temp = [i for i in range(aligner_nsubs) if i not in test]
@@ -593,3 +615,4 @@ if __name__=='__main__':
 
         #func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,text=FCparcellation) #for FCparcellation 
         func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm) #tckfile='tracks_5M_1M_end.tck'
+    '''
