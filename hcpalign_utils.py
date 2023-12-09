@@ -424,11 +424,6 @@ def alignment_method_string(method,alignment_method,alignment_kwargs,per_parcel_
     string=f"{method[0:4].capitalize()}{alignment_method[0:4].capitalize()}_"
     if n_bags!=1:
         string+=f"b{n_bags}"
-    if type(gamma) in [list,np.ndarray]:
-        string+=f"gamcustom"
-    else:
-        if gamma!=0:
-            string+=f"gam{gamma}"
     if 'scaling' in alignment_kwargs:
         string += f"sc{logical2str[alignment_kwargs['scaling']]}"
     if 'scca_alpha' in alignment_kwargs:
@@ -443,6 +438,11 @@ def alignment_method_string(method,alignment_method,alignment_kwargs,per_parcel_
         string += f"maxiter{alignment_kwargs['max_iter']}"
     if 'tol' in alignment_kwargs:
         string += f"tol{alignment_kwargs['tol']}"
+    if type(gamma) in [list,np.ndarray]:
+        string+=f"gamcustom"
+    else:
+        if gamma!=0:
+            string+=f"gam{gamma}"
     return string
 
 def get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_bags,n_jobs,alignment_kwargs,per_parcel_kwargs,gamma,absValueOfAligner):

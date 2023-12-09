@@ -94,21 +94,11 @@ if __name__=='__main__':
         aligner_descale=False #bool, Default False. make R transformations orthogonal again (doesn't make any difference to correlations). 
         aligner_negatives='abs' #str. What to do with negative values in R matrix. 'abs' to use absolute value (default). 'zero' to make it zero (performance slightly worse). 'leave' to leave as is.
         par_prefer_hrc='threads'  #'threads' (default) or 'processes' for getting high-res connectomes from file
+        sift2=not('sift' in tckfile) #True, unless there is 'sift' in tckfile
 
         print(hutils.memused())
         if howtoalign!='RDRT':
             print(f'howtoalign is {howtoalign}')
-
-        if tckfile is None:
-            import socket
-            hostname=socket.gethostname()
-            if hostname=='DESKTOP-EGSQF3A': #home pc
-                tckfile= 'tracks_5M_sift1M_200k.tck' #'tracks_5M_sift1M_200k.tck','tracks_5M.tck' 
-            else: #service workbench
-                tckfile='tracks_5M_1M_end.tck'
-
-        sift2=not('sift' in tckfile) #True, unless there is 'sift' in tckfile
-
 
         if block_choice in ['fromsourcevertex','all']: 
             nblocks=0
@@ -133,9 +123,6 @@ if __name__=='__main__':
 
         ### Set up filenames and folders for saving and figures
         save_prefix = f"{alignfile}_B{nblocks}{block_choice[0:2]}{subs_inds['blocks'].start}-{subs_inds['blocks'].stop}_D{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{howtoalign}{text}_S{len(subs['temp'])}_{subs_inds['test'].start}-{subs_inds['test'].stop}"
-        #save_prefix = f"corrs_{subs_inds['blocks'].start}-{subs_inds['blocks'].stop}_{len(subs['temp'])}s_{subs_inds['test'].start}-{subs_inds['test'].stop}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{parcellation_string}_{nblocks}b_{block_choice[0:2]}_{howtoalign}{text}"
-        #save_prefix = f"corrs_0-{alignfile_nsubs}_{len(subs['temp'])}s_{min(subs_inds['test'])}-{max(subs_inds['test'])}_{tckfile[:-4]}_{pre_hrc_fwhm}mm_{post_hrc_fwhm}mm_{parcellation_string}_{nblocks}b_{block_choice[0:2]}_{howtoalign}{text}"
-        #save_prefix = f'r{hutils.datetime_for_filename()}'
         print(save_prefix)
 
         figures_subfolder=ospath(f'{hutils.results_path}/figures/{save_prefix}') #save figures in this folder
@@ -150,7 +137,6 @@ if __name__=='__main__':
         sorter,unsorter,slices=tutils.makesorter(align_labels) # Sort vertices by parcel membership, for speed
         smoother_pre = tutils.get_smoother(pre_hrc_fwhm)[sorter[:,None],sorter]
         smoother_post = tutils.get_smoother(post_hrc_fwhm)[sorter[:,None],sorter]
-
         if load_file and os.path.exists(save_path):
             print('loading a')
             blocks,a = tutils.load_a(save_path)
@@ -164,22 +150,14 @@ if __name__=='__main__':
             print(f'{c.time()}: Smooth hrc', end=", ")
             hr={group : hutils.smooth_highres_connectomes(hr[group],smoother_pre) for group in groups}
 
-            ### Get func aligners 
             print(f'{c.time()}: GetAligners', end=", ")
-
             if aligned_method=='template':                                                    
                 fa={} #fa[group] is a list of functional aligners
                 for group in groups:
                     func1 = lambda sub_ind: pickle.load(open(ospath(f'{hutils.intermediates_path}/alignpickles3/{alignfile}/{hutils.all_subs[sub_ind]}.p'), "rb" ))
-                    all_aligners = [func1(sub_ind) for sub_ind in subs_inds[group]] #load each time because func(i) will modify arrays in all_aligners
+                    all_aligners = Parallel(n_jobs=-1,prefer='threads')(delayed(func1)(sub_ind) for sub_ind in subs_inds[group]) #load each time because func(i) will modify arrays in all_aligners
                     func2 = lambda aligner: tutils.get_template_aligners(aligner,slices,aligner2sparsearray=aligner2sparsearray,aligner_descale=aligner_descale,aligner_negatives=aligner_negatives)
                     fa[group] = [func2(aligner) for aligner in all_aligners]
-                    """
-                    aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
-                    all_aligners = pickle.load( open( ospath(aligner_file), "rb" )) #load each time because func(i) will modify arrays in all_aligners            
-                    func = lambda nsub: tutils.get_template_aligners(all_aligners.estimators[nsub],slices,aligner2sparsearray=aligner2sparsearray,aligner_descale=aligner_descale,aligner_negatives=aligner_negatives)
-                    fa[group] = [func(i) for i in subs_inds[group]]
-                    """
 
             def get_aligner_parcel(group,sub_ind,nparcel):
                 """       
@@ -277,8 +255,10 @@ if __name__=='__main__':
                         Y=aligned_blocks['test'][sub_ind_hr,sub_ind_fa,nblock]
                     if nxD is None and nxR is None: #with average
                         X = aligned_blocks_template_mean[nblock]
+                    """
                     else: #with pairwise
                         X = aligned_blocks['temp'][nxD,nblock]
+                    """
                     coeffs[nblock]=correlate_block(X,Y) 
                 return coeffs
 
@@ -326,7 +306,7 @@ if __name__=='__main__':
                 ma=np.nanmean(a,axis=-1) #nsubs*nsubs*nparcs
 
                 ao=ranks(a,axis=1) #values to ranks along nyR axis
-                ar=reg(a)   
+                ar=reg(a,include_axis_2=False)   
                 arn=tutils.subtract_nonscrambled_from_a(ar)
                 aro=ranks(ar,axis=1) 
 
@@ -371,7 +351,7 @@ if __name__=='__main__':
             parc_sizes=np.array(align_parc_matrix.sum(axis=1)).squeeze()
             hutils.plot_parc(p,align_parc_matrix,parc_sizes,'parc_sizes') #confounder
             if 'all_aligners' in locals(): #confounder
-                scales = np.vstack( [[all_aligners.estimators[i].fit_[nparc].scale for nparc in range(nparcs)] for i in subs_inds['test']] )   
+                scales = np.vstack( [[all_aligners[i].fit_[nparc].scale for nparc in range(nparcs)] for i in subs_inds['test']] )   
                 scales_mean=scales.mean(axis=0)    
                 hutils.plot_parc(p,align_parc_matrix,scales_mean,'scales')        
 
@@ -408,46 +388,38 @@ if __name__=='__main__':
         hutils.getloadavg()
         print(hutils.memused())
 
-
-    nblocks=100 #how many (parcel x parcel) blocks to examine
-    block_choice='largest' #'largest', 'fromsourcevertex', 'all','few_from_each_vertex'
-    howtoalign = 'RDRT' #'RDRT','RD','RD+','RT','RT+'     
-    pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
-    post_hrc_fwhm=3 #smoothing kernel after alignment. Default 3
-
-    save_file=True  
-    load_file=True
+    load_file=False
+    save_file=False  
     to_plot=False
     plot_type='open_in_browser' #save_as_html
 
-    #alignfile='hcpalign_movie_temp_scaled_orthogonal_50-4-7_TF_0_0_0_FFF_S300_False_niter1'
-    alignfile='Amovf0t0_S300_Tmovf0t0sub0to3_G0ffrr_TempScal_gam0.1'
-    #parcellation_string = 'S300' #make sure it is the same as  alignfile
-    #MSMAll=False
+    if load_file:
+        nblocks,block_choice,howtoalign,pre_hrc_fwhm,post_hrc_fwhm,alignfiles,tckfile = tutils.extract_tkalign_corrs2('Amovf0123t0_S300_Tmovf0123t0sub30to40_G0ffrr_TempScal_gam0.2_B100la40-90_Dtracks_5M_1M_end_3mm_3mm_RDRT_S40_40-50')
+        save_file=False
+    else:
+        nblocks=10 #how many (parcel x parcel) blocks to examine
+        block_choice='largest' #'largest', 'fromsourcevertex', 'all','few_from_each_vertex'
+        howtoalign = 'RDRT' #'RDRT','RD','RD+','RT','RT+'     
+        pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
+        post_hrc_fwhm=3 #smoothing kernel after alignment. Default 3
+        tckfile = tutils.get_tck_file()
+        """
+        #Multiple gamma values
+        alignfile_pre = 'Amovf0123t0_S300_Tmovf0123t0sub0to10_G0ffrr_TempScal_'
+        alignfile_pre = 'Aresfcf0123t0S1000t_S300_Tresfcf0123t0S1000tsub0to10_G0ffrr_TempScal_'
+        alignfiles = [f'{alignfile_pre}gam{gam}' for gam in [.1,.2,.3,.4,.5,.6,.7,.8,.9,1]]
+        alignfiles = [alignfile_pre] + alignfiles
+        """
+        alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to10_G1ffrr_TempScal_gam0.1'] #for DESKTOP
+        #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub30to40_G0ffrr_TempScal_gam0.2'] #MOVIE
 
-    parcellation_string = tutils.extract_alignpickles3(alignfile,'parcellation_string')
-    MSMAll = tutils.extract_alignpickles3(alignfile,'MSMAll')
-    subs_blocks_range = range(3,10) #subjects to use to determine blocks with most streamlines
+    for alignfile in alignfiles:
 
-    for subs_test_range in [range(3,6)]:
-        temp = [i for i in subs_blocks_range if i not in subs_test_range]
-        subs_inds={'temp': temp, 'test': subs_test_range, 'blocks': subs_blocks_range}
+        parcellation_string = tutils.extract_alignpickles3(alignfile,'parcellation_string')
+        MSMAll = tutils.extract_alignpickles3(alignfile,'MSMAll')
+        subs_blocks_range = range(0,10) #subjects to use to determine blocks with most streamlines, range(10,30)
 
-        print('')
-        print(f"{subs_inds['test']} - {howtoalign}")
-        #func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,text=FCparcellation) #for FCparcellation 
-        func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll) #tckfile='tracks_5M_1M_end.tck'
-
-
-    '''
-    for test in [range(0,5)]:
-        aligner_nsubs = tutils.extract_nsubs_alignpickles1(alignfile)
-        temp = [i for i in range(aligner_nsubs) if i not in test]
-        subs_inds={'temp': temp, 'test': test}
-
-        print('')
-        print(f"{subs_inds['test']} - {howtoalign}")
-
-        #func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,text=FCparcellation) #for FCparcellation 
-        func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm) #tckfile='tracks_5M_1M_end.tck'
-    '''
+        for subs_test_range in [range(0,5)]: #range(20,30)
+            temp = [i for i in subs_blocks_range if i not in subs_test_range]
+            subs_inds={'temp': temp, 'test': subs_test_range, 'blocks': subs_blocks_range}
+            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll, tckfile=tckfile)

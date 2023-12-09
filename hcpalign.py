@@ -290,7 +290,7 @@ if __name__=='__main__':
             subjects = [str(i) for i in df.loc[eligible_rows,'Subject']]
 
         #### General Parameters
-        sub_slice=slice(0,10)
+        sub_slice=slice(10,20)
         parcellation_string = 'S300' #S300, K1000, MMP
         MSMAll=False
         save_pickle=False
@@ -307,7 +307,7 @@ if __name__=='__main__':
         gamma=0
 
         #### Parameters for alignment data
-        align_with='movie'
+        align_with='rest_FC'
         runs=[0,1,2,3]
         align_fwhm=0
         align_clean=True
@@ -329,9 +329,14 @@ if __name__=='__main__':
 
         n_bags_template=1
         gamma_template=0
-        args_template_dict = {'hyperalignment':{'n_iter':1,'do_level_1':True, 'normalize_imgs':'zscore', 'normalize_template':'zscore', 'remove_self':True, 'level1_equal_weight':False},\
+
+
+        args_template_dict = {'hyperalignment':{'n_iter':0,'do_level_1':True, 'normalize_imgs':'zscore', 'normalize_template':'zscore', 'remove_self':True, 'level1_equal_weight':False},\
                             'GPA': {'n_iter':1,'do_level_1':False,'normalize_imgs':'rescale','normalize_template':'rescale','remove_self':False,'level1_equal_weight':False}}
         args_template = args_template_dict['GPA']
+
+        print('TEMPLATE WITH N_ITER 0')
+        args_template = {'n_iter':0,'do_level_1':False,'normalize_imgs':'rescale','normalize_template':'rescale','remove_self':False,'level1_equal_weight':False}
 
         #### Get data
         subs_template = subjects[subs_template_slice]
@@ -350,7 +355,7 @@ if __name__=='__main__':
         #gammas_folder = 'gammasAmovf0123t0_D7tasksf&ms_S300_Tmovf0123t0sub20to40_L_TempRidg_gam1alphas[1000]_sub0to20_0'
         #gammas_parcel = np.load(ospath(f'{results_path}/figures/hcpalign/{gammas_folder}/best_gamma.npy'))
 
-        gammas = [0,.1]
+        gammas = [0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1]
 
         accs = []
         corrs = []

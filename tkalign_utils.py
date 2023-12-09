@@ -43,8 +43,8 @@ def extract_alignpickles3(string,what):
     string: filename
     what: string
     """
-    pattern = r'A(mov|res|movfc|resfc|diff)(t|f)(\d*)(t|f)(\d*)_([A-Z]\d*)_T'
-    dictionary = {'align_with':1,'MSMAll':2,'runs_string':3,'clean':4,'fwhm':5,'parcellation_string':6}
+    pattern = r'A(mov|res|movfc|resfc|diff)(t|f)(\d*)(t|f)(\d*)(.*?)_([A-Z]\d*)_T'
+    dictionary = {'align_with':1,'MSMAll':2,'runs_string':3,'clean':4,'fwhm':5,'FC_args':6,'parcellation_string':7}
     match = re.search(pattern, string)
     if match:
         value = match.group(dictionary[what])
@@ -56,6 +56,44 @@ def extract_alignpickles3(string,what):
         return value
     else:
         return None
+
+def extract_tkalign_corrs2(string):
+    """
+    Given a filename from intermediates/tkalign_corrs2, extract some content
+    Parameters:
+    -----------
+    string: filename
+        e.g. 'Amovf0123t0_S300_Tmovf0123t0sub30to40_G0ffrr_TempScal_gam0.2_B100la40-90_Dtracks_5M_1M_end_3mm_3mm_RDRT_S40_40-50'
+    """
+    pattern = r'(.*?)_B(\d*)([a-z]*)(\d*)-(\d*)_D(.*?)_(\d)mm_(\d)mm_(.*?)_S(\d*)_(\d*)-(\d*)'
+    dictionary = {'alignfile':1,'nblocks':2,'block_choice_str':3,'subs_blocks_range_start':4,'subs_blocks_range_end':5,'tckfile_prefix':6,'pre_hrc_fwhm':7,'post_hrc_fwhm':8,'howtoalign':9,'nsubs_for_template_connectome':10,'subs_test_range_start':11,'subs_test_range_end':12}
+    match = re.search(pattern, string)
+    newdict = {what: match.group(dictionary[what]) for what in dictionary.keys()}
+    for key in ['nblocks','subs_blocks_range_start','subs_blocks_range_end','pre_hrc_fwhm','post_hrc_fwhm','nsubs_for_template_connectome','subs_test_range_start','subs_test_range_end']:
+        newdict[key] = int(newdict[key])
+
+    nblocks = newdict['nblocks']
+    block_choice_dict = {'la':'largest', 'fr': 'fromsourcevertex', 'al':'all','fe':'few_from_each_vertex'}
+    block_choice = block_choice_dict[newdict['block_choice_str']]
+    howtoalign = newdict['howtoalign']
+    pre_hrc_fwhm = newdict['pre_hrc_fwhm']
+    post_hrc_fwhm = newdict['post_hrc_fwhm']
+    alignfiles = [newdict['alignfile']]
+    tckfile = newdict['tckfile_prefix']+ '.tck'
+
+    return nblocks,block_choice,howtoalign,pre_hrc_fwhm,post_hrc_fwhm,alignfiles,tckfile
+
+
+
+def get_tck_file():
+    import socket
+    hostname=socket.gethostname()
+    if hostname=='DESKTOP-EGSQF3A': #home pc
+        tckfile= 'tracks_5M_sift1M_200k.tck' #'tracks_5M_sift1M_200k.tck','tracks_5M.tck' 
+    else: #service workbench
+        tckfile='tracks_5M_1M_end.tck'
+    return tckfile
+
 
 def get_smoother(fwhm):
     return sparse.load_npz(ospath(f'{hutils.intermediates_path}/smoothers/100610_{fwhm}_0.01.npz')).astype(np.float32)
