@@ -25,7 +25,7 @@ if __name__=='__main__':
     available_tasks=hutils.tasks 
 
     def align_and_classify(\
-        c,t,verbose,save_string, subs, imgs_align, imgs_decode, n_bags=1, n_jobs=-1,MSMAll=False, method='pairwise',alignment_method='scaled_orthogonal',alignment_kwargs={}, per_parcel_kwargs={}, gamma=0, absValueOfAligner=False, scramble_aligners=False,post_decode_fwhm=0, imgs_template=None, lowdim_template=False,n_bags_template=1, gamma_template=0,
+        c,t,verbose,save_string, subs, imgs_align, imgs_decode, n_bags=1, n_jobs=-1,MSMAll=False, method='pairwise',alignment_method='scaled_orthogonal',alignment_kwargs={}, per_parcel_kwargs={}, gamma=0, absValueOfAligner=False, scramble_aligners=False,post_decode_fwhm=0, imgs_template=None, align_template_to_imgs=False, lowdim_template=False,n_bags_template=1, gamma_template=0,
         args_template={'n_iter':1,'do_level_1':False,'normalize_imgs':None,'normalize_template':None,'remove_self':False,'level1_equal_weight':False},\
         kfolds=5,load_pickle=False, save_pickle=False,\
         plot_type='open_in_browser', plot_impulse_response=False, plot_contrast_maps=False, plot_scales=False,return_aligner=False,imgs_decode_meanstds=None):
@@ -55,6 +55,8 @@ if __name__=='__main__':
         scramble_aligners:  to transform subjects' task maps using someone else's aligner  
         post_decode_fwhm smooths the left-out contrast maps predicted through alignment
         imgs_template: list (nsubjects) of alignment data (nsamples,nvertices) for each subject who is used to make template for alignment
+        align_template_to_imgs: bool
+            True to align from template to imgs_align, rather than vice versa
         lowdim_template: bool
             True to use PCA/ICA to make template
         args_template: dict
@@ -162,7 +164,11 @@ if __name__=='__main__':
                 else:
                     aligners.make_template(imgs_template,n_bags=n_bags_template,**args_template,gamma=gamma_template)
                 vprint('{} Make template done'.format(c.time())) 
-                aligners.fit_to_template(imgs_align,n_bags=n_bags,gamma=gamma)
+                if align_template_to_imgs:
+                    vprint('Fitting from template to images')
+                    aligners.fit_template_to_imgs(imgs_align,n_bags=n_bags,gamma=gamma)
+                else:
+                    aligners.fit_to_template(imgs_align,n_bags=n_bags,gamma=gamma)
                 vprint(hutils.memused()) 
                 if absValueOfAligner:
                     [aligners.estimators[j].absValue() for j in range(len(aligners.estimators))]
@@ -307,7 +313,7 @@ if __name__=='__main__':
         gamma=0
 
         #### Parameters for alignment data
-        align_with='rest_FC'
+        align_with='movie'
         runs=[0,1,2,3]
         align_fwhm=0
         align_clean=True
@@ -327,6 +333,7 @@ if __name__=='__main__':
         subs_template_slice=slice(0,10)
         lowdim_template=False
 
+        align_template_to_imgs=True
         n_bags_template=1
         gamma_template=0
 
@@ -341,7 +348,7 @@ if __name__=='__main__':
         #### Get data
         subs_template = subjects[subs_template_slice]
         subs_template_slice_string = f'sub{subs_template_slice.start}to{subs_template_slice.stop}'
-        imgs_template,template_string = hutils.get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template,FC_parcellation_string,FC_normalize)
+        imgs_template,template_string = hutils.get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,align_template_to_imgs,lowdim_template,args_template,n_bags_template,gamma_template,FC_parcellation_string,FC_normalize)
 
         subs = subjects[sub_slice] 
         sub_slice_string = f'sub{sub_slice.start}to{sub_slice.stop}'
@@ -377,7 +384,7 @@ if __name__=='__main__':
             save_string = f"A{align_string}_D{decode_string}_{parcellation_string}{template_string}_{method_string}_{sub_slice_string}_{post_decode_fwhm}"
 
             t.print(f"{c.time()}: Start {save_string}")
-            scores, corrs_mean_parcel, imgs_decode_aligned, aligners = align_and_classify(c,t,verbose,save_string, subs, imgs_align, imgs_decode, method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma,post_decode_fwhm=post_decode_fwhm,save_pickle=save_pickle,load_pickle=load_pickle,n_bags=n_bags,n_jobs=+1,imgs_template=imgs_template,lowdim_template=lowdim_template,n_bags_template=n_bags_template,gamma_template=gamma_template,args_template=args_template,plot_type='open_in_browser',plot_impulse_response=False, plot_contrast_maps=False,imgs_decode_meanstds=imgs_decode_meanstds)
+            scores, corrs_mean_parcel, imgs_decode_aligned, aligners = align_and_classify(c,t,verbose,save_string, subs, imgs_align, imgs_decode, method=method ,alignment_method=alignment_method,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma,post_decode_fwhm=post_decode_fwhm,save_pickle=save_pickle,load_pickle=load_pickle,n_bags=n_bags,n_jobs=+1,imgs_template=imgs_template,align_template_to_imgs=align_template_to_imgs,lowdim_template=lowdim_template,n_bags_template=n_bags_template,gamma_template=gamma_template,args_template=args_template,plot_type='open_in_browser',plot_impulse_response=False, plot_contrast_maps=False,imgs_decode_meanstds=imgs_decode_meanstds)
             t.print(f"{c.time()}: Done with {save_string}")
             mean_accuracy = np.mean([np.mean(i) for i in scores])
             t.print(f'Classification accuracies: mean {mean_accuracy:.3f}, [', end= "")

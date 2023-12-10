@@ -6,28 +6,7 @@ import hcpalign_utils as hutils
 from joblib import Parallel, delayed
 #from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
-
-from sklearn.datasets import make_regression
-x,y = make_regression(n_samples=300, n_features=100, noise=0.0,n_targets=100)
-
-from sklearn.linear_model import RidgeCV
-model = RidgeCV(alphas=[1],scoring="r2",cv=4)
-model.fit(x,y)
-ypred1 = model.predict(x)
-ypred2 = x@model.coef_.T + model.intercept_
-
-
-xpred1 = (y - model.intercept_)@np.linalg.inv(model.coef_.T)
-xpred2 = (y - model.intercept_)@np.linalg.pinv(model.coef_.T)
-
-assert(0)
-
-"""
-Machine learning (regression):
-X: input data, 2*2500 features, 100 samples
-y: output data: continuous variable, 100 samples
-"""
-
+#Test GroupedFeaturesEstimator
 """
 from sklearn.datasets import make_regression
 X, y = make_regression(n_samples=100, n_features=5000, noise=0.0)
@@ -56,6 +35,7 @@ assert(0)
 """
 
 #Given r^2 scores for each fold in each parcel, plot them on surface
+'''
 import hcpalign_utils as hutils
 def plot_r2(filename,vmax=None):
     x = np.load(hutils.ospath(f'{hutils.intermediates_path}/predict/{filename}.npy'))
@@ -126,6 +106,8 @@ plot_r2('Aresfcf0123t0S1000_S300_Tresfcf0123t0S1000sub0to50_L_TempRidg_gam0.5alp
 plot_r2('Aresfct0123t0S1000t_S300_Tresfct0123t0S1000tsub0to50_L_TempRidg_alphas[1000]7taskst_sub50to450_S300_ridgeCV_yf_Xffft_ar2',vmax=vmax)
 
 assert(0)
+'''
+
 
 p=hutils.surfplot('',plot_type='open_in_browser')
 c=hutils.clock()
@@ -133,13 +115,13 @@ hcp_folder=hutils.hcp_folder
 intermediates_path=hutils.intermediates_path
 results_path=hutils.results_path
 
-subs=hutils.all_subs[slice(0,5)]
-subs_template=hutils.all_subs[slice(5,10)]
+subs=hutils.all_subs[slice(0,3)]
+subs_template=hutils.all_subs[slice(3,6)]
 nsubs = np.arange(len(subs)) #number of subjects
 
 post_decode_smooth=hutils.make_smoother_100610(0)
 
-runs = [0,1]
+runs = [0]
 imgs_align,align_string = hutils.get_movie_or_rest_data(subs,'movie',runs=runs,fwhm=0,clean=True,MSMAll=False)
 imgs_decode,decode_string = hutils.get_task_data(subs,hutils.tasks[0:7],MSMAll=False)
 labels = [np.array(range(i.shape[0])) for i in imgs_decode] 
@@ -153,16 +135,25 @@ print(f'{c.time()}: Done loading data')
 
 from fmralign.template_alignment import TemplateAlignment
 imgs_template,template_align_string = hutils.get_movie_or_rest_data(subs_template,'movie',runs=runs,fwhm=0,clean=True,MSMAll=False)
-aligners = TemplateAlignment('scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':False})
-args_template_dict = {'hyperalignment':{'n_iter':1,'do_level_1':True, 'normalize_imgs':'zscore', 'normalize_template':'zscore', 'remove_self':True, 'level1_equal_weight':False},\
-                    'GPA': {'n_iter':1,'do_level_1':False,'normalize_imgs':'rescale','normalize_template':'rescale','remove_self':False,'level1_equal_weight':False}}
-args_template = args_template_dict['GPA']
+aligners = TemplateAlignment('scaled_orthogonal',clustering=clustering,alignment_kwargs={'scaling':True})
+#args_template_dict = {'hyperalignment':{'n_iter':1,'do_level_1':True, 'normalize_imgs':'zscore', 'normalize_template':'zscore', 'remove_self':True, 'level1_equal_weight':False},'GPA': {'n_iter':1,'do_level_1':False,'normalize_imgs':'rescale','normalize_template':'rescale','remove_self':False,'level1_equal_weight':False}}
+args_template = {'n_iter':0,'do_level_1':False,'normalize_imgs':'rescale','normalize_template':'rescale','remove_self':False,'level1_equal_weight':False}
 aligners.make_template(imgs_template,**args_template)
 #aligners.make_template(imgs_template,n_iter=1,do_level_1=False,level1_equal_weight=False,normalize_imgs='zscore',normalize_template='zscore',remove_self=False,gamma=0)
 #aligners.template = np.mean(imgs_template,axis=0)
 #aligners.make_lowdim_template(imgs_template,clustering,n_bags=1)
 print(f'{c.time()}: Start fitting')
-aligners.fit_to_template(imgs_align,gamma=0.1)
+#aligners.fit_to_template(imgs_align)
+
+aligners.fit_template_to_imgs(imgs_align)
+im=imgs_align[0]
+t = aligners.template
+t2=aligners.estimators[0].transform(t)
+print(np.corrcoef(im.ravel(),t2.ravel()))
+
+assert(0)
+
+
 
 imgs_decode_aligned=[aligners.transform(imgs_decode[i],i) for i in range(len(imgs_decode))]
 

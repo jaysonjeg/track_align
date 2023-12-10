@@ -386,24 +386,26 @@ def get_alignment_data(c,subs,method,align_with,runs,align_fwhm,align_clean,MSMA
     return imgs_align,align_string
 
 
-def get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,lowdim_template,args_template,n_bags_template,gamma_template,FC_parcellation_string,FC_normalize):
+def get_template_making_alignment_data(c,method,subs_template,subs_template_slice_string,align_with,runs,align_fwhm,align_clean,MSMAll,load_pickle,align_template_to_imgs,lowdim_template,args_template,n_bags_template,gamma_template,FC_parcellation_string,FC_normalize):
     #### Get template-making alignment data. List (nsubjects) of data (nsamples,nvertices)
     print(f"{c.time()} Get template-making data start")  
     if method=='template':
         imgs_template, template_imgtype_string = get_movie_or_rest_data(subs_template,align_with,runs=runs,fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll,string_only=load_pickle,FC_parcellation_string=FC_parcellation_string,FC_normalize=FC_normalize) #load_pickle=True means return string only
-        template_string = f'_T{template_imgtype_string}{subs_template_slice_string}_{get_template_making_string(lowdim_template,args_template,n_bags_template,gamma_template)}'
+        template_string = f'_T{template_imgtype_string}{subs_template_slice_string}_{get_template_making_string(align_template_to_imgs,lowdim_template,args_template,n_bags_template,gamma_template)}'
     else:
         imgs_template, template_string = None, ''
     return imgs_template,template_string
 
-def get_template_making_string(lowdim_template,args,n_bags_template,gamma_template):
+def get_template_making_string(align_template_to_imgs,lowdim_template,args,n_bags_template,gamma_template):
     """
     Return short string describing how template was made
     """
     dict2 = {'rescale':'r','zscore':'z',None:'n'}
     string=""
+    if align_template_to_imgs:
+        string+='R'
     if lowdim_template:
-        string = 'L'
+        string += 'L'
     else:
         if args['do_level_1']==True:
             template_type_string = 'H'

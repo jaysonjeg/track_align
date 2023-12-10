@@ -56,7 +56,7 @@ if __name__=='__main__':
     print(hutils.memused())
     c=hutils.clock()
 
-    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll, tckfile=None,text=''):
+    def func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll, tckfile=None,align_template_to_imgs=False,text=''):
         """
         Parameters:
         -----------
@@ -82,6 +82,8 @@ if __name__=='__main__':
         MSMAll: bool
         tckfile: str
             name of tck file in intermediates/highres_connectomes
+        align_template_to_imgs: bool
+            whether template was aligned to images or vice versa
         text: str
             text to add to end of save_prefix
         """
@@ -156,8 +158,9 @@ if __name__=='__main__':
                 for group in groups:
                     func1 = lambda sub_ind: pickle.load(open(ospath(f'{hutils.intermediates_path}/alignpickles3/{alignfile}/{hutils.all_subs[sub_ind]}.p'), "rb" ))
                     all_aligners = Parallel(n_jobs=-1,prefer='threads')(delayed(func1)(sub_ind) for sub_ind in subs_inds[group]) #load each time because func(i) will modify arrays in all_aligners
-                    func2 = lambda aligner: tutils.get_template_aligners(aligner,slices,aligner2sparsearray=aligner2sparsearray,aligner_descale=aligner_descale,aligner_negatives=aligner_negatives)
-                    fa[group] = [func2(aligner) for aligner in all_aligners]
+                    func2 = lambda aligner: tutils.get_template_aligners(aligner,slices,sorter,aligner2sparsearray=aligner2sparsearray,aligner_descale=aligner_descale,aligner_negatives=aligner_negatives,smoother=smoother_post)
+                    fa[group] = Parallel(n_jobs=-1,prefer='threads')(delayed(func2)(aligner) for aligner in all_aligners)
+
 
             def get_aligner_parcel(group,sub_ind,nparcel):
                 """       
@@ -173,74 +176,123 @@ if __name__=='__main__':
                     return fa[group][sub_ind][slices[nparcel],slices[nparcel]].toarray()
                 else:
                     return fa[group][sub_ind].fit_[nparcel].R    
-            def get_vals(howtoalign,group,sub_ind_hr,sub_ind_fa,nblock):
-                """
-                Return the connectome of 'sub_ind_hr', the functional aligner of 'sub_ind_fa', and pre and post-multiplying smoothing matrices, for block 'nblock'. 'sub_ind_hr' and 'sub_ind_fa' are within subject group 'group'. 
-                Parameters:
-                -----------
-                howtoalign: str
-                    'RDRT','RD','RD+','RT','RT+'
-                group: 'temp' or 'test'
-                sub_ind_hr: int
-                    index of high-res connectome subject in subs[group]
-                sub_ind_fa: int
-                    index of functional aligner subject in subs[group]
-                nblock: int
-                    index of block in blocks
-                """
-                i,j=blocks[0,nblock],blocks[1,nblock]
-                D=hr[group][sub_ind_hr][slices[i],slices[j]] 
-                if howtoalign is not None and '+' in howtoalign: #the other end will be self-aligned
-                    Ri=get_aligner_parcel(group,sub_ind_hr,i)
-                    Rj=get_aligner_parcel(group,sub_ind_hr,j)
-                else:
-                    Ri=np.eye(D.shape[0],dtype=np.float32)
-                    Rj=np.eye(D.shape[1],dtype=np.float32)   
-                if howtoalign in ['RD','RD+','RDRT']:
-                    Ri=get_aligner_parcel(group,sub_ind_fa,i)
-                if howtoalign in ['RT','RT+','RDRT']:
-                    Rj=get_aligner_parcel(group,sub_ind_fa,j)
-                if post_hrc_fwhm:
-                    pre=smoother_post[slices[i],slices[i]]
-                    post=smoother_post[slices[j],slices[j]]
-                else:
-                    pre=np.eye(D.shape[0],dtype=np.float32)
-                    post=np.eye(D.shape[1],dtype=np.float32) 
-                return i,j,D,Ri,Rj,pre,post 
-            def yield_args(howtoalign,group,subject_pairs=False):
-                """
-                if subject_pairs==True, yield outputs of get_vals for each subject pair in 'group', for each block in blocks. 
-                If subject_pairs==False, yield outputs of get_vals for each subject in 'group' for each block in blocks. Pass the same subject as both 'sub_ind_hr' and 'sub_ind_fa' to get_vals
-                """ 
-                n_subs=len(subs[group])
-                for sub_ind_hr,nR in itertools.product(range(n_subs),range(n_subs)):
-                    if subject_pairs or (sub_ind_hr==nR):
-                        sub_ind_fa = tutils.get_key(aligned_method,subs[group],sub_ind_hr,nR)
-                        for nblock in range(blocks.shape[1]):
-                            yield get_vals(howtoalign,group,sub_ind_hr,sub_ind_fa,nblock)
-            def get_aligned_block(i,j,D,Ri,Rj,pre,post):
+            def get_aligned_block(i,j,D,Ri,Rj,pre=None,post=None):
                 #Given a connectome D, and aligners Ri and Rj, return the normalized aligned connectome
-                X=(Ri@D.toarray())@(Rj.T)
+                if type(D)==np.ndarray:
+                    X=(Ri@D)@(Rj.T)
+                else: #D is sparse array
+                    X=(Ri@D.toarray())@(Rj.T)
                 if i==j: #intra-parcel blocks have diagonal elements as zeros
                     np.fill_diagonal(X,0) 
-                X=(pre@X)@(post.T)           
+                #X=(pre@X)@(post.T) #moved to earlier in code, with function get_template_aligners   
                 norm=np.linalg.norm(X)
                 return (X/norm).astype(np.float32)
 
             par_prefer='threads' #default 'threads', but processes makes faster when aligned_method=='pairwise'
-            aligned_blocks={} #aligned_blocks is a dict with keys ['test','template']. aligned_blocks['test'] is a 3-dim array with elements [nD,nR,nblock]. aligned_blocks['template'] is a 2-dim array with elements [nD,nblock]. Each element is an block of a connectome transformed with a functional aligner.
-            if aligned_method=='template':
-                for group in groups:
-                    print(f'{c.time()}: GetAlignedBlocks{group}', end=", ")
-                    temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args(howtoalign,group,subject_pairs={'temp':False,'test':True}[group]))
-                    if group=='test':
-                        aligned_blocks['test']=np.reshape(np.array(temp,dtype=object),(len(subs['test']),len(subs['test']),blocks.shape[1]))
-                    elif group=='temp':
-                        aligned_blocks['temp']=np.reshape(np.array(temp,dtype=object),(len(subs['temp']),blocks.shape[1]))
-                        aligned_blocks_template_mean = np.mean(aligned_blocks['temp'],axis=0) #1-dim array with elements [nblock].
-            del temp
+            if align_template_to_imgs==True:
+                #aligned_blocks is a 2-dim array with elements [nR,nblock]. Each element is a block of the mean template connectome, aligned to subject nR's functional space. nR is a test subject
+                def get_template_connectome_parcel(nblock):
+                    i,j=blocks[0,nblock],blocks[1,nblock]
+                    temp = [hr['temp'][sub_ind][slices[i],slices[j]] for sub_ind in range(len(subs['temp']))] #list of sparse arrays, each array is a connectome block for a template subject
+                    temp = [array.toarray().astype(np.float32) for array in temp] #convert to dense arrays
+                    temp = [tutils.divide_by_Frobenius_norm(array) for array in temp]
+                    return np.mean(temp,axis=0) #mean across template subjects
+                def get_vals2(howtoalign,sub_ind_fa,nblock):
+                    D = template_Ds[nblock]
+                    i,j=blocks[0,nblock],blocks[1,nblock]
+                    Ri=np.eye(D.shape[0],dtype=np.float32)
+                    Rj=np.eye(D.shape[1],dtype=np.float32)   
+                    if howtoalign in ['RD','RDRT']:
+                        Ri=get_aligner_parcel('test',sub_ind_fa,i)
+                    if howtoalign in ['RT','RDRT']:
+                        Rj=get_aligner_parcel('test',sub_ind_fa,j)
+                    return i,j,D,Ri,Rj 
+                def yield_args2(howtoalign):
+                    for sub_ind_fa in range(len(subs['test'])):
+                        for nblock in range(blocks.shape[1]):
+                            yield get_vals2(howtoalign,sub_ind_fa,nblock)
+                print(f'{c.time()}: GetTemplateConnectome', end=", ")
+                template_Ds = Parallel(n_jobs=-1,prefer='threads')(delayed(get_template_connectome_parcel)(nblock) for nblock in range(blocks.shape[1]))
+                print(f'{c.time()}: GetAlignedBlocks', end=", ")
+                temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args2(howtoalign))
+                aligned_blocks = np.reshape(np.array(temp,dtype=object),(len(subs['test']),blocks.shape[1])) 
+            elif align_template_to_imgs==False:
+                aligned_blocks={} #aligned_blocks is a dict with keys ['test','template']. aligned_blocks['test'] is a 3-dim array with elements [nD,nR,nblock]. aligned_blocks['template'] is a 2-dim array with elements [nD,nblock]. Each element is an block of a connectome transformed with a functional aligner.
 
-            #aligned_blocks['test']=np.roll(aligned_blocks['test'],1,axis=2)
+                def get_vals(howtoalign,group,sub_ind_hr,sub_ind_fa,nblock):
+                    """
+                    Return the connectome of 'sub_ind_hr', the functional aligner of 'sub_ind_fa', and pre and post-multiplying smoothing matrices, for block 'nblock'. 'sub_ind_hr' and 'sub_ind_fa' are within subject group 'group'. 
+                    Parameters:
+                    -----------
+                    howtoalign: str
+                        'RDRT','RD','RD+','RT','RT+'
+                    group: 'temp' or 'test'
+                    sub_ind_hr: int
+                        index of high-res connectome subject in subs[group]
+                    sub_ind_fa: int
+                        index of functional aligner subject in subs[group]
+                    nblock: int
+                        index of block in blocks
+                    """
+                    i,j=blocks[0,nblock],blocks[1,nblock]
+                    D=hr[group][sub_ind_hr][slices[i],slices[j]] 
+                    if howtoalign is not None and '+' in howtoalign: #the other end will be self-aligned
+                        Ri=get_aligner_parcel(group,sub_ind_hr,i)
+                        Rj=get_aligner_parcel(group,sub_ind_hr,j)
+                    else:
+                        Ri=np.eye(D.shape[0],dtype=np.float32)
+                        Rj=np.eye(D.shape[1],dtype=np.float32)   
+                    if howtoalign in ['RD','RD+','RDRT']:
+                        Ri=get_aligner_parcel(group,sub_ind_fa,i)
+                    if howtoalign in ['RT','RT+','RDRT']:
+                        Rj=get_aligner_parcel(group,sub_ind_fa,j)
+                    pre, post = None, None
+                    """
+                    if post_hrc_fwhm:
+                        pre=smoother_post[slices[i],slices[i]]
+                        post=smoother_post[slices[j],slices[j]]
+                    else:
+                        pre=np.eye(D.shape[0],dtype=np.float32)
+                        post=np.eye(D.shape[1],dtype=np.float32) 
+                    """
+                    return i,j,D,Ri,Rj,pre,post 
+                def yield_args(howtoalign,group,subject_pairs=False):
+                    """
+                    if subject_pairs==True, yield outputs of get_vals for each subject pair in 'group', for each block in blocks. 
+                    If subject_pairs==False, yield outputs of get_vals for each subject in 'group' for each block in blocks. Pass the same subject as both 'sub_ind_hr' and 'sub_ind_fa' to get_vals
+                    """ 
+                    n_subs=len(subs[group])
+                    for sub_ind_hr,nR in itertools.product(range(n_subs),range(n_subs)):
+                        if subject_pairs or (sub_ind_hr==nR):
+                            sub_ind_fa = tutils.get_key(aligned_method,subs[group],sub_ind_hr,nR)
+                            for nblock in range(blocks.shape[1]):
+                                yield get_vals(howtoalign,group,sub_ind_hr,sub_ind_fa,nblock)
+
+                if aligned_method=='template':
+                    for group in groups:
+                        print(f'{c.time()}: GetAlignedBlocks{group}', end=", ")
+                        temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args(howtoalign,group,subject_pairs={'temp':False,'test':True}[group]))
+                        if group=='test':
+                            aligned_blocks['test']=np.reshape(np.array(temp,dtype=object),(len(subs['test']),len(subs['test']),blocks.shape[1]))
+                        elif group=='temp':
+                            aligned_blocks['temp']=np.reshape(np.array(temp,dtype=object),(len(subs['temp']),blocks.shape[1]))
+                            aligned_blocks_template_mean = np.mean(aligned_blocks['temp'],axis=0) #1-dim array with elements [nblock].
+                #aligned_blocks['test']=np.roll(aligned_blocks['test'],1,axis=2)
+
+
+            if align_template_to_imgs==True:
+                def get_test_connectome_parcel(sub_ind,nblock):
+                    i,j=blocks[0,nblock],blocks[1,nblock]
+                    D = hr['test'][sub_ind][slices[i],slices[j]]
+                    D = D.toarray().astype(np.float32)
+                    return D
+                def yield_subs_and_blocks():
+                    for sub_ind in range(len(subs['test'])):
+                        for nblock in range(blocks.shape[1]):
+                            yield sub_ind,nblock
+                print(f'{c.time()}: GetTestConnectomes{group}', end=", ")
+                temp = Parallel(n_jobs=-1,prefer='threads')(delayed(get_test_connectome_parcel)(*args) for args in yield_subs_and_blocks())
+                test_Ds_array = np.reshape(np.array(temp,dtype=object),(len(subs['test']),blocks.shape[1])) 
 
             def correlate(aligned_method,sub_ind_hr,sub_ind_fa,blocks,nxD=None,nxR=None):
                 """
@@ -252,25 +304,26 @@ if __name__=='__main__':
                 coeffs=np.zeros((N),dtype=np.float32)
                 for nblock in range(N):
                     if aligned_method=='template':
-                        Y=aligned_blocks['test'][sub_ind_hr,sub_ind_fa,nblock]
-                    if nxD is None and nxR is None: #with average
-                        X = aligned_blocks_template_mean[nblock]
-                    """
-                    else: #with pairwise
-                        X = aligned_blocks['temp'][nxD,nblock]
-                    """
+                        if align_template_to_imgs==True:
+                            Y=aligned_blocks[sub_ind_fa,nblock] #template connectome aligned with sub_ind_fa
+                            X = test_Ds_array[sub_ind_hr,nblock] #test subject sub_ind_hr's connectome
+                        elif align_template_to_imgs==False:
+                            Y=aligned_blocks['test'][sub_ind_hr,sub_ind_fa,nblock] #test subject sub_ind_hr's connectome aligned with sub_ind_fa
+                            X = aligned_blocks_template_mean[nblock] #mean aligned template connectome
                     coeffs[nblock]=correlate_block(X,Y) 
                 return coeffs
 
-            ### Get similarity between person X and Y's connectomes (functionally aligned)     
             if get_similarity_average:
-                #a is an array of shape (test subjects, test subjects, nblocks). Stores correlations of each test_subject's connectome (dim 0) aligned with each subject's aligner (dim 1), for each block (dim 2), with the (mean of template subject's connectomes each aligned with their own aligner)
+                #a is an array of shape (test subjects, test subjects, nblocks). Stores correlations between template connectome aligned with each test subject's aligner (dim 1), and each test subject's connectome (dim 0), for each block (dim 2)
                 print(f'{c.time()}: GetSimilarity (av)',end=", ")            
                 a=np.zeros((len(subs['test']),len(subs['test']),blocks.shape[1]),dtype=np.float32) 
                 for sub_ind_hr in range(len(subs['test'])):
                     for sub_ind_fa in range(len(subs['test'])):
                         a[sub_ind_hr,sub_ind_fa,:]=correlate(aligned_method,sub_ind_hr,sub_ind_fa,blocks)
             else: a=None
+
+
+
 
         if save_file:
             np.save(save_path,{'blocks':blocks,'a':a})
@@ -390,7 +443,7 @@ if __name__=='__main__':
 
     load_file=False
     save_file=False  
-    to_plot=False
+    to_plot=True
     plot_type='open_in_browser' #save_as_html
 
     if load_file:
@@ -400,8 +453,10 @@ if __name__=='__main__':
         nblocks=10 #how many (parcel x parcel) blocks to examine
         block_choice='largest' #'largest', 'fromsourcevertex', 'all','few_from_each_vertex'
         howtoalign = 'RDRT' #'RDRT','RD','RD+','RT','RT+'     
-        pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
-        post_hrc_fwhm=3 #smoothing kernel after alignment. Default 3
+        
+        pre_hrc_fwhm=0 #smoothing kernel (mm) for high-res connectomes. Default 3
+        post_hrc_fwhm=0 #smoothing kernel after alignment. Default 3
+
         tckfile = tutils.get_tck_file()
         """
         #Multiple gamma values
@@ -410,16 +465,23 @@ if __name__=='__main__':
         alignfiles = [f'{alignfile_pre}gam{gam}' for gam in [.1,.2,.3,.4,.5,.6,.7,.8,.9,1]]
         alignfiles = [alignfile_pre] + alignfiles
         """
-        alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to10_G1ffrr_TempScal_gam0.1'] #for DESKTOP
+        #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to10_G1ffrr_TempScal_gam0.1'] #for DESKTOP
+        #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to3_G0ffrr_TempScal_gam0.2'] #for DESKTOP
+        alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to3_RG0ffrr_TempScal_gam0.2'] #for DESKTOP
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub30to40_G0ffrr_TempScal_gam0.2'] #MOVIE
 
     for alignfile in alignfiles:
 
         parcellation_string = tutils.extract_alignpickles3(alignfile,'parcellation_string')
         MSMAll = tutils.extract_alignpickles3(alignfile,'MSMAll')
+        if tutils.extract_alignpickles3(alignfile,'template_making_string')[0]=='R': 
+            align_template_to_imgs=True
+            print("Align template to imgs")
+        else: 
+            align_template_to_imgs=False
         subs_blocks_range = range(0,10) #subjects to use to determine blocks with most streamlines, range(10,30)
 
-        for subs_test_range in [range(0,5)]: #range(20,30)
+        for subs_test_range in [range(3,10)]: #range(20,30)
             temp = [i for i in subs_blocks_range if i not in subs_test_range]
             subs_inds={'temp': temp, 'test': subs_test_range, 'blocks': subs_blocks_range}
-            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll, tckfile=tckfile)
+            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll, tckfile=tckfile, align_template_to_imgs=align_template_to_imgs)

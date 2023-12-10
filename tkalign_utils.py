@@ -43,8 +43,8 @@ def extract_alignpickles3(string,what):
     string: filename
     what: string
     """
-    pattern = r'A(mov|res|movfc|resfc|diff)(t|f)(\d*)(t|f)(\d*)(.*?)_([A-Z]\d*)_T'
-    dictionary = {'align_with':1,'MSMAll':2,'runs_string':3,'clean':4,'fwhm':5,'FC_args':6,'parcellation_string':7}
+    pattern = r'A(mov|res|movfc|resfc|diff)(t|f)(\d*)(t|f)(\d*)(.*?)_([A-Z]\d*)_T.*?_(.*?)_'
+    dictionary = {'align_with':1,'MSMAll':2,'runs_string':3,'clean':4,'fwhm':5,'FC_args':6,'parcellation_string':7,'template_making_string':8}
     match = re.search(pattern, string)
     if match:
         value = match.group(dictionary[what])
@@ -94,9 +94,22 @@ def get_tck_file():
         tckfile='tracks_5M_1M_end.tck'
     return tckfile
 
+def divide_by_Frobenius_norm(array):
+    norm=np.linalg.norm(array)
+    return array/norm
 
 def get_smoother(fwhm):
     return sparse.load_npz(ospath(f'{hutils.intermediates_path}/smoothers/100610_{fwhm}_0.01.npz')).astype(np.float32)
+
+"""
+def smooth_aligners(list_of_aligners,smoother,sorter,slices):
+    for i in range(len(slices)):
+        for j in range(len(list_of_aligners)):
+            smoother_parcel = smoother[slices[i],slices[i]]
+            R_parcel = list_of_aligners[j].fit_[i].R
+            list_of_aligners[j].fit_[i].R = smoother_parcel @ R_parcel# @ (smoother_parcel.T) #could also append #smoother_parcel which is equivalent to smoothing high-res connectome
+    return list_of_aligners
+"""
 
 def makesorter(labels):
     """
@@ -210,16 +223,17 @@ def get_blocks_few_from_each_vertex(nblocks,hpsxa,nparcs):
     blocks=np.vstack([temp1,temp2])
     return blocks
 
-def get_template_aligners(a,slices,aligner2sparsearray=False,aligner_descale=False,aligner_negatives='abs'):
+def get_template_aligners(a,slices,sorter=None,aligner2sparsearray=False,aligner_descale=False,aligner_negatives='abs',smoother=None):
     """
-    Get alignment transformations from a TemplateAlignment object, and perform some processing. For RidgeAlignment, R.coef_ is (ntargetverts,nsourceverts). For all others, R is (nsourceverts,ntargetverts). That is, given X(nsamples,nsourceverts), X is transformed with XR by the transform method.
+    Get alignment transformations from a SurfaceAlignment object, and perform some processing. For RidgeAlignment, R.coef_ is (ntargetverts,nsourceverts). For all others, R is (nsourceverts,ntargetverts). That is, given X(nsamples,nsourceverts), X is transformed with XR by the transform method.
     Parameters:
     -----------
-    a: TemplateAlignment object
+    a: SurfaceAlignment object
     slices: list of slices for each parcel in the ordered list
     aligner2sparsearray: if True, convert each aligner to a sparse array
     aligner_descale: if True, descale each aligner so that output is purely a rotation matrix
     aligner_negatives: options 'abs' (default), 'zero', 'leave'. What to do with negative values in R matrix. 'abs' to use absolute value. 'zero' to make it zero. 'leave' to leave as is.
+    smoother: sparse array from function get_smoother
     """
     import fmralign
     if aligner2sparsearray:   
@@ -237,10 +251,12 @@ def get_template_aligners(a,slices,aligner2sparsearray=False,aligner_descale=Fal
         if aligner_negatives=='abs': 
             R_i=np.abs(R_i)
         elif aligner_negatives=='zero':
-            R_i[R_i<0]=0                 
+            R_i[R_i<0]=0
+        if smoother is not None:
+            smoother_parcel = smoother[slices[i],slices[i]]
+            R_i = smoother_parcel @ R_i# @ (smoother_parcel.T)
         if aligner2sparsearray: mat[slices[i],slices[i]]=R_i
         else: a.fit_[i].R=R_i        
-    
     if aligner2sparsearray:
         matr=mat.tocsc()
         return matr
