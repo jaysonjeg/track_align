@@ -296,28 +296,7 @@ if __name__=='__main__':
                         
             if get_similarity_average:
                 #a is an array of shape (test subjects, test subjects, nblocks). Stores correlations between template connectome aligned with each test subject's aligner (dim 1), and each test subject's connectome (dim 0), for each block (dim 2)
-                print(f'{c.time()}: GetSimilarity (av)',end=", ") 
-                '''
-                def correlate(aligned_method,sub_ind_hr,sub_ind_fa,blocks,nxD=None,nxR=None):                            
-                    N=blocks.shape[1]
-                    coeffs=np.zeros((N),dtype=np.float32)
-                    for nblock in range(N):
-                        if aligned_method=='template':
-                            if align_template_to_imgs==True:
-                                Y=aligned_blocks[sub_ind_fa,nblock] #template connectome aligned with sub_ind_fa
-                                X = test_Ds_array[sub_ind_hr,nblock] #test subject sub_ind_hr's connectome
-                            elif align_template_to_imgs==False:
-                                Y=aligned_blocks['test'][sub_ind_hr,sub_ind_fa,nblock] #test subject sub_ind_hr's connectome aligned with sub_ind_fa
-                                X = aligned_blocks_template_mean[nblock] #mean aligned template connectome
-                        coeffs[nblock]=correlate_block(X,Y) 
-                    return coeffs
-
-                a=np.zeros((len(subs['test']),len(subs['test']),blocks.shape[1]),dtype=np.float32) 
-                for sub_ind_hr in range(len(subs['test'])):
-                    for sub_ind_fa in range(len(subs['test'])):
-                        a[sub_ind_hr,sub_ind_fa,:]=correlate(aligned_method,sub_ind_hr,sub_ind_fa,blocks)
-                '''
-                
+                print(f'{c.time()}: GetSimilarity (av)',end=", ")                
                 def correlate_single_block(aligned_method,align_template_to_imgs,aligned_blocks_single,test_Ds_array_single):
                     nsubjects=len(aligned_blocks_single)
                     coeffs = np.zeros((nsubjects,nsubjects),dtype=np.float32)
@@ -342,31 +321,12 @@ if __name__=='__main__':
 
         print(f'{c.time()}: Calculations',end='')
         if get_similarity_average:    
-            if block_choice=='few_from_each_vertex':
-                """
-                a2=np.zeros(( a.shape[:-1] + (nparcs,nparcs)) , dtype=np.float32)
-                a2[:]=np.nan
-                for n in range(blocks.shape[1]):
-                    i=blocks[0,n]
-                    j=blocks[1,n]
-                    a2[:,:,i,j]=a[:,:,n]
-                a=a2
-                del a2
-                """
-
-                """
-                Now a is n_subs_test * n_subs_test * nparcs * nparcs. If i=1, j=171 is in 'blocks', then a[any,any,1,171] is non-nan
-                """     
-                #a=np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc
-
-
             """
             maro means (m)ean across blocks of values in (a) which were (r)egressed then made (o)rdinal (ie ranked)
             arnm means values in (a) were (r)egressed, (n)ormalized against unscrambled, then (m)ean across subject pairs
             ari means identifiability of values in (a) which were (r)egressed
             az means values in (a) were averaged across each partner parcel
             """
-
             if False: #transpose a so that fa is on axis 0, hr on axis 1. Identifiability then means whether the hr is identifiable given fa
                 if a.ndim==3:
                     a=np.transpose(a,[1,0,2]) 
@@ -492,19 +452,26 @@ if __name__=='__main__':
         hutils.getloadavg()
         print(hutils.memused())
 
-    load_file=False
-    save_file=False  
+    load_file=True
+    save_file=True  
     to_plot=False
     plot_type='open_in_browser' #save_as_html
 
     if load_file:
         load_file_path = 'Amovf0123t0_S300_Tmovf0123t0sub30to40_G0ffrr_TempScal_gam0.2_B100la40-90_Dtracks_5M_1M_end_3mm_3mm_RDRT_S40_40-50'
         load_file_path = 'Amovf0123t0_S300_Tmovf0123t0sub20to30_RG0ffrr_TempScal_gam0.3_B100la20-30_Dtracks_5M_1M_end_3mm_0mm_RDRT_S10_30-80'
-        load_file_path = 'Amovf0123t0_S300_Tmovf0123t0sub20to30_RG0ffrr_TempScal_gam0.3_B5fe20-30_Dtracks_5M_1M_end_3mm_0mm_RDRT_S10_30-60'
+        #load_file_path = 'Amovf0123t0_S300_Tmovf0123t0sub20to30_RG0ffrr_TempScal_gam0.3_B5fe20-30_Dtracks_5M_1M_end_3mm_0mm_RDRT_S10_30-60'
         nblocks,block_choice,howtoalign,pre_hrc_fwhm,post_hrc_fwhm,alignfiles,tckfile,subs_test_range_start, subs_test_range_end = tutils.extract_tkalign_corrs2(load_file_path)
         save_file=False
+
+        save_folder=f'{hutils.intermediates_path}/tkalign_corrs2' #save results data in this folder
+        save_path=ospath(f"{save_folder}/{load_file_path}.npy")
+        blocks,a=tutils.load_a(save_path)
+
+
+
     else:
-        nblocks=3 #how many (parcel x parcel) blocks to examine
+        nblocks=5 #how many (parcel x parcel) blocks to examine
         block_choice='few_from_each_vertex' #'largest', 'fromsourcevertex', 'all','few_from_each_vertex'
         howtoalign = 'RDRT' #'RDRT','RD','RD+','RT','RT+'     
         
@@ -524,10 +491,11 @@ if __name__=='__main__':
         """
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to3_G0ffrr_TempScal_gam0.2'] #DESKTOP
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to3_RG0ffrr_TempScal_gam0.2'] #DESKTOP R
-        alignfiles = ['Amovf0t0_R5_Tmovf0t0sub0to2_RG0ffrr_TempScal_gam0.3'] #DESKTOP R searchlight
+        #alignfiles = ['Amovf0t0_R5_Tmovf0t0sub0to2_RG0ffrr_TempScal_gam0.3'] #DESKTOP R searchlight
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub30to40_G0ffrr_TempScal_gam0.2'] #MOVIE
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub20to30_RG0ffrr_TempScal_gam0.3'] #MOVIE R
         #alignfiles = ['Aresfcf0123t0S1000t_S300_Tresfcf0123t0S1000tsub20to30_RG0ffrr_TempScal_gam0.3'] #REST R
+        alignfiles = ['Amovf0123t0_R5_Tmovf0123t0sub20to30_RG0ffrr_TempScal_gam0.3'] #MOVIE R searchlight
 
     for alignfile in alignfiles:
 
@@ -540,10 +508,10 @@ if __name__=='__main__':
             print("Align template to imgs")
         else: 
             align_template_to_imgs=False
-        subs_blocks_range = range(0,2) #subjects to use to determine blocks with most streamlines, range(10,30)
-        for subs_test_range in [range(2,4)]: #range(20,30)
+        subs_blocks_range = range(20,30) #subjects to use to determine blocks with most streamlines, range(10,30)
+        for subs_test_range in [range(30,40)]: #range(20,30)
             #temp = [i for i in subs_blocks_range if i not in subs_test_range]
-            temp = [i for i in range(0,2)]
+            temp = [i for i in range(20,30)]
             if load_file:
                 assert(subs_test_range_start==subs_test_range.start and subs_test_range_end==subs_test_range.stop)
             if align_template_to_imgs: #that template_subs are consistent between the aligner and this script

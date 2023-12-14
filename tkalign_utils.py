@@ -186,7 +186,7 @@ def get_blocks(c,tckfile, MSMAll, sift2, align_parc_matrix, subs, block_choice,n
         connectomes_highres = hutils.get_highres_connectomes(c,subs,tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefer_hrc,n_jobs=-1) 
         connectomes_highres_sum = np.sum(connectomes_highres)
         from Connectome_Spatial_Smoothing import CSS as css    
-        fwhm=5
+        fwhm=10
         smoother=sparse.load_npz(ospath(f"{hutils.intermediates_path}/smoothers/100610_{fwhm}_0.01.npz"))
         connectomes_highres_sum=css.smooth_high_resolution_connectome(connectomes_highres_sum,smoother)
         align_parc_matrix_S300 = hutils.parcellation_string_to_parcmatrix('S300')
@@ -198,11 +198,12 @@ def get_blocks(c,tckfile, MSMAll, sift2, align_parc_matrix, subs, block_choice,n
         temp0a=np.array([i for i in range(nparcs)])
         temp0b=np.tile(temp0a,(nblocks,1))
 
-        print('Truncating blocks to first 10 source vertices')
         truncate_to=100
-        temp0b=temp0b[:,0:truncate_to]
-        inds=inds[:,0:truncate_to]
-        nparcs=truncate_to
+        if truncate_to is not None:
+            print(f'TRUNCATING blocks to first {truncate_to} source vertices')
+            temp0b=temp0b[:,0:truncate_to]
+            inds=inds[:,0:truncate_to]
+            nparcs=truncate_to
 
         temp1=temp0b.ravel()   
         temp2 = inds.ravel()

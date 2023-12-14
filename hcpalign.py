@@ -297,8 +297,8 @@ if __name__=='__main__':
             subjects = [str(i) for i in df.loc[eligible_rows,'Subject']]
 
         #### General Parameters
-        sub_slice=slice(2,4)
-        parcellation_string = 'S300' #S300, K1000, MMP
+        sub_slice=slice(30,40)
+        parcellation_string = 'S300' #S300, K1000, MMP, R10
         MSMAll=False
         save_pickle=False
         load_pickle=False #use saved aligner
@@ -315,7 +315,7 @@ if __name__=='__main__':
 
         #### Parameters for alignment data
         align_with='movie'
-        runs=[0]
+        runs=[0,1,2,3]
         align_fwhm=0
         align_clean=True
         FC_parcellation_string = 'S1000'
@@ -334,7 +334,7 @@ if __name__=='__main__':
 
         #### Parameters for making template (ignored if method!='template')
 
-        subs_template_slice=slice(0,2)
+        subs_template_slice=slice(20,30)
         lowdim_template=False
         align_template_to_imgs=True
         n_bags_template=1
