@@ -7,6 +7,26 @@ import matplotlib.pyplot as plt
 import warnings
 import itertools
 
+def correlate_block(X,Y,corr_args=['pearson','ravel']):
+    """
+    Given two 2D arrays, return the correlation between their vectorized versions?
+    Why is np.nanmean there?
+    Parameters:
+    -----------
+    X: np.array
+        2-dim array
+    Y: np.array
+        2-dim array
+    corr_args: list
+        ['pearson','ravel'] or ['spearman','ravel']    
+    """
+    if corr_args==['pearson','ravel']: #4.5s
+        ccs=[np.corrcoef(X.ravel(),Y.ravel())[0,1]]   
+    elif corr_args==['spearman','ravel']: #21s
+        from scipy.stats import spearmanr as sp
+        ccs,_=sp(X.ravel(),Y.ravel())
+    return np.nanmean(ccs)
+
 def extract_nsubs_alignpickles1(string):
     """
     Given a filename from intermediates/alignpickles, extract the number of subjects
@@ -22,18 +42,15 @@ def extract_sub_range_alignpickles1(string):
     nsubs = extract_nsubs_alignpickles1(string)
     return range(0,nsubs)
 
-'''
-def extract_nparcs_alignpickles1(string):
-    """
-    Given a filename from intermediates/alignpickles, extract the number of parcels
-    """
-    pattern = r'_FFF_S(.*?)_False'
-    match = re.search(pattern, string)
-    if match:
-        return int(match.group(1))
-    else:
-        return None
-'''
+alignpickles3_pattern = r'A(mov|res|movfc|resfc|diff)(t|f)(\d*)(t|f)(\d*)(.*?)_([A-Z]\d*)_T(.*?)sub(\d*)to(\d*)_(.*?)_(.*)'
+alignpickles3_dictionary = {'align_with':1,'MSMAll':2,'runs_string':3,'clean':4,'fwhm':5,'FC_args':6,'parcellation_string':7,'template_data':8,'template_sub_start':9,'template_sub_end':10,'template_making_string':11,'details':12}
+
+def replace_S300_alignpickles3(string):
+    #if input is 'Amovf0t0_R5_Tmovf0t0sub0to2_RG0ffrr_TempScal_gam0.3', return 'Amovf0t0_S300_Tmovf0t0sub0to2_RG0ffrr_TempScal_gam0.3'
+
+    match = re.search(alignpickles3_pattern, string)
+    result = f"A{match.group(1)}{match.group(2)}{match.group(3)}{match.group(4)}{match.group(5)}{match.group(6)}_S300_T{match.group(8)}sub{match.group(9)}to{match.group(10)}_{match.group(11)}_{match.group(12)}"
+    return result   
 
 def extract_alignpickles3(string,what):
     """
@@ -43,15 +60,14 @@ def extract_alignpickles3(string,what):
     string: filename
     what: string
     """
-    pattern = r'A(mov|res|movfc|resfc|diff)(t|f)(\d*)(t|f)(\d*)(.*?)_([A-Z]\d*)_T.*?_(.*?)_'
-    dictionary = {'align_with':1,'MSMAll':2,'runs_string':3,'clean':4,'fwhm':5,'FC_args':6,'parcellation_string':7,'template_making_string':8}
-    match = re.search(pattern, string)
+
+    match = re.search(alignpickles3_pattern, string)
     if match:
-        value = match.group(dictionary[what])
+        value = match.group(alignpickles3_dictionary[what])
         if what in ['MSMAll','clean']:
             str2logical={'t':True,'f':False}
             value = str2logical[value]
-        elif what in ['fwhm']:
+        elif what in ['fwhm','template_sub_start','template_sub_end']:
             value = int(value)
         return value
     else:
@@ -65,13 +81,14 @@ def extract_tkalign_corrs2(string):
     string: filename
         e.g. 'Amovf0123t0_S300_Tmovf0123t0sub30to40_G0ffrr_TempScal_gam0.2_B100la40-90_Dtracks_5M_1M_end_3mm_3mm_RDRT_S40_40-50'
     """
-    pattern = r'(.*?)_B(\d*)([a-z]*)(\d*)-(\d*)_D(.*?)_(\d)mm_(\d)mm_(.*?)_S(\d*)_(\d*)-(\d*)'
-    dictionary = {'alignfile':1,'nblocks':2,'block_choice_str':3,'subs_blocks_range_start':4,'subs_blocks_range_end':5,'tckfile_prefix':6,'pre_hrc_fwhm':7,'post_hrc_fwhm':8,'howtoalign':9,'nsubs_for_template_connectome':10,'subs_test_range_start':11,'subs_test_range_end':12}
-    match = re.search(pattern, string)
-    newdict = {what: match.group(dictionary[what]) for what in dictionary.keys()}
+
+    tkalign_corrs2_pattern = r'(.*)_B(\d+)(la|fr|al|fe)(\d+)-(\d+)_D(.*)_(\d*)mm_(\d*)mm_(.*)_S(\d*)_(\d*)-(\d*)'
+    tkalign_corrs2_dictionary = {'alignfile':1,'nblocks':2,'block_choice_str':3,'subs_blocks_range_start':4,'subs_blocks_range_end':5,'tckfile_prefix':6,'pre_hrc_fwhm':7,'post_hrc_fwhm':8,'howtoalign':9,'nsubs_for_template_connectome':10,'subs_test_range_start':11,'subs_test_range_end':12}
+
+    match = re.search(tkalign_corrs2_pattern, string)
+    newdict = {what: match.group(tkalign_corrs2_dictionary[what]) for what in tkalign_corrs2_dictionary.keys()}
     for key in ['nblocks','subs_blocks_range_start','subs_blocks_range_end','pre_hrc_fwhm','post_hrc_fwhm','nsubs_for_template_connectome','subs_test_range_start','subs_test_range_end']:
         newdict[key] = int(newdict[key])
-
     nblocks = newdict['nblocks']
     block_choice_dict = {'la':'largest', 'fr': 'fromsourcevertex', 'al':'all','fe':'few_from_each_vertex'}
     block_choice = block_choice_dict[newdict['block_choice_str']]
@@ -80,10 +97,21 @@ def extract_tkalign_corrs2(string):
     post_hrc_fwhm = newdict['post_hrc_fwhm']
     alignfiles = [newdict['alignfile']]
     tckfile = newdict['tckfile_prefix']+ '.tck'
+    subs_test_range_start = newdict['subs_test_range_start']
+    subs_test_range_end = newdict['subs_test_range_end']
+    return nblocks,block_choice,howtoalign,pre_hrc_fwhm,post_hrc_fwhm,alignfiles,tckfile, subs_test_range_start, subs_test_range_end
 
-    return nblocks,block_choice,howtoalign,pre_hrc_fwhm,post_hrc_fwhm,alignfiles,tckfile
-
-
+def new_func(subs_inds, alignfile, aligner2sparsearray, aligner_descale, aligner_negatives, sorter, slices, smoother_post, groups):
+    from joblib import Parallel, delayed
+    import pickle
+    fa={} #fa[group] is a list of functional aligners
+    for group in groups:
+        func1 = lambda sub_ind: pickle.load(open(ospath(f'{hutils.intermediates_path}/alignpickles3/{alignfile}/{hutils.all_subs[sub_ind]}.p'), "rb" ))
+        all_aligners = Parallel(n_jobs=-1,prefer='threads')(delayed(func1)(sub_ind) for sub_ind in subs_inds[group]) #load each time because func(i) will modify arrays in all_aligners
+        func2 = lambda aligner: get_template_aligners(aligner,slices,sorter,aligner2sparsearray=aligner2sparsearray,aligner_descale=aligner_descale,aligner_negatives=aligner_negatives,smoother=smoother_post)
+        fa[group] = Parallel(n_jobs=-1,prefer='threads')(delayed(func2)(aligner) for aligner in all_aligners)
+        fa[group]=Parallel(n_jobs=-1,prefer='threads')(delayed(hutils.aligner_downsample)(estimator) for estimator in fa[group])
+    return fa,all_aligners
 
 def get_tck_file():
     import socket
@@ -123,14 +151,21 @@ def makesorter(labels):
     unsorter: array of indices to go from sorted labels to original ordering
     labelslice: list of slices for each label in the sorted list, e.g. [slice(0,767),slice(767,1534),...)]
     """
-    unique_labels=np.unique(labels)
-    sorter=np.argsort(labels,kind='stable')
-    unsorter=np.argsort(sorter)
-    labelsort=labels[sorter]
-    labelslice=np.zeros(len(unique_labels),dtype=object)
-    for i in range(len(unique_labels)):
-        where=np.where(labelsort==unique_labels[i])[0]
-        labelslice[i]=slice(where[0],where[-1]+1)
+
+    if type(labels[0])==np.ndarray: #searchlight method
+        #sorter and unsorter will be identity transformations
+        sorter=np.array(range(len(labels))) #all integers from 0 to 59411
+        unsorter=np.array(range(len(labels)))
+        labelslice=None
+    else: #default
+        unique_labels=np.unique(labels)
+        sorter=np.argsort(labels,kind='stable')
+        unsorter=np.argsort(sorter)
+        labelsort=labels[sorter]
+        labelslice=np.zeros(len(unique_labels),dtype=object)
+        for i in range(len(unique_labels)):
+            where=np.where(labelsort==unique_labels[i])[0]
+            labelslice[i]=slice(where[0],where[-1]+1)
     return sorter,unsorter,labelslice
     
 def load_a(save_path):
@@ -143,10 +178,42 @@ def get_blocks(c,tckfile, MSMAll, sift2, align_parc_matrix, subs, block_choice,n
     """
     Return blocks
     """
-    parcellated_connectomes = get_parcellated_connectomes(c,tckfile, MSMAll, sift2, align_parc_matrix, subs, par_prefer_hrc)    
-    hps, hpsx, hpsxa = reduce_parcellated_connectomes(parcellated_connectomes)    
-    blocks = get_blocks_from_parcellated_connectomes(block_choice, nblocks, parcel_pair_type, align_labels, nparcs, type_rowcol, hps, hpsx, hpsxa)
-    return blocks
+    if type(align_labels[0])==np.ndarray: #searchlight method
+        """
+        Take mean high-res connectome, then 5mm smooth it. For each source vertex, calculate no. of streamlines going to each S300 parcel. For those S300 parcels which the source vertex belongs to, set no. of streamlines to zero. Then select the nblocks largest target S300 parcels, for each source vertex 
+        """
+        assert(block_choice=='few_from_each_vertex')
+        connectomes_highres = hutils.get_highres_connectomes(c,subs,tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefer_hrc,n_jobs=-1) 
+        connectomes_highres_sum = np.sum(connectomes_highres)
+        from Connectome_Spatial_Smoothing import CSS as css    
+        fwhm=5
+        smoother=sparse.load_npz(ospath(f"{hutils.intermediates_path}/smoothers/100610_{fwhm}_0.01.npz"))
+        connectomes_highres_sum=css.smooth_high_resolution_connectome(connectomes_highres_sum,smoother)
+        align_parc_matrix_S300 = hutils.parcellation_string_to_parcmatrix('S300')
+        lines = align_parc_matrix_S300 @ connectomes_highres_sum #streamlines_per_parcel_and_vertex
+        lines[align_parc_matrix_S300]=0
+        lines.eliminate_zeros()
+        lines = lines.todense()
+        inds = np.argpartition(lines,-nblocks,axis=0)[-nblocks:,:]
+        temp0a=np.array([i for i in range(nparcs)])
+        temp0b=np.tile(temp0a,(nblocks,1))
+
+        print('Truncating blocks to first 10 source vertices')
+        truncate_to=100
+        temp0b=temp0b[:,0:truncate_to]
+        inds=inds[:,0:truncate_to]
+        nparcs=truncate_to
+
+        temp1=temp0b.ravel()   
+        temp2 = inds.ravel()
+
+        blocks=np.vstack([temp1,temp2]) #first row is searchlight parcel indices, second row is S300 parcel indices
+
+    else: #default
+        parcellated_connectomes = get_parcellated_connectomes(c,tckfile, MSMAll, sift2, align_parc_matrix, subs, par_prefer_hrc)    
+        hps, hpsx, hpsxa = reduce_parcellated_connectomes(parcellated_connectomes)    
+        blocks = get_blocks_from_parcellated_connectomes(block_choice, nblocks, parcel_pair_type, align_labels, nparcs, type_rowcol, hps, hpsx, hpsxa)
+    return blocks, nparcs
 
 def get_blocks_from_parcellated_connectomes(block_choice, nblocks, parcel_pair_type, align_labels, nparcs, type_rowcol, hps, hpsx, hpsxa):
     if block_choice=='largest': 
@@ -252,7 +319,7 @@ def get_template_aligners(a,slices,sorter=None,aligner2sparsearray=False,aligner
             R_i=np.abs(R_i)
         elif aligner_negatives=='zero':
             R_i[R_i<0]=0
-        if smoother is not None:
+        if (smoother is not None) and (smoother.nnz!=59412):
             smoother_parcel = smoother[slices[i],slices[i]]
             R_i = smoother_parcel @ R_i# @ (smoother_parcel.T)
         if aligner2sparsearray: mat[slices[i],slices[i]]=R_i
@@ -527,20 +594,28 @@ def plotter(axis,x,aligned_method,show_same_aligner,title,subs_test,subs_templat
         axis.axhline(0) #draw horizontal line
 """
 
+def hist_ravel(axis,x,title='title',vline=0):
+    if type(x)==np.ndarray: x=x.ravel()
+    axis.hist(x,color='red',alpha=0.5)
+    axis.set_title(title)
+    axis.axvline(vline) #draw vertical line
+
 def plot_id(axis,x,title='title'):
     colors=['tab:blue','tab:orange','tab:green','tab:purple','tab:brown','tab:pink','tab:gray','tab:olive','tab:cyan','k','m','b']
     n_subs = x.shape[0]
-    for nyD in range(n_subs):
+    jitter = 0.15
+    jitters = np.random.uniform(-jitter,+jitter,n_subs*n_subs)
+    nsubs_nyD = min(10,x.shape[0]) #only show first 10 subjects
+    marker_size=5
+    index=0
+    for nyD in range(nsubs_nyD):
         for nyR in range(n_subs):
-            if nyD==nyR: 
-                marker_color='r'
+            if nyD!=nyR:
                 #marker_color=colors[nyR%len(colors)]
-                marker_size=10 #40
-            else:
-                marker_color='b'
-                #marker_color=colors[nyR%len(colors)]
-                marker_size=10
-            axis.scatter(nyD+1, x[nyD, nyR], s=marker_size, c=marker_color)
+                axis.scatter(nyD+1+jitters[index], x[nyD, nyR], s=marker_size, c='b',alpha=0.5)
+                index+=1
+        #marker_color=colors[nyR%len(colors)]
+        axis.scatter(nyD+1, x[nyD, nyD], s=marker_size, c='r')
     axis.set_title(title)          
     axis.get_xaxis().set_ticks([])
     axis.set_xlabel('Subjects (connectome)')

@@ -35,8 +35,8 @@ all_top_block_labels=0 #for hcpalign.py using top most connected blocks for DA
 #global parameters for HCP dataset
 
 movies=['MOVIE1_7T_AP','MOVIE2_7T_PA','MOVIE3_7T_PA','MOVIE4_7T_AP']
-#rests=['REST1_7T_PA','REST2_7T_AP','REST3_7T_PA','REST4_7T_AP']
-rests=['REST1_LR','REST1_RL','REST2_LR','REST2_RL']
+rests=['REST1_7T_PA','REST2_7T_AP','REST3_7T_PA','REST4_7T_AP']
+#rests=['REST1_LR','REST1_RL','REST2_LR','REST2_RL']
 tasks=['WM','GAMBLING','RELATIONAL','MOTOR','EMOTION','LANGUAGE','SOCIAL']
 all_subs=['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823','115017','115825','116726','118225','125525']
 all_subs=list(np.loadtxt('included_subs_minus3.csv',dtype='str')) #made from findpts.py
@@ -195,10 +195,11 @@ def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_preproc):
         temp=ts_preproc(np.vstack(imgs_align_sub))
     return temp.astype(dtype)
 
-def get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string,FC_normalize):
+def get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string,FC_normalize,circshift=False):
     runs_string = ''.join([str(i) for i in runs])
     dict1 = {'movie':'mov','rest':'res','movie_FC':'movfc','rest_FC':'resfc','diffusion':'diff'}
     string = f'{dict1[align_with]}{logical2str[MSMAll]}{runs_string}{logical2str[clean]}{fwhm}'
+    if circshift: string+='CIRC'
     if 'FC' in align_with:
         if FC_normalize: FC_normalize_string=''
         else: FC_normalize_string='f'
@@ -218,7 +219,8 @@ def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,cle
     FC_normalize: bool
     string_only: bool
     """
-    align_string = get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string,FC_normalize)
+    circshift=False #circular shift imgs_align to scramble
+    align_string = get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string,FC_normalize,circshift)
     if string_only:
         return  [[] for sub in subs],align_string
     else:
@@ -231,7 +233,7 @@ def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,cle
             filenames = get_filenames(align_with[:-3],runs)
             imgs_align=get_all_FC(subs,[align_with,MSMAll,clean,fwhm,FC_parcellation_string,filenames,'pxn'],FC_normalize)
 
-        if False: #circular shift imgs_align to scramble
+        if circshift: 
             print('circular shift imgs_align to scramble')
             imgs_align.append(imgs_align.pop(0)) 
             imgs_align.append(imgs_align.pop(0))
@@ -1246,9 +1248,16 @@ def kmeans_matrix(nparcs):
     save_folder= f'{intermediates_path}\kmeansparcellation'
     save=ospath(f'{save_folder}/kmeansparc_sub100610_sphere_{nparcs}parcs_matrix.p')
     return pickle.load( open( ospath(save), "rb" ) )
+def searchlights(radius, sub='100610',surface='midthickness'):
+    """
+    Return a saved list of searchlights, one centred at each vertex, with given radius
+    """
+    save_path=ospath(f'{intermediates_path}/searchlightparcellation/parc_{sub}_{surface}_{radius}mm.p')
+    parcels = pickle.load(open(ospath(save_path), "rb" ))
+    return parcels
 
 def parcellation_string_to_parcellation(parcellation_string):
-    #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'M' for HCP multimodal parcellation
+    #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'R10' for searchlight radius 10mm, 'M' for HCP multimodal parcellation
     #Returns an array of size (59412,) with parcel labels for each vertex in fs32k cortex
     import hcp_utils as hcp
     nparcs = int(parcellation_string[1:])
@@ -1258,6 +1267,8 @@ def parcellation_string_to_parcellation(parcellation_string):
         parcellation = kmeans(nparcs)
     elif parcellation_string[0]=='M':
         parcellation = hcp.mmp.map_all[hcp.struct.cortex]
+    elif parcellation_string[0]=='R':
+        parcellation = searchlights(nparcs)
     return parcellation
 
 def parcellation_string_to_parcmatrix(parcellation_string):
@@ -1271,6 +1282,8 @@ def parcellation_string_to_parcmatrix(parcellation_string):
         matrix = kmeans_matrix(nparcs).astype(bool)
     elif parcellation_string[0]=='M':
         matrix = parc_char_matrix(hcp.mmp.map_all[hcp.struct.cortex])[1].astype(bool)
+    elif parcellation_string[0]=='R':
+        matrix = np.eye(59412,dtype=bool)
     nonempty_parcels = np.array((matrix.sum(axis=1)!=0)).squeeze()
     assert(len(nonempty_parcels)==matrix.shape[0]) #no empty parcels
     return matrix
@@ -1333,7 +1346,6 @@ def replace_with_parcelmean(X,parcellation):
         
     return X2
 
-import fmralign
 def aligner_downsample(estimator,dtype='float32'):
     """
     estimator is instance of mySurfacePairwiseAlignment
@@ -1342,7 +1354,7 @@ def aligner_downsample(estimator,dtype='float32'):
     """
     
     #Hungarian, OptimalTransportAlignment, ScaledOrthogonalAlignment, RidgeAlignment
-    
+    import fmralign    
     fits=estimator.fit_
     pairwise_method=type(fits[0])
     for j in range(len(fits)):
@@ -1353,6 +1365,8 @@ def aligner_downsample(estimator,dtype='float32'):
         elif pairwise_method==fmralign.alignment_methods.RidgeAlignment:
             pass
             # use fits[j].R.coef_, fits[j].R.intercept_ ??
+        else:
+            pass
         
     return estimator
 

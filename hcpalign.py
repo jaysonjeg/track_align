@@ -178,7 +178,11 @@ if __name__=='__main__':
                 if save_pickle: 
                     vprint('saving aligner')
                     pickle.dump(aligners,open(save_pickle_filename,"wb"))
-                
+
+            if True:
+                print('Only saving aligners')
+                return [0], [0], [0], aligners
+
             #aligners.estimators is list(subs_indices) of SurfacePairwiseAlignments, from each subj to template       
             imgs_decode_aligned=[post_decode_smooth(aligners.transform(imgs_decode[i],i)) for i in range(len(imgs_decode))]
             if plot_impulse_response:
@@ -194,13 +198,10 @@ if __name__=='__main__':
             if plot_scales:
                 p.plot(hutils.aligner_get_scale_map(aligners.estimators[0])) #plot scale parameter for Procrustes aligner
 
-            if True:
-                print('Skip decoding. Only saving aligners')
+            if False:
+                print('Skip classification. Only saving aligners and imgs_decode_aligned')
                 return [0], [0], imgs_decode_aligned, aligners
-            else:
-                del aligners
-
-
+            del aligners
             vprint('{} Template transform done'.format(c.time()))
             hutils.getloadavg()
            
@@ -296,7 +297,7 @@ if __name__=='__main__':
             subjects = [str(i) for i in df.loc[eligible_rows,'Subject']]
 
         #### General Parameters
-        sub_slice=slice(10,20)
+        sub_slice=slice(2,4)
         parcellation_string = 'S300' #S300, K1000, MMP
         MSMAll=False
         save_pickle=False
@@ -314,7 +315,7 @@ if __name__=='__main__':
 
         #### Parameters for alignment data
         align_with='movie'
-        runs=[0,1,2,3]
+        runs=[0]
         align_fwhm=0
         align_clean=True
         FC_parcellation_string = 'S1000'
@@ -327,12 +328,14 @@ if __name__=='__main__':
         decode_standardize = None #None, 'wholebrain' or 'parcel'                
         decode_demean=True #not relevant if decode_standardize==None
         decode_unit_variance=False
-        use_parcelmeanstds = True #add parcel-specific means and stds back for classification
+        use_parcelmeanstds = False #add parcel-specific means and stds back for classification
+        if not(use_parcelmeanstds):
+            print('not use_parcelmeanstds')
 
         #### Parameters for making template (ignored if method!='template')
-        subs_template_slice=slice(0,10)
-        lowdim_template=False
 
+        subs_template_slice=slice(0,2)
+        lowdim_template=False
         align_template_to_imgs=True
         n_bags_template=1
         gamma_template=0
@@ -362,7 +365,7 @@ if __name__=='__main__':
         #gammas_folder = 'gammasAmovf0123t0_D7tasksf&ms_S300_Tmovf0123t0sub20to40_L_TempRidg_gam1alphas[1000]_sub0to20_0'
         #gammas_parcel = np.load(ospath(f'{results_path}/figures/hcpalign/{gammas_folder}/best_gamma.npy'))
 
-        gammas = [0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1]
+        gammas = [0.3]
 
         accs = []
         corrs = []
@@ -396,6 +399,10 @@ if __name__=='__main__':
             accs.append(np.mean(scores))
 
             if True: #save aligner for each subject separately in alignpickles3
+                t.print(f"{c.time()}: Downsample aligner start")
+                for i in range(len(aligners.estimators)):
+                    aligners.estimators[i] = hutils.aligner_downsample(aligners.estimators[i],dtype='float32')
+                t.print(f"{c.time()}: Downsample aligner end")
                 save_string3 = f"A{align_string}_{parcellation_string}{template_string}_{method_string}"
                 hutils.mkdir(f'{intermediates_path}/alignpickles3')
                 hutils.mkdir(f'{intermediates_path}/alignpickles3/{save_string3}')
@@ -438,4 +445,4 @@ if __name__=='__main__':
 
 
 
-    print('\a') #beep sounds 
+        print('\a') #beep sounds 

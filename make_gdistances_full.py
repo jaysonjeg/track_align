@@ -8,10 +8,24 @@ import numpy as np
 import gdist
 import hcp_utils as hcp
 from scipy import sparse
+import hcpalign_utils as hutils
+import pickle
+
+def make_and_save_searchlights(sub='100610',surface='midthickness'):
+    """
+    Make a list of searchlights, one centred at each vertex. Each searchlight is a list of vertices within radius_mm of the centre vertex. Save this list of searchlights as a pickle objcet
+    """
+    gdists = get_saved_gdistances_full(sub,surface)
+    for radius_mm in [5,10,15,20,25,30]: #only look at vertices within this many mm of the source vertex
+        print(radius_mm)
+        gdists_bool = gdists < radius_mm
+        parcels = [np.where(gdists_bool[i,:])[0].astype('int16') for i in range(gdists.shape[0])]
+        del gdists_bool
+        save_path=hutils.ospath(f'{hutils.intermediates_path}/searchlightparcellation/parc_{sub}_{surface}_{radius_mm}mm.p')
+        pickle.dump(parcels,open(save_path,"wb"))
 
 c=hcpalign_utils.clock()
 hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"
-
 
 def get_saved_gdistances_full_hemi(sub,surface,hemi,hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200",intermediates_path='/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/old_intermediates'):
     """

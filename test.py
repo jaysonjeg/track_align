@@ -6,6 +6,17 @@ import hcpalign_utils as hutils
 from joblib import Parallel, delayed
 #from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
+
+"""
+from make_gdistances_full import get_searchlights
+parcels = get_searchlights(1)
+hr=hutils.get_highres_connectomes(None,['100610'],'tracks_5M_50k.tck')[0]
+
+parcel = parcels[0]
+hrp = hr[:,parcel][parcel,:]
+"""
+
+
 #Test GroupedFeaturesEstimator
 """
 from sklearn.datasets import make_regression
@@ -115,8 +126,8 @@ hcp_folder=hutils.hcp_folder
 intermediates_path=hutils.intermediates_path
 results_path=hutils.results_path
 
-subs=hutils.all_subs[slice(0,3)]
-subs_template=hutils.all_subs[slice(3,6)]
+subs=hutils.all_subs[slice(0,2)]
+subs_template=hutils.all_subs[slice(2,4)]
 nsubs = np.arange(len(subs)) #number of subjects
 
 post_decode_smooth=hutils.make_smoother_100610(0)
@@ -127,7 +138,13 @@ imgs_decode,decode_string = hutils.get_task_data(subs,hutils.tasks[0:7],MSMAll=F
 labels = [np.array(range(i.shape[0])) for i in imgs_decode] 
 
 parcellation_string='S300'
+parcellation_string='R5'
 clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
+
+
+#from make_gdistances_full import get_searchlights
+#clustering = get_searchlights(5)
+
 classifier=LinearSVC(max_iter=10000,dual='auto')     
 print(f'{c.time()}: Done loading data')
 
@@ -146,6 +163,8 @@ print(f'{c.time()}: Start fitting')
 #aligners.fit_to_template(imgs_align)
 
 aligners.fit_template_to_imgs(imgs_align)
+assert(0)
+
 im=imgs_align[0]
 t = aligners.template
 t2=aligners.estimators[0].transform(t)
