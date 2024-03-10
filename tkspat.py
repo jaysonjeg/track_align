@@ -16,7 +16,7 @@ nparcs=301
 nblocks=5
 
 def get_a(z):
-    b,f,a=tutils.load_f_and_a(z)
+    b,a=tutils.load_a(z)
     return a
 def reshape(a):
     return np.transpose( np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs)) , (0,1,3,2)) #Now a is n_subs_test * n_subs_test * nparcs * nblocksperparc
@@ -45,7 +45,7 @@ def corr(x):
 
 zs=[f'0-50_rest_{string}.npy' for string in ['0-10','10-20','20-30','30-40','40-50']]
 
-zs = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/maxhpmult/{i}') for i in zs]
+zs = [hutils.ospath(f'{hutils.intermediates_path}/tkalign_corrs/old/maxhpmult/{i}') for i in zs]
 
 a = [get_a(i) for i in zs]
 
@@ -86,6 +86,7 @@ parc_sizes[0]=parc_sizes.mean()
 p.plot(parc_sizes @ align_parc_matrix, savename='parc_sizes')
 
 #Plot aligner scale factor (?confounder)
+"""
 alignfile = 'hcpalign_movie_temp_scaled_orthogonal_10-4-7_TF_0_0_0_FFF_S300_False'
 aligner_file = f'{hutils.intermediates_path}/alignpickles/{alignfile}.p'
 all_aligners = pickle.load( open( ospath(aligner_file), "rb" ))
@@ -94,6 +95,7 @@ scales_mean=scales.mean(axis=0)
 log_scales_mean=np.log10(scales_mean)
 log_scales_mean_adj = log_scales_mean - log_scales_mean.min()
 p.plot(log_scales_mean_adj @ align_parc_matrix, savename='log_scales_mean_adj')  
+"""
 
 #Plot vertex areas (?confounder)
 path='D:\\FORSTORAGE\\Data\\Project_Hyperalignment\\old_intermediates\\vertex_areas\\vert_area_100610_white.npy'
@@ -117,9 +119,39 @@ curv_av_abs_parc = ( align_parc_matrix @ curv_av_abs ) / parc_sizes
 
 
 #Are spatial variations in SC-func linkage associated with these confounders?
+"""
 print(f'Corr between ancN and scales_mean is {np.corrcoef(ancN,scales_mean)[0,1]}')
 print(f'Corr between ancN and parc_sizes is {np.corrcoef(ancN,parc_sizes)[0,1]}')
 print(f'Corr between ancN and mean_vert_areas is {np.corrcoef(ancN,mean_vert_areas)[0,1]}')
 print(f'Corr between ancN and total_parcel_area is {np.corrcoef(ancN,total_vertex_areas_parc)[0,1]}')
 print(f'Corr between ancN and average curvature is {np.corrcoef(ancN,curv_av_parc)[0,1]}')
 print(f'Corr between ancN and abs-value of average curvature is {np.corrcoef(ancN,curv_av_abs_parc)[0,1]}')
+"""
+
+
+
+parcellation_string = 'S300'
+align_labels=hutils.parcellation_string_to_parcellation(parcellation_string)
+align_parc_matrix=hutils.parcellation_string_to_parcmatrix(parcellation_string)
+nparcs=align_parc_matrix.shape[0]
+
+import getmesh_utils
+subject_id = '100610'
+mesh = getmesh_utils.get_verts_and_triangles(subject_id,'white')
+p.mesh = mesh
+
+sulc = hutils.get_sulc(subject_id)
+
+
+nsubjects=1
+axis = 0
+corrs = np.zeros((nsubjects,nparcs),dtype=np.float32) #corr bw Rsums and hrdu for given subject and parcel
+for subject in range(nsubjects):
+    for nparc in range(nparcs):
+        areas = vertex_areas[align_labels==nparc]
+        Dsums = sulc[align_labels==nparc]
+        corrs[subject,nparc] = np.corrcoef(areas,Dsums)[0,1]
+
+print(np.sum(corrs<0)/len(np.squeeze(corrs)))
+plt.hist(np.squeeze(corrs))
+plt.show(block=False)

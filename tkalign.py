@@ -140,12 +140,24 @@ if __name__=='__main__':
             else:
                 groups=['test','temp']    
             if aligned_method=='template':                                                    
-                fa, all_aligners = tutils.new_func(subs_inds, alignfile, aligner2sparsearray, aligner_descale, aligner_negatives, sorter, slices, smoother_post, groups)
+                fa, all_aligners = tutils.new_func(c,subs_inds, alignfile, aligner2sparsearray, aligner_descale, aligner_negatives, sorter, slices, smoother_post, groups)
                 #scales = np.vstack( [[all_aligners[i].fit_[nparc].scale for nparc in range(nparcs)] for i in range(len(all_aligners))] )   
                 del all_aligners
 
                 if parcellation_string[0]=='R': #searchlight
-                    fa_S300, _ = tutils.new_func(subs_inds, alignfile_S300, aligner2sparsearray, aligner_descale, aligner_negatives, sorter_S300, slices_S300, None, groups)
+                    fa_S300, _ = tutils.new_func(c,subs_inds, alignfile_S300, aligner2sparsearray, aligner_descale, aligner_negatives, sorter_S300, slices_S300, None, groups)
+
+            """
+            #TRY THIS
+            r0 = fa['test'][0].fit_[0].R
+            r0t = tutils.randomise_but_preserve_row_col_sums(r0)
+            print(np.corrcoef(r0.ravel(),r0t.ravel())[0,1])
+            print(np.corrcoef(r0.sum(axis=0),r0t.sum(axis=0))[0,1])
+            print(np.corrcoef(r0.sum(axis=1),r0t.sum(axis=1))[0,1])
+            for subject in range(len(fa['test'])):
+                for nparc in range(len(fa['test'][0].fit_)):
+                    fa['test'][subject].fit_[nparc].R = tutils.randomise_but_preserve_row_col_sums(fa['test'][subject].fit_[nparc].R)
+            """
 
             def get_aligner_parcel(group,sub_ind,nparcel):
                 """       
@@ -212,69 +224,6 @@ if __name__=='__main__':
                 print(f'{c.time()}: GetAlignedBlocks', end=", ")
                 temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args2(howtoalign))
                 aligned_blocks = np.reshape(np.array(temp,dtype=object),(len(subs['test']),blocks.shape[1])) 
-            
-            elif align_template_to_imgs==False:
-                aligned_blocks={} #aligned_blocks is a dict with keys ['test','template']. aligned_blocks['test'] is a 3-dim array with elements [nD,nR,nblock]. aligned_blocks['template'] is a 2-dim array with elements [nD,nblock]. Each element is an block of a connectome transformed with a functional aligner.
-
-                def get_vals(howtoalign,group,sub_ind_hr,sub_ind_fa,nblock):
-                    """
-                    Return the connectome of 'sub_ind_hr', the functional aligner of 'sub_ind_fa', and pre and post-multiplying smoothing matrices, for block 'nblock'. 'sub_ind_hr' and 'sub_ind_fa' are within subject group 'group'. 
-                    Parameters:
-                    -----------
-                    howtoalign: str
-                        'RDRT','RD','RD+','RT','RT+'
-                    group: 'temp' or 'test'
-                    sub_ind_hr: int
-                        index of high-res connectome subject in subs[group]
-                    sub_ind_fa: int
-                        index of functional aligner subject in subs[group]
-                    nblock: int
-                        index of block in blocks
-                    """
-                    i,j=blocks[0,nblock],blocks[1,nblock]
-                    D=hr[group][sub_ind_hr][slices[i],slices[j]] 
-                    if howtoalign is not None and '+' in howtoalign: #the other end will be self-aligned
-                        Ri=get_aligner_parcel(group,sub_ind_hr,i)
-                        Rj=get_aligner_parcel(group,sub_ind_hr,j)
-                    else:
-                        Ri=np.eye(D.shape[0],dtype=np.float32)
-                        Rj=np.eye(D.shape[1],dtype=np.float32)   
-                    if howtoalign in ['RD','RD+','RDRT']:
-                        Ri=get_aligner_parcel(group,sub_ind_fa,i)
-                    if howtoalign in ['RT','RT+','RDRT']:
-                        Rj=get_aligner_parcel(group,sub_ind_fa,j)
-                    pre, post = None, None
-                    """
-                    if post_hrc_fwhm:
-                        pre=smoother_post[slices[i],slices[i]]
-                        post=smoother_post[slices[j],slices[j]]
-                    else:
-                        pre=np.eye(D.shape[0],dtype=np.float32)
-                        post=np.eye(D.shape[1],dtype=np.float32) 
-                    """
-                    return i,j,D,Ri,Rj,pre,post 
-                def yield_args(howtoalign,group,subject_pairs=False):
-                    """
-                    if subject_pairs==True, yield outputs of get_vals for each subject pair in 'group', for each block in blocks. 
-                    If subject_pairs==False, yield outputs of get_vals for each subject in 'group' for each block in blocks. Pass the same subject as both 'sub_ind_hr' and 'sub_ind_fa' to get_vals
-                    """ 
-                    n_subs=len(subs[group])
-                    for sub_ind_hr,nR in itertools.product(range(n_subs),range(n_subs)):
-                        if subject_pairs or (sub_ind_hr==nR):
-                            sub_ind_fa = tutils.get_key(aligned_method,subs[group],sub_ind_hr,nR)
-                            for nblock in range(blocks.shape[1]):
-                                yield get_vals(howtoalign,group,sub_ind_hr,sub_ind_fa,nblock)
-
-                if aligned_method=='template':
-                    for group in ['temp','test']:
-                        print(f'{c.time()}: GetAlignedBlocks{group}', end=", ")
-                        temp=Parallel(n_jobs=-1,prefer=par_prefer)(delayed(get_aligned_block)(*args) for args in yield_args(howtoalign,group,subject_pairs={'temp':False,'test':True}[group]))
-                        if group=='test':
-                            aligned_blocks['test']=np.reshape(np.array(temp,dtype=object),(len(subs['test']),len(subs['test']),blocks.shape[1]))
-                        elif group=='temp':
-                            aligned_blocks['temp']=np.reshape(np.array(temp,dtype=object),(len(subs['temp']),blocks.shape[1]))
-                            aligned_blocks_template_mean = np.mean(aligned_blocks['temp'],axis=0) #1-dim array with elements [nblock].
-                #aligned_blocks['test']=np.roll(aligned_blocks['test'],1,axis=2)
 
 
             if align_template_to_imgs==True:
@@ -369,7 +318,6 @@ if __name__=='__main__':
                 aroi=ident(aro) #should be same as ari
 
                 if block_choice=='few_from_each_vertex':
-                    ar=reg(a)
                     az = np.reshape(a,(a.shape[0],a.shape[1],nblocks,nparcs))
                     arz = np.reshape(ar,(ar.shape[0],ar.shape[1],nblocks,nparcs))
 
@@ -423,23 +371,23 @@ if __name__=='__main__':
                 hutils.plot_parc(p,align_parc_matrix,scales_mean,'scales')        
             """
         def plots_average():             
-
-            fig,axs=plt.subplots(5,3)
-            tutils.plot_id(axs[0,0],ma,title='ma')
-            tutils.plot_id(axs[1,0],mar,title='mar')
-            tutils.plot_id(axs[2,0],maro,title='maro')
-            tutils.plot_id(axs[3,0],a[:,:,0],title='a_block0')
-            tutils.plot_id(axs[4,0],ar[:,:,0],title='ar_block0')
-            tutils.hist_ravel(axs[0,1],-an,'an')
-            tutils.hist_ravel(axs[1,1],-arn,'arn')
-            tutils.hist_ravel(axs[2,1],-arnm,'arnm: block means (across sub-pairs)')
-            tutils.hist_ravel(axs[3,1],-marn,'marn: sub-pair means (across blocks)')
-            tutils.hist_ravel(axs[0,2],carn,'carn: counts for each connectome subject',vline=50)
-            tutils.hist_ravel(axs[1,2],arnc,'arnc: counts for each block (across sub-pairs)',vline=50)
-            tutils.hist_ravel(axs[2,2],anc,'anc: counts for each connectome subject',vline=50)
-            tutils.hist_ravel(axs[3,2],can,'can: counts for each block (across sub-pairs)',vline=50)
-            plt.subplots_adjust(hspace=0.5) 
-            fig.suptitle(f'Similarity average', fontsize=16)
+            if to_plot:
+                fig,axs=plt.subplots(5,3)
+                tutils.plot_id(axs[0,0],ma,title='ma')
+                tutils.plot_id(axs[1,0],mar,title='mar')
+                tutils.plot_id(axs[2,0],maro,title='maro')
+                tutils.plot_id(axs[3,0],a[:,:,0],title='a_block0')
+                tutils.plot_id(axs[4,0],ar[:,:,0],title='ar_block0')
+                tutils.hist_ravel(axs[0,1],-an,'an')
+                tutils.hist_ravel(axs[1,1],-arn,'arn')
+                tutils.hist_ravel(axs[2,1],-arnm,'arnm: block means (across sub-pairs)')
+                tutils.hist_ravel(axs[3,1],-marn,'marn: sub-pair means (across blocks)')
+                tutils.hist_ravel(axs[0,2],carn,'carn: counts for each connectome subject',vline=50)
+                tutils.hist_ravel(axs[1,2],arnc,'arnc: counts for each block (across sub-pairs)',vline=50)
+                tutils.hist_ravel(axs[2,2],anc,'anc: counts for each connectome subject',vline=50)
+                tutils.hist_ravel(axs[3,2],can,'can: counts for each block (across sub-pairs)',vline=50)
+                plt.subplots_adjust(hspace=0.5) 
+                fig.suptitle(f'Similarity average', fontsize=16)
 
             print(f'AV R {count_negs(arnm):.1f}% of blocks (mean across sub-pairs)')
             print(f'AV R {count_negs(marn):.1f}% of sub-pairs (mean across blocks)')    
@@ -451,9 +399,11 @@ if __name__=='__main__':
         if to_plot: plt.show()
         hutils.getloadavg()
         print(hutils.memused())
+        return sorter, unsorter, slices, smoother_pre, smoother_post, figures_subfolder, p, c, subs, align_labels, align_parc_matrix, nparcs, blocks, hr, fa, a, an, arn
 
-    load_file=True
-    save_file=True  
+
+    load_file=False
+    save_file=False  
     to_plot=False
     plot_type='open_in_browser' #save_as_html
 
@@ -464,21 +414,16 @@ if __name__=='__main__':
         nblocks,block_choice,howtoalign,pre_hrc_fwhm,post_hrc_fwhm,alignfiles,tckfile,subs_test_range_start, subs_test_range_end = tutils.extract_tkalign_corrs2(load_file_path)
         save_file=False
 
-        save_folder=f'{hutils.intermediates_path}/tkalign_corrs2' #save results data in this folder
-        save_path=ospath(f"{save_folder}/{load_file_path}.npy")
-        blocks,a=tutils.load_a(save_path)
-
-
-
     else:
-        nblocks=5 #how many (parcel x parcel) blocks to examine
-        block_choice='few_from_each_vertex' #'largest', 'fromsourcevertex', 'all','few_from_each_vertex'
+        nblocks=50 #how many (parcel x parcel) blocks to examine
+        block_choice='largest' #'largest', 'fromsourcevertex', 'all','few_from_each_vertex'
         howtoalign = 'RDRT' #'RDRT','RD','RD+','RT','RT+'     
         
         pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
         post_hrc_fwhm=0 #smoothing kernel after alignment. Default 3
 
         tckfile = tutils.get_tck_file()
+        #tckfile = 'tracks_5M_1M_end.tck'
         
         #Multiple gamma values
         """
@@ -490,13 +435,14 @@ if __name__=='__main__':
         alignfiles = [alignfile_pre] + alignfiles
         """
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to3_G0ffrr_TempScal_gam0.2'] #DESKTOP
-        #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to3_RG0ffrr_TempScal_gam0.2'] #DESKTOP R
+        alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to3_RG0ffrr_TempScal_gam0.2'] #DESKTOP R
         #alignfiles = ['Amovf0t0_R5_Tmovf0t0sub0to2_RG0ffrr_TempScal_gam0.3'] #DESKTOP R searchlight
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub30to40_G0ffrr_TempScal_gam0.2'] #MOVIE
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub20to30_RG0ffrr_TempScal_gam0.3'] #MOVIE R
         #alignfiles = ['Aresfcf0123t0S1000t_S300_Tresfcf0123t0S1000tsub20to30_RG0ffrr_TempScal_gam0.3'] #REST R
-        alignfiles = ['Amovf0123t0_R5_Tmovf0123t0sub20to30_RG0ffrr_TempScal_gam0.3'] #MOVIE R searchlight
+        #alignfiles = ['Amovf0123t0_R10_Tmovf0123t0sub20to30_RG0ffrr_TempScal_gam0.3'] #MOVIE R searchlight
 
+    
     for alignfile in alignfiles:
 
         parcellation_string = tutils.extract_alignpickles3(alignfile,'parcellation_string')
@@ -508,13 +454,140 @@ if __name__=='__main__':
             print("Align template to imgs")
         else: 
             align_template_to_imgs=False
-        subs_blocks_range = range(20,30) #subjects to use to determine blocks with most streamlines, range(10,30)
-        for subs_test_range in [range(30,40)]: #range(20,30)
+        subs_blocks_range = range(0,10) #subjects to use to determine blocks with most streamlines, range(10,30)
+        for subs_test_range in [range(3,10)]: #range(20,30)
             #temp = [i for i in subs_blocks_range if i not in subs_test_range]
-            temp = [i for i in range(20,30)]
+            temp = [i for i in range(0,3)]
             if load_file:
                 assert(subs_test_range_start==subs_test_range.start and subs_test_range_end==subs_test_range.stop)
             if align_template_to_imgs: #that template_subs are consistent between the aligner and this script
                 assert(min(temp)==template_sub_start and max(temp)==template_sub_end-1)
             subs_inds={'temp': temp, 'test': subs_test_range, 'blocks': subs_blocks_range}
-            func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll, tckfile=tckfile, align_template_to_imgs=align_template_to_imgs)
+            print(f'{c.time()}: Getting data start', end=", ")
+            sorter, unsorter, slices, smoother_pre, smoother_post, figures_subfolder, p, c, subs, align_labels, align_parc_matrix, nparcs, blocks, hr, fa, a, an, arn = func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll, tckfile=tckfile, align_template_to_imgs=align_template_to_imgs)
+
+
+            ### DOOMSDAY TESTING ###
+
+            norm = lambda x: hutils.subtract_parcelmean(x,align_labels)
+            from tkalign_utils import ident_plot
+
+            print(f'{c.time()}: Calculating spatial maps', end=", ")
+
+            nsubjects = len(subs_inds['test'])
+            subjects = [hutils.all_subs[i] for i in subs_inds['test']]
+            hr_strengths = [np.squeeze(np.array(i.sum(axis=0)))[unsorter] for i in hr['test']] #list (subjects) of high-res connectome node strengths
+            rowsums = tutils.get_rowsums(fa['test'],align_labels,axis=0)   
+
+            max_sub = 4 #only use first max_sub subjects (or None)
+            if max_sub is not None:
+                nsubjects = max_sub
+                subjects = subjects[0:max_sub]
+                hr_strengths = hr_strengths[0:max_sub]
+                rowsums = rowsums[0:max_sub]
+
+
+            import getmesh_utils
+            meshes = [getmesh_utils.get_verts_and_triangles(subject,'white') for subject in subjects]
+            sulcs = [hutils.get_sulc(i) for i in subjects] #list (subjects) of sulcal depth maps
+
+            print(f'{c.time()}: Get movies', end=", ")       
+            movs,_ = hutils.get_movie_or_rest_data(subjects,'movie',runs=[0,1],fwhm=0,clean=True,MSMAll=False)          
+
+            print(f'{c.time()}: Get maxcorr maps', end=", ")
+            movs_maxcorr = Parallel(n_jobs=-1,prefer='processes')(delayed(tutils.get_max_within_parcel_corrs)(mov,align_labels,nparcs) for mov in movs) #list (subjects) of maxcorr maps. For each vertex, maximum correlation with any other vertex in the same parcel
+            print(f'{c.time()}: Get nearest vertices', end=", ")  
+            mask = hutils.get_fsLR32k_mask()
+            import biasfmri_utils as butils
+            temp = Parallel(n_jobs=-1,prefer='processes')(delayed(butils.get_nearest_vertices)(meshes[i],mask) for i in range(nsubjects))
+            nearest_vertices,nearest_distances = [list(item) for item in zip(*temp)]
+            print(f'{c.time()}: corr neighbour start', end=", ")   
+            movs_nextcorr = Parallel(n_jobs=-1,prefer='processes')(delayed(tutils.get_corr_with_neighbour)(nearest_vertices[i],movs[i]) for i in range(nsubjects))
+
+            """
+            print(f'{c.time()}: Get temporal autocorrs', end=", "
+            movs_autocorr = Parallel(n_jobs=-1,prefer='processes')(delayed(hutils.temporal_autocorr)(i,1) for i in imgs)     
+            print(f'{c.time()}: Get vertex areas start', end=", ")
+            vertex_areas = Parallel(n_jobs=-1,prefer='processes')(delayed(hutils.get_vertex_areas)(meshes[i]) for i in range(nsubjects))
+            """
+
+            structdata = sulcs
+            funcdata = movs_maxcorr
+
+            cc = np.zeros((nsubjects,nsubjects,nparcs),dtype=np.float32) #corrs bw structdata from one subject and funcdata from another subject, for a given parcel
+            for subject_D in range(nsubjects):
+                for subject_R in range(nsubjects):
+                    for nparc in range(nparcs):
+                        structdatum = structdata[subject_D][align_labels==nparc]
+                        funcdatum = funcdata[subject_R][align_labels==nparc]
+                        correlation = np.corrcoef(structdatum,funcdatum)[0,1]
+                        cc[subject_D,subject_R,nparc] = correlation
+                        """
+                        if subject_D==subject_R and nparc<5: #TRY THIS. Scatterplot of structdatum and funcdata. Rows are subjects, columns are parcels
+                            axs[subject_D,nparc].scatter(structdatum,funcdatum,1)
+                            axs[subject_D,nparc].set_title(f"r={correlation:.2f}")
+                        """
+            #fig.subplots_adjust(top=0.9, bottom=0.1, left=0.1, right=0.9, hspace=0.2, wspace=0.2)
+            #plt.show(block=False)
+            corrs = np.diagonal(cc).T #corrs bw structdata and funcdata for each subject (same subject for both) and parcel
+            corrsm = np.mean(corrs,axis=0)
+            cci=tutils.identifiability(cc)
+
+
+
+        for mesh_sub in [0,1]:
+            p.mesh = meshes[mesh_sub]
+            p.plot(sulcs[0],cmap='bwr')
+            p.plot(norm(hutils.mylog10(hr_strengths[0])),cmap='bwr')
+            p.plot(norm(rowsums[0]),cmap='bwr')
+            p.plot(sulcs[1],cmap='bwr')
+            p.plot(norm(hutils.mylog10(hr_strengths[1])),cmap='bwr')
+            p.plot(norm(rowsums[1]),cmap='bwr') 
+            p.plot(movs_nextcorr[0],cmap='inferno')
+            p.plot(movs_nextcorr[1],cmap='inferno')
+            p.plot(movs_maxcorr[0],cmap='inferno')
+            p.plot(movs_maxcorr[1],cmap='inferno')
+
+            #Plots of intersubject identifiability (all parcels together)
+            """
+            ident_plot(sulcs,'sulcs',rowsums,'rowsums')
+            ident_plot(hr_strengths,'hr_strengths',rowsums,'rowsums')
+            ident_plot(sulcs,'sulcs',vertex_areas,'vertex_areas')
+            ident_plot(hr_strengths,'hr_strengths',vertex_areas,'vertex_areas')
+            ident_plot(sulcs,'sulcs',nearest_distances,'nearest_distances')
+            ident_plot(hr_strengths,'hr_strengths',nearest_distances,'nearest_distances')
+            ident_plot(sulcs,'sulcs',movs_autocorr,'movs_autocorr')
+            ident_plot(hr_strengths,'hr_strengths',movs_autocorr,'movs_autocorr')
+            ident_plot(sulcs,'sulcs',movs_nextcorr,'movs_nextcorr')
+            ident_plot(hr_strengths,'hr_strengths',movs_nextcorr,'movs_nextcorr')
+
+            ident_plot(rowsums,'rowsums',vertex_areas,'vertex_areas')
+            ident_plot(rowsums,'rowsums',nearest_distances,'nearest_distances')
+            ident_plot(rowsums,'rowsums',movs_autocorr,'movs_autocorr')
+            ident_plot(rowsums,'rowsums',movs_nextcorr,'movs_nextcorr')
+
+            ident_plot(vertex_areas,'areas',nearest_distances,'nearest_distances')
+
+            ident_plot(vertex_areas,'areas',movs_autocorr,'movs_autocorr')
+            ident_plot(nearest_distances,'nearest_distances',movs_autocorr,'movs_autocorr')
+            ident_plot(vertex_areas,'areas',movs_nextcorr,'movs_nextcorr')
+            ident_plot(nearest_distances,'nearest_distances',movs_nextcorr,'movs_nextcorr')
+           
+            ident_plot(movs_autocorr,'movs_autocorr',movs_nextcorr,'movs_nextcorr')
+            """
+            #structdata = sulcs
+            #structdata = hr_strengths
+            structdata = sulcs 
+            funcdata = movs_nextcorr 
+
+            i=0
+            for structdata in [sulcs,hr_strengths]:
+                for funcdata in [rowsums,movs_nextcorr,movs_maxcorr]:
+                    tutils.ident_from_data(structdata,funcdata,nsubjects,nparcs,nblocks,blocks,align_labels,arn)
+                    i+=1
+                    print(f"i={i}")
+
+
+            
+
+

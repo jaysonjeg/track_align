@@ -10,7 +10,7 @@ import predict_utils as putils
 
 ### ADJUSTABLE PARAMETERS ###
 
-sub_slice = slice(50,450)
+sub_slice = slice(50,None)
 parcellation_string = 'S300' #for de-meaning each parcel, or making a parcel-specific classifier
 MSMAll=False
 y_quantile_transform = False #quantile transform output data
@@ -89,6 +89,8 @@ try:
     sub_slice_string = f'sub{sub_slice.start}to{sub_slice.stop}'
     print(sub_slice_string)
     subs = eligible_subjects[sub_slice]
+
+    assert(0)
 
     clustering = hutils.parcellation_string_to_parcellation(parcellation_string)
     parc_matrix = hutils.parcellation_string_to_parcmatrix(parcellation_string)

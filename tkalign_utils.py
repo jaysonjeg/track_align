@@ -54,7 +54,7 @@ def replace_S300_alignpickles3(string):
 
 def extract_alignpickles3(string,what):
     """
-    Given a filename from intermediates/alignpickles, extract some content
+    Given a filename from intermediates/alignpickles3, extract some content
     Parameters:
     -----------
     string: filename
@@ -101,17 +101,197 @@ def extract_tkalign_corrs2(string):
     subs_test_range_end = newdict['subs_test_range_end']
     return nblocks,block_choice,howtoalign,pre_hrc_fwhm,post_hrc_fwhm,alignfiles,tckfile, subs_test_range_start, subs_test_range_end
 
-def new_func(subs_inds, alignfile, aligner2sparsearray, aligner_descale, aligner_negatives, sorter, slices, smoother_post, groups):
+def get_extremal_indices(a,n,kind='largest'):
+    #Get indices of the top n elements of a
+    flattened = a.flatten()
+    valid_indices = np.argwhere(~np.isnan(flattened))
+    sorted_indices = np.argsort(flattened[valid_indices.flatten()])
+    # Get indices of the top n elements
+    if kind=='largest':
+        top_indices = valid_indices.flatten()[sorted_indices][-n:]
+    elif kind=='smallest':
+        top_indices = valid_indices.flatten()[sorted_indices][:n]
+    indices = np.stack(np.unravel_index(top_indices, a.shape)) # Convert flat indices to 3D indices
+    return indices
+
+def new_func(c,subs_inds, alignfile, aligner2sparsearray, aligner_descale, aligner_negatives, sorter, slices, smoother_post, groups):
     from joblib import Parallel, delayed
     import pickle
+    print_times = True
     fa={} #fa[group] is a list of functional aligners
     for group in groups:
         func1 = lambda sub_ind: pickle.load(open(ospath(f'{hutils.intermediates_path}/alignpickles3/{alignfile}/{hutils.all_subs[sub_ind]}.p'), "rb" ))
+        if print_times: print(f'{c.time()}: Load aligners {group}', end=", ")
         all_aligners = Parallel(n_jobs=-1,prefer='threads')(delayed(func1)(sub_ind) for sub_ind in subs_inds[group]) #load each time because func(i) will modify arrays in all_aligners
         func2 = lambda aligner: get_template_aligners(aligner,slices,sorter,aligner2sparsearray=aligner2sparsearray,aligner_descale=aligner_descale,aligner_negatives=aligner_negatives,smoother=smoother_post)
+        if print_times: print(f'{c.time()}: get_template_aligners {group}', end=", ")
         fa[group] = Parallel(n_jobs=-1,prefer='threads')(delayed(func2)(aligner) for aligner in all_aligners)
+        if print_times: print(f'{c.time()}: downsample aligners {group}', end=", ")
         fa[group]=Parallel(n_jobs=-1,prefer='threads')(delayed(hutils.aligner_downsample)(estimator) for estimator in fa[group])
     return fa,all_aligners
+
+def replace_half_with_negatives(X):
+    #Given a 2D array containing positive values, replace a random half of the values with their negatives
+    import random
+    assert(np.all(X>=0))
+    flat_X = X.flatten()
+    num_to_negate = len(flat_X) // 2
+    indices_to_negate = random.sample(range(len(flat_X)), num_to_negate)
+    for idx in indices_to_negate:
+        flat_X[idx] = -flat_X[idx]
+    return flat_X.reshape(X.shape)
+
+def randomise_but_preserve_row_col_sums_template(x):
+    #Given TemplateAlignment object, for each estimator, run randomise_but_preserve_row_col_sums
+    for nsubject in range(len(x.estimators)):
+        for nparc in range(len(x.estimators[0].fit_)):
+            R = x.estimators[nsubject].fit_[nparc].R
+            Rabs = np.abs(R)
+            Rabs_rand = randomise_but_preserve_row_col_sums(Rabs)
+            R_rand = replace_half_with_negatives(Rabs_rand)
+            x.estimators[nsubject].fit_[nparc].R = R_rand
+    return x
+
+def randomise_but_preserve_row_col_sums(r0):
+    """
+    Given a 2D array r0, randomise its elements while preserving the sum of each row and column.
+    """
+    assert(r0.min()>0)
+    temp = r0.copy()
+    sums_axis_0 = r0.sum(axis=0)
+    sums_axis_1 = r0.sum(axis=1)
+    sums_axis_1_normed = sums_axis_1 / sums_axis_1.sum()
+    for j in range(r0.shape[1]):
+        temp[:,j] = sums_axis_1_normed * sums_axis_0[j]
+    return temp
+
+
+def get_rowsums(fats,align_labels,axis=0):
+    """
+    Return a list (subjects) of spatial maps of functional aligner row (or column) sums 
+    Parameters:
+    fats: list (nsubjects) of functional aligners
+    axis: whether to calculate row-sums or column-sums on functional aligner
+    """
+    nsubjects = len(fats)
+    nparcs = len(fats[0].fit_)
+    rowsums = [np.zeros(59412,dtype=np.float32) for i in range(nsubjects)] 
+    for subject in range(nsubjects):
+        for nparc in range(nparcs):
+                R = divide_by_Frobenius_norm(fats[subject].fit_[nparc].R)
+                #np.fill_diagonal(R,0) #TRY THIS
+                sum = np.abs(R).sum(axis=axis)
+                #sum = np.diagonal(R) #TRY THIS  
+                rowsums[subject][align_labels==nparc] = sum
+    return rowsums
+
+
+def get_corr_with_neighbour(nearest_vertex_array,time_series):
+    """
+    For each vertex, find correlation between its time series and that of its nearest neighbour
+    Parameters:
+    ----------
+    nearest_vertex_array: array of shape (nvertices,)
+        element i is the index of the nearest vertex to vertex i
+    time_series: array of shape (ntimepoints,nvertices)
+    """
+    nvertices=len(nearest_vertex_array)
+    result = np.zeros(nvertices,dtype=np.float32)
+    for i in range(nvertices):
+        source_vertex_time_series = time_series[:,i]
+        target_vertex_time_series = time_series[:,nearest_vertex_array[i]]
+        result[i] = np.corrcoef(source_vertex_time_series,target_vertex_time_series)[0,1]
+    return result
+
+
+def ident_from_data(structdata,funcdata,nsubjects,nparcs,nblocks,blocks,align_labels,arn):
+
+    #fig,axs = plt.subplots(nsubjects,5)
+    cc = np.zeros((nsubjects,nsubjects,nparcs),dtype=np.float32) #corrs bw structdata from one subject and funcdata from another subject, for a given parcel
+    for subject_D in range(nsubjects):
+        for subject_R in range(nsubjects):
+            for nparc in range(nparcs):
+                structdatum = structdata[subject_D][align_labels==nparc]
+                funcdatum = funcdata[subject_R][align_labels==nparc]
+                correlation = np.corrcoef(structdatum,funcdatum)[0,1]
+                cc[subject_D,subject_R,nparc] = correlation
+
+                """
+                if subject_D==subject_R and nparc<5: #TRY THIS. Scatterplot of structdatum and funcdata. Rows are subjects, columns are parcels
+                    axs[subject_D,nparc].scatter(structdatum,funcdatum,1)
+                    axs[subject_D,nparc].set_title(f"r={correlation:.2f}")
+                """
+    #fig.subplots_adjust(top=0.9, bottom=0.1, left=0.1, right=0.9, hspace=0.2, wspace=0.2)
+    #plt.show(block=False)
+
+    
+    corrs = np.diagonal(cc).T #corrs bw structdata and funcdata for each subject (same subject for both) and parcel
+    corrsm = np.mean(corrs,axis=0)
+
+    #Make a version of cc with nan diagonals
+    ccx = cc.copy()
+    for i in range(cc.shape[0]):
+        for j in range(cc.shape[2]):
+            ccx[i,i,j] = np.nan
+    ccxr = np.ravel(ccx)
+    ccxr2=ccxr[~np.isnan(ccxr)] 
+
+    """
+    block_sfc = np.zeros(blocks.shape[1],dtype=np.float32) #make a version of corrsm where we have a value for each block (by averaging the two parcels' values)
+    for nblock in range(blocks.shape[1]):
+        i,j = blocks[0,nblock], blocks[1,nblock]
+        block_sfc[nblock] = np.mean([corrsm[i],corrsm[j]])
+
+    sfc = np.zeros((nsubjects,nblocks),dtype=np.float32) #like above, but a version of corrs
+    for subject in range(nsubjects):
+        for nblock in range(blocks.shape[1]):
+            i,j = blocks[0,nblock], blocks[1,nblock]
+            sfc[subject,nblock] = np.mean([corrs[subject,i],corrs[subject,j]])
+    """
+
+    #element [i,j,k] holds the correlation between subject i's structdata and subject j's funcdata, for block k
+    ccb = np.zeros((nsubjects,nsubjects,nblocks),dtype=np.float32)
+    for subject_D in range(nsubjects):
+        for subject_R in range(nsubjects):
+            for nblock in range(blocks.shape[1]):
+                i,j = blocks[0,nblock], blocks[1,nblock]
+                ccb[subject_D,subject_R,nblock] = np.mean([cc[subject_D,subject_R,i],cc[subject_D,subject_R,j]])
+    ccbn = subtract_nonscrambled_from_a(ccb)
+    ccbrn = subtract_nonscrambled_from_a(regress(ccb))
+    print(f'AV R {count_negs(ccbn):.1f}% of (sub-pairs)*blocks for connectome strength based identification')   
+    print(f'AV R {count_negs(ccbrn):.1f}% of (sub-pairs)*blocks for connectome strength based identification (+reg)')   
+
+    #In most parcels, those subject j's whose aligner strength was correlated most with subject i's connectome strength, were those subject pairings where tkalign works better :(
+    ww=[] 
+    fig,ax=plt.subplots(4)
+    import pandas as pd
+    for nblock in range(blocks.shape[1]):
+        x=arn[:,:,nblock]
+        y=ccbn[:,:,nblock]
+        df = pd.DataFrame([x.ravel(),y.ravel()]).T
+        ww.append(df.corr().iloc[0,1])
+
+
+                
+    # for most parcels and subjects, their own 'connectome strength' is correlated with their own 'aligner strength', while other subjects' are not. This was true within most parcels. 
+    ax[0].hist(corrs.ravel())
+    ax[0].set_title(f'matched corrs, {100*np.sum(corrs>0)/np.size(corrs):.0f}% > 0')
+    ax[0].set_xlim([-.8,.8])
+    ax[1].hist(ccxr2)
+    ax[1].set_title(f'mismatchedcorrs, {100*np.sum(ccxr2>0)/np.size(ccxr2):.0f}% > 0')
+    ax[1].set_xlim([-.8,.8])
+    ax[2].imshow(cc.mean(axis=-1))
+    ax[2].set_title('cc mean across parcs')
+    ax[3].hist(ww)
+    ax[3].set_title('Assoc bw arn and ccbn (within parc)')
+    fig.tight_layout()
+    plt.show(block=False)
+
+    """
+
+    p.plot(corrs[1,:] @ align_parc_matrix)
+    p.plot(corrsm @ align_parc_matrix)     
+    """
 
 def get_tck_file():
     import socket
@@ -182,22 +362,27 @@ def get_blocks(c,tckfile, MSMAll, sift2, align_parc_matrix, subs, block_choice,n
         """
         Take mean high-res connectome, then 5mm smooth it. For each source vertex, calculate no. of streamlines going to each S300 parcel. For those S300 parcels which the source vertex belongs to, set no. of streamlines to zero. Then select the nblocks largest target S300 parcels, for each source vertex 
         """
+        print_times = True
+        if print_times: print(f'{c.time()}: BLOCKS get blocks start', end=", ")
         assert(block_choice=='few_from_each_vertex')
         connectomes_highres = hutils.get_highres_connectomes(c,subs,tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefer_hrc,n_jobs=-1) 
+        print(f'{c.time()}: BLOCKS smooth connectomes', end=", ")
         connectomes_highres_sum = np.sum(connectomes_highres)
         from Connectome_Spatial_Smoothing import CSS as css    
-        fwhm=10
+        fwhm=5
         smoother=sparse.load_npz(ospath(f"{hutils.intermediates_path}/smoothers/100610_{fwhm}_0.01.npz"))
         connectomes_highres_sum=css.smooth_high_resolution_connectome(connectomes_highres_sum,smoother)
+        print(f'{c.time()}: BLOCKS Find biggest blocks', end=", ")
         align_parc_matrix_S300 = hutils.parcellation_string_to_parcmatrix('S300')
         lines = align_parc_matrix_S300 @ connectomes_highres_sum #streamlines_per_parcel_and_vertex
         lines[align_parc_matrix_S300]=0
-        lines.eliminate_zeros()
+        #lines.eliminate_zeros()
         lines = lines.todense()
         inds = np.argpartition(lines,-nblocks,axis=0)[-nblocks:,:]
         temp0a=np.array([i for i in range(nparcs)])
         temp0b=np.tile(temp0a,(nblocks,1))
 
+        print(f'{c.time()}: BLOCKS truncate', end=", ")
         truncate_to=100
         if truncate_to is not None:
             print(f'TRUNCATING blocks to first {truncate_to} source vertices')
@@ -531,6 +716,40 @@ def full(x_ranks):
     assert((x_ranks==0).sum()==0) #check that original array had no zeros
     w3[w3==0]=np.nan #convert any new zeros (formerly nans on diagonal) back to nans   
     return w3    
+
+def ident_plot(X,xlabel,Y,ylabel,reg=True,normed = True):
+    """
+    X and Y are lists of vectors. Calculate the correlation between each pair of vectors, and plot the results
+    """
+
+    if normed:
+        norm = lambda x: hutils.subtract_parcelmean(x,align_labels)
+        X = [norm(i) for i in X]
+        Y = [norm(i) for i in Y]
+    corrs = np.zeros((len(Y),len(X)),dtype=np.float32)
+    for i in range(len(Y)):
+        for j in range(len(X)):
+            corrs[i,j] = np.corrcoef(X[j],Y[i])[0,1]
+    if reg:
+        corrs = regress(corrs)
+    fig,ax=plt.subplots()
+    cax=ax.imshow(corrs)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    fig.colorbar(cax,ax=ax)
+    fig.tight_layout()
+    return corrs
+
+def get_max_within_parcel_corrs(mov,align_labels,nparcs):
+    """
+    Given an array of shape (ntimepoints,nvertices), return an array of shape (nvertices,) where each element is the maximum correlation between the timecourse of that vertex and any other vertex in the same parcel
+    """
+    result = np.zeros(59412,dtype=np.float32)
+    for i in range(nparcs):
+        array = mov[:,align_labels==i]
+        values = np.max(hutils.diag0(np.corrcoef(array.T)),axis=0)
+        result[align_labels==i] = values
+    return result
 
 def identifiability(mat):
     """

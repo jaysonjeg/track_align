@@ -14,7 +14,7 @@ from scipy import sparse, stats
 import warnings
 from concurrent.futures import ThreadPoolExecutor as TPE 
 from joblib import Parallel,delayed
-from Connectome_Spatial_Smoothing import CSS as css
+
 
 ###
 import socket
@@ -214,7 +214,7 @@ def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,cle
     runs: list of runs to use, e.g. [0], [0,2]
     fwhm: spatial smoothing kernel mm
     clean: True for standardization and detrending
-    MSMAll: True/False
+    MSMAll: True/Falsea
     FC_parcellation_string: e.g. 'S300', 'K1000'
     FC_normalize: bool
     string_only: bool
@@ -717,6 +717,11 @@ def aligner_get_scale_map(aligner):
             pass
     return scales
 
+def get_sulc(subject_id):
+    sulc_path = ospath(f'{hcp_folder}/{subject_id}/MNINonLinear/fsaverage_LR32k/{subject_id}.sulc.32k_fs_LR.dscalar.nii')
+    sulc = cortex_64kto59k(get(sulc_path).squeeze())
+    return sulc
+
 def pairwise_correlation_for_all_tasks(t):
     """
     t is a list(nsub) containing task maps (ncontrasts x nvertices)
@@ -733,6 +738,12 @@ def pairwise_correlation_for_all_tasks(t):
         for ncontrast in range(ncontrasts):
             corr_scores[i,ncontrast] = np.corrcoef(t[subjectpair[0]][ncontrast,:] , t[subjectpair[1]][ncontrast,:])[0,1]
     return corr_scores
+
+def mylog10(vector):
+    """
+    Add integer to all values in the vector so that minimum value is 1, then take log10 of the vector's elements
+    """
+    return np.log10(vector+1-np.min(vector))
 
 def func_acf(x, length=20): 
     #autocorrelation function of a vector
@@ -835,6 +846,10 @@ def rowcorr_nonsparse(sp1,sp2):
                 )
             )
 
+def rowcorr_lowmem(sp1,sp2,prefer='threads'):
+    func = lambda x,y: np.corrcoef(x,y)[0,1]
+    return Parallel(n_jobs=-1,prefer=prefer)(delayed(func)(sp1[:,i],sp2[:,i]) for i in range(sp1.shape[1]))
+    
 def density(sparsearray):
     return sparsearray.getnnz()/(sparsearray.shape[0]*sparsearray.shape[1])
 
@@ -851,6 +866,7 @@ def get_hrc_filepath(sub,tckfile,hcp_path,tract_path,sift2,threshold,MSMAll):
     return cache_file
     
 def get_hrc(sub,tckfile,hcp_path,tract_path,sift2,threshold,MSMAll):
+    from Connectome_Spatial_Smoothing import CSS as css
     print(f'Calculating hrc (not found in cache): {sub} {tckfile}')
     hcpsub_path=f'{hcp_path}/{sub}'
     tractsub_path=f'{tract_path}/{sub}' #can put 'y' or 'z' before {sub}
@@ -885,7 +901,7 @@ def get_highres_connectomes(
     cache_savehrc=True,
     MSMAll=False,
     n_jobs=-1,
-    prefer='processes'):
+    prefer='threads'):
     """
     Args:
         c: clock from hcpalign_utils.clock()
@@ -981,6 +997,57 @@ def indices_of_largest_values_in_array(array,n):
         inds3=inds[inds2]
         return inds3
 
+def temporal_autocorr(array,lag = 1):
+    #get the temporal autocorrelation parameter for each column of array. Use the pandas library.
+    import pandas as pd
+    df = pd.DataFrame(array)
+    return df.apply(lambda x: x.autocorr(lag=lag),axis=0).values
+
+
+def get_triangle_areas(mesh):
+    """
+    Given a mesh, return the list of areas corresponding to each triangle 
+    """
+    from scipy.spatial import distance
+    vertices=mesh[0]
+    faces=mesh[1]
+    vertices_of_faces = [vertices[faces[i],:] for i in range(len(faces))] #list(nfaces) of arrays (3,3). In the array, each row is a face, each column is a vertex coordinate
+    def get_triangle_area(coords):
+        a=distance.euclidean(coords[0],coords[1])
+        b=distance.euclidean(coords[1],coords[2])
+        c=distance.euclidean(coords[2],coords[0])
+        s=(a+b+c)/2
+        return np.sqrt(s*(s-a)*(s-b)*(s-c))
+    areas = np.array([get_triangle_area(coords) for coords in vertices_of_faces])
+    return areas
+
+def get_vertex_areas(mesh):
+    """
+    Given a surface mesh containing 64984 vertices, and 129960 triangles/faces, in 3D space. 'mesh' is a list containing two arrays, ['vertices','faces']. The mesh is described by a numpy array called 'vertices' which has shape (64984,3), and an array 'faces' which has shape (129960,3). Each row of 'vertices' describes the x, y and z coordinates of a single vertex. Each row of 'faces' corresponds to a triangle/face, and lists the vertex indices of the three vertices making up that triangle/face. Calculate the area corresponding to each vertex
+    """
+    vertices=mesh[0]
+    faces=mesh[1]
+    triangle_areas = get_triangle_areas(mesh)
+    # Initialize an array to store the sum of areas for each vertex
+    vertex_areas = np.zeros(len(vertices))
+    # Sum the areas of triangles for each vertex
+    for i, face in enumerate(faces):
+        for vertex in face:
+            vertex_areas[vertex] += triangle_areas[i]
+    # Count the number of triangles each vertex is part of
+    vertex_counts = np.zeros(len(vertices))
+    for face in faces:
+        for vertex in face:
+            vertex_counts[vertex] += 1
+    # Calculate the mean area for each vertex
+    mean_vertex_areas = vertex_areas / vertex_counts
+    return cortex_64kto59k(mean_vertex_areas)
+
+def diag0(X):
+    X = np.copy(X)
+    np.fill_diagonal(X,0)
+    return X
+
 def vertexmap_59kto64k(hemi='both'):
     """
     List of 59k cortical vertices in fsLR32k, with their mapping onto 64k cortex mesh
@@ -1001,7 +1068,7 @@ def vertexmap_64kto59k(hemi='both'):
     List of 64k cortex mesh vertices, with their mapping onto 59k vertices in fsLR32k. Vertices not present in 59k version are given value 0
     hemi='both','L','R'
     """
-    import hcpalign_utils as hcp
+    import hcp_utils as hcp
     gray=vertexmap_59kto64k(hemi=hemi)
     if hemi=='both':
         num_mesh_64k = hcp.vertex_info.num_meshl+hcp.vertex_info.num_meshr
@@ -1012,6 +1079,18 @@ def vertexmap_64kto59k(hemi='both'):
     temp=np.zeros(num_mesh_64k,dtype=int)
     for index,value in enumerate(gray):
         temp[value]=index
+    return temp
+
+def get_fsLR32k_mask():
+    """
+    Returns a boolean array indicating, for each vertex in fsaverage5 surface, whether it is gray matter (1) or medial wall (0)
+    """
+    import hcp_utils as hcp
+    gray = vertexmap_59kto64k()
+    num_mesh_64k = hcp.vertex_info.num_meshl+hcp.vertex_info.num_meshr
+    temp=np.zeros(num_mesh_64k,dtype=bool)
+    for index,value in enumerate(gray):
+        temp[value]=True
     return temp
 
 
@@ -1343,7 +1422,22 @@ def replace_with_parcelmean(X,parcellation):
             #if X is array(nsamples,nvertices)
             parcelmeans=np.mean(X[:,indices],axis=1)
             X2[:,indices]=np.tile(parcelmeans,(indices.sum(),1)).T
-        
+    return X2
+
+def subtract_parcelmean(X,parcellation):
+    #Subtract the mean of each parcel from each sample
+    X2=np.copy(X)   
+    ids=np.unique(parcellation)
+    for parcel in ids:
+        indices=parcellation==parcel
+        if X.ndim==1:
+            #if X is array(nvertices)
+            parcelmean=np.mean(X[indices])
+            X2[indices]=X[indices]-parcelmean
+        elif X.ndim==2:
+            #if X is array(nsamples,nvertices)
+            parcelmeans=np.mean(X[:,indices],axis=1)
+            X2[:,indices]=X[:,indices]-np.tile(parcelmeans,(indices.sum(),1)).T
     return X2
 
 def aligner_downsample(estimator,dtype='float32'):
@@ -1370,8 +1464,7 @@ def aligner_downsample(estimator,dtype='float32'):
         
     return estimator
 
-        
- 
+
 class surfplot():
     """
     Plot surface functional activations. Data is array(59412,).
@@ -1417,11 +1510,12 @@ class surfplot():
         if vmax is not None: self.vmax=vmax
 
 
-        if self.mesh[0].shape[0] > 59412: #if using full 64,983-vertex mesh
+        #if self.mesh[0].shape[0] > 59412: #if using full 64,983-vertex mesh
+        if len(data) < self.mesh[0].shape[0]: #if data is shorter than full mesh
             new_data = hcp.cortex_data(data)
         else:
             new_data = data
-        
+
         view=plotting.view_surf(self.mesh,new_data,cmap=self.cmap,vmin=self.vmin,vmax=self.vmax,symmetric_cmap=self.symmetric_cmap)  
         if self.plot_type=='save_as_html':
             view.save_as_html(ospath('{}/{}.html'.format(self.figpath,savename)))

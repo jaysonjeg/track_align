@@ -9,13 +9,17 @@ import os
 import hcp_utils as hcp
 import hcpalign_utils
 from hcpalign_utils import ospath
-import pickle, trimesh
+import pickle
 from scipy.io import savemat
 from scipy import sparse
 import matplotlib.pyplot as plt
 import sys
 sys.path.append("C:\\Users\\Jayson\\Google Drive\\PhD\\Project_Hyperalignment\\Code\\curvpack\\curvpack")
+
+"""
+import trimesh
 from curvpack.curvpack import CurvatureCwF,CurvatureWpF,CurvatureCubic,CurvatureISF
+"""
 
 c=hcpalign_utils.clock()
 
@@ -25,7 +29,7 @@ def get_surface(surface_gifti_file):
     triangles=surface.darrays[1].data #array (ntriangles,3)
     return vertices,triangles
 
-def get_verts_and_triangles_59k(sub,surface_type):
+def get_verts_and_triangles(sub,surface_type):
     hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"
 
     L_surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.L.{surface_type}.32k_fs_LR.surf.gii")
@@ -37,6 +41,11 @@ def get_verts_and_triangles_59k(sub,surface_type):
 
     all_vertices_64k=np.vstack((Lvertices,Rvertices)) #array (64984,3)
     all_triangles_64k=np.vstack((Ltriangles,Rtriangles_new))
+
+    return all_vertices_64k,all_triangles_64k
+
+def get_verts_and_triangles_59k(sub,surface_type):
+    all_vertices_64k,all_triangles_64k=get_verts_and_triangles(sub,surface_type)
     all_vertices_59k=hcpalign_utils.cortex_64kto59k(all_vertices_64k) #array (59412,3)
     all_triangles_59k=hcpalign_utils.cortex_64kto59k_for_triangles(all_triangles_64k)
 

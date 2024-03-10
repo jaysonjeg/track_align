@@ -20,9 +20,8 @@ save_folder= 'D:\FORSTORAGE\Data\Project_Hyperalignment\intermediates\kmeansparc
 hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"
 
 
-n_clusters=102
 sub="100610"
-surface_type='sphere' #default sphere. Otherwise 'midthickness', 'white'
+surface_type='midthickness' #default sphere. Otherwise 'midthickness', 'white'
 
 def get_kmean_labels_surf(hemisphere_sphere_file,n_clusters):
     from sklearn.cluster import KMeans, MiniBatchKMeans
@@ -33,7 +32,7 @@ def get_kmean_labels_surf(hemisphere_sphere_file,n_clusters):
     return(kmeans.labels_)
 
 for sub in ["100610"]: #["100610","102311","102816"]
-    for surface_type in ['sphere']: #['sphere','very_inflated','inflated','midthickness','pial','white']:
+    for surface_type in ['midthickness']: #['sphere','very_inflated','inflated','midthickness','pial','white']:
         for n_clusters in [300]: #[4,10,30,100,300,1000,3000,10000,20000]
             print([sub,surface_type,n_clusters])
 
