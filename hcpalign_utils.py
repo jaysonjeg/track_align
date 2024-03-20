@@ -717,11 +717,6 @@ def aligner_get_scale_map(aligner):
             pass
     return scales
 
-def get_sulc(subject_id):
-    sulc_path = ospath(f'{hcp_folder}/{subject_id}/MNINonLinear/fsaverage_LR32k/{subject_id}.sulc.32k_fs_LR.dscalar.nii')
-    sulc = cortex_64kto59k(get(sulc_path).squeeze())
-    return sulc
-
 def pairwise_correlation_for_all_tasks(t):
     """
     t is a list(nsub) containing task maps (ncontrasts x nvertices)
@@ -876,7 +871,7 @@ def get_hrc(sub,tckfile,hcp_path,tract_path,sift2,threshold,MSMAll):
         if tckfile[0]=='v':
             weights_file=ospath(f'{tractsub_path}/volumetric_probabilistic_sift_weights_5M.txt')
             weights=np.loadtxt(weights_file)
-        elif tckfile[-7:-4]=='end':
+        elif 'end' in tckfile:
             weights_file=ospath(f'{tract_file[:-8]}_sift2act_weights.txt')
             weights=np.loadtxt(weights_file,skiprows=1)  
         else:
@@ -918,7 +913,7 @@ def get_highres_connectomes(
     if tckfile[0]=='v': #sina's connectomes
         tract_path=f'{intermediates_path}/diff'
         tckfile='volumetric_probabilistic_track_endpoints_5M.tck'   
-    elif tckfile[-7:-4]=='end': #my ec2 connectomes
+    elif 'end' in tckfile: #my ec2 connectomes
         tract_path=f'{intermediates_path}/diff2'
     func = lambda sub: from_cache(get_hrc_filepath,get_hrc,sub,tckfile,hcp_folder,tract_path,sift2,threshold,MSMAll,load=cache_loadhrc,save=cache_savehrc)
     if n_jobs==1:
@@ -1219,6 +1214,16 @@ def make_smoother_100610(fwhm):
         skernel=sparse.load_npz(ospath(f'{intermediates_path}/smoothers/100610_{fwhm}_0.01.npz'))
         return lambda x: skernel.dot(x.T).T
 
+def make_smoother(subject,fwhm):
+    """
+    Given fwhm value, returns a surface smoothing function which operates on arrays(n,ncorticalvertices=59412)
+    """
+    if fwhm==0:
+        return lambda x: x
+    else:
+        skernel=sparse.load_npz(ospath(f'{intermediates_path}/smoothers/{subject}_{fwhm}_0.01.npz'))
+        return lambda x: skernel.dot(x.T).T
+
 def standardize(array):
     #standardize to 0 mean unit variance (of entire array)
     array -= np.mean(array)
@@ -1339,7 +1344,8 @@ def parcellation_string_to_parcellation(parcellation_string):
     #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'R10' for searchlight radius 10mm, 'M' for HCP multimodal parcellation
     #Returns an array of size (59412,) with parcel labels for each vertex in fs32k cortex
     import hcp_utils as hcp
-    nparcs = int(parcellation_string[1:])
+    if len(parcellation_string) > 1:
+        nparcs = int(parcellation_string[1:])
     if parcellation_string[0]=='S':      
         parcellation = Schaefer(nparcs)
     elif parcellation_string[0]=='K':
@@ -1354,7 +1360,8 @@ def parcellation_string_to_parcmatrix(parcellation_string):
     #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'M' for HCP multimodal parcellation
     #Returns parcellation matrix (nparcs,nvertices)
     import hcp_utils as hcp
-    nparcs = int(parcellation_string[1:])
+    if len(parcellation_string) > 1:
+        nparcs = int(parcellation_string[1:])
     if parcellation_string[0]=='S':      
         matrix = Schaefer_matrix(nparcs).astype(bool)
     elif parcellation_string[0]=='K':

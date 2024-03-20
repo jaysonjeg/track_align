@@ -185,7 +185,7 @@ def plot(dictionary,label_name='group',data_name='data',title=None):
         ax.set_title(title)
     fig.tight_layout()
 
-def plot_paired(dictionary,x_jitter=0,y_jitter=0.05,figsize=(8,5),xlabel='',ylabel='',title='',fontsize=12):
+def plot_paired(dictionary,x_jitter=0,y_jitter=0.05,figsize=(8,5),xlabel='',ylabel='',title='',fontsize=14,markersize=7):
     """
     Given a dictionary where each key is a condition, and the values are paired, plot a paired plot of the data. The vertical axis is the condition, and the horizontal axis is the data. The data is plotted as a strip plot, with dotted lines joining the pairs of data. The data is jittered in the x and y directions to avoid overplotting. Add a asterisk at the mean of each condition.
     """
@@ -201,7 +201,7 @@ def plot_paired(dictionary,x_jitter=0,y_jitter=0.05,figsize=(8,5),xlabel='',ylab
 
     fig, ax = plt.subplots(figsize = figsize)
     for col in df.columns:
-        ax.plot(df[col], df_y[col], 'o', alpha=0.7, zorder=1, markersize=10, markeredgewidth=1)
+        ax.plot(df[col], df_y[col], 'o', alpha=0.7, zorder=1, markersize=markersize, markeredgewidth=1) #markersize 8 alpha 0.7
     ax.set_yticks(range(len(df.columns)))
     ax.set_yticklabels(df.columns)
     ax.set_ylim(-0.5,len(df.columns)-0.5)
@@ -210,7 +210,7 @@ def plot_paired(dictionary,x_jitter=0,y_jitter=0.05,figsize=(8,5),xlabel='',ylab
         column1 = df.columns[col_number+1]
         #Add grey lines connecting paired data
         for idx in df.index:
-            ax.plot(df.loc[idx,[column0,column1]], df_y.loc[idx,[column0,column1]], color = 'grey', linewidth = 0.8, linestyle = '--', zorder=-1)
+            ax.plot(df.loc[idx,[column0,column1]], df_y.loc[idx,[column0,column1]], color = 'grey', linewidth = 1.0, linestyle = '--', zorder=-1) #linewidth 0.8
     fig.tight_layout()
     ax.set_xlabel(xlabel)    
     ax.set_ylabel(ylabel)  
@@ -229,7 +229,7 @@ def plot_paired(dictionary,x_jitter=0,y_jitter=0.05,figsize=(8,5),xlabel='',ylab
         item.set_fontsize(fontsize)
     return fig,ax           
 
-def lineplot(xdata,ydata,xlabel=None,ylabel=None,title=None,ylim=None,xlim=None,figsize=(5,4),hline=0.84):
+def lineplot(xdata,ydata,xlabel=None,ylabel=None,title=None,ylim=None,xlim=None,figsize=(5,4),hline=0.84,fontsize=None):
     """
     Make a lineplot of xdata and ydata. xdata and ydata are lists of numbers. xlabel and ylabel are strings.
     """
@@ -242,6 +242,10 @@ def lineplot(xdata,ydata,xlabel=None,ylabel=None,title=None,ylim=None,xlim=None,
     if ylim is not None: ax.set_ylim(ylim)
     if hline is not None: ax.axhline(hline,linewidth=1, color='k',linestyle='--')
     fig.tight_layout()
+    if fontsize is not None:
+        for item in ([ax.title, ax.xaxis.label, ax.yaxis.label] +
+                ax.get_xticklabels() + ax.get_yticklabels()):
+            item.set_fontsize(fontsize)
     return ax
 
 gammas = [0,0.02,0.05,0.1,0.2,0.5,1]
@@ -276,7 +280,7 @@ t,p = stats.ttest_rel(y,x,alternative='greater')
 #Figure 3. Out-of-sample vs in-sample template
 def plot_figure3(dictionary):
     #plot(dictionary,label_name,dataname)
-    plot_paired(dictionary,figsize=(7,4),x_jitter=0,y_jitter=0.05,fontsize=13,xlabel='Classification accuracy')
+    plot_paired(dictionary,figsize=(7,4),x_jitter=0,y_jitter=0.05,fontsize=13,xlabel='Classification accuracy',markersize=10)
     p_in_vs_outA = stats.ttest_rel(dictionary['In-sample\ntemplate'],dictionary['Out-of-sample\ntemplate A'])
     p_in_vs_outB = stats.ttest_rel(dictionary['In-sample\ntemplate'],dictionary['Out-of-sample\ntemplate B'])
     print(f'p_in_vs_outA: T({p_in_vs_outA.df})={p_in_vs_outA[0]:.3f} p={p_in_vs_outA[1]:.3f}\np_in_vs_outB: T({p_in_vs_outB.df})={p_in_vs_outB[0]:.3f} p={p_in_vs_outB[1]:.3f}')
@@ -285,8 +289,12 @@ def plot_figure3(dictionary):
 dictionary = {'In-sample\ntemplate':[0.94,0.94,0.89,0.92,0.86,],\
               'Out-of-sample\ntemplate A':[0.83,0.92,0.78,0.78,0.75,],\
                 'Out-of-sample\ntemplate B':[0.78,0.89,0.78,0.75,0.72,],\
-                'Anatomical':[0.89, 0.92, 0.81, 0.81, 0.81]}
+                'Anatomical\nMSMSulc':[0.89, 0.92, 0.81, 0.81, 0.81]}
+print('\nFigure 3: align subs 1-10 to template from 1-10 (in), 11-20 (out) or 21-30 (out)')
 plot_figure3(dictionary)
+
+plt.show()
+assert(0)
 
 """
 #Figure 3 with LOO / 10-fold
@@ -302,6 +310,7 @@ dictionary = {'In-sample\ntemplate':[0.833,0.861,0.889,0.944,0.722,0.917,0.833,0
               'Out-of-sample\ntemplate A':[0.806,0.833,0.833,0.889,0.694,0.944,0.778,0.722,0.861,0.861,],\
                 'Out-of-sample\ntemplate B':[0.778,0.833,0.861,0.889,0.694,0.944,0.778,0.750,0.806,0.861,],\
                 }
+print('\nSupp Figure 1: align subs 80-100 to template from 80-100 (in), 100-120 (out) or 120-140 (out)')
 plot_figure3(dictionary)
 
 
@@ -320,53 +329,92 @@ anat_corr = 0.070
 anat_acc = 0.87
 ylim_corr = [.065, .180]
 
-#Figure 7. ProMises, subs 0-20 with subs 20-40 as template
-ax=lineplot([0,.01,.03,.1,.3,1,3,10], [0.86, 0.86, 0.87, 0.89, 0.94, 0.93, 0.91,0.89],'Parameter','Classification Accuracy','GPA template Procrustes\nProMises',ylim,hline=anat_acc) 
+#### Figure 7. Compare integrated alignment to ProMises model ###
+
+## ALIGN WITH MOVIE
+
+# Parameter optimization cohort: subs 0-20 with subs 20-40 as template
+ks = [0,.01,.03,.1,.3,1,3,10]
+title='GPA template Procrustes\nProMises'
+ax=lineplot(ks, [0.86, 0.86, 0.87, 0.89, 0.94, 0.93, 0.91,0.89],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc) #Figure 7a
 ax.set_xscale('log')
 
-p_05_vs_Prom=stats.ttest_rel([0.88,0.93,0.93,0.86,0.86,0.93,0.90,0.93,0.94,0.96,],[0.889,0.889,0.931,0.875,0.917, 0.917,0.931,0.958,0.958,0.931])
-print(f'p_05_vs_Prom: T({p_05_vs_Prom.df})={p_05_vs_Prom[0]:.3f} p={p_05_vs_Prom[1]:.3f}')
-
-#### Figure 6A. Parameter optimization. Subs 0-20 with subs 20-40 as template ###
-lineplot(gammas, [.0921, .0977, .1035, .1053, .1006, .0861, .0702],'Parameter','Within-parcel correlation','GPA template Procrustes',ylim_corr,hline=anat_corr) 
-lineplot(gammas, [.856, .875, .892, .9, .933, .936, .872],'Parameter','Classification Accuracy','GPA template Procrustes',ylim,hline=anat_acc) 
-lineplot(gammas, [.1469, .1525, .1588, .1628, .1531, .1093, .0808],'Parameter','Within-parcel correlation','PCA template Ridge',ylim_corr,hline=anat_corr) 
-lineplot(gammas, [.892, .897, .911, .925, .931, .917, .883],'Parameter','Classification Accuracy','PCA template Ridge',ylim,hline=anat_acc) 
-
-### Figure 6B. Test cohort ###
-
-#Subs 40-60 with with subs 20-40 as template, with gamma optimised for subs 0-20. m&s. Procrustes template
-dictionary = {'\u03B3=1\n(anatomical)':[0.792,0.903,0.889,0.861,0.806,0.889,0.861,0.903,0.875,0.875,],\
-              '\u03B3=0\n(functional)':[0.76,0.86,0.88,0.78,0.86,0.89,0.83,0.92,0.90,0.82,],\
-                '\u03B3=0.5\n(combined)':[0.88,0.93,0.93,0.86,0.86,0.93,0.90,0.93,0.94,0.96,],\
-                    } 
-# 'Parcel-specific \u03B3':[0.88,0.92,0.94,0.86,0.89,0.93,0.93,0.97,0.94,0.90,]
-label_name=''
-data_name='Classification accuracy'
-#plot(dictionary,label_name,data_name,title='GPA template Procrustes')
-plot_paired(dictionary,figsize=(7,3.5),x_jitter=0,y_jitter=0.05,xlabel=data_name,title='GPA template Procrustes',fontsize=16)
+# Test cohort: subs 40-60, 60-80, and 80-100 with subs 20-40 as template
+sulc_comb=[0.88,0.93,0.93,0.86,0.86,]+[0.93,0.90,0.93,0.94,0.96,]+[0.875,0.875,0.875,0.944,0.764,]
+sulc_prom = [0.889,0.889,0.931,0.875,0.917,]+[0.917,0.931,0.958,0.958,0.931,]+[0.917,0.875,0.889,0.931,0.875,]
+sulc_comb_vs_sulc_prom=stats.ttest_rel(sulc_comb,sulc_prom)
+print(f'\nFig 7 {title}')
+print(f'sulc_comb_vs_sulc_prom: T({sulc_comb_vs_sulc_prom.df})={sulc_comb_vs_sulc_prom[0]:.3f} p={sulc_comb_vs_sulc_prom[1]:.3f}')
 
 
+#### Figure 6A. Parameter optimization. Subs 0-20 with subs 20-40 as template, then 6B in test cohort ###
 
-p_0_vs_05=stats.ttest_rel([0.76,0.86,0.88,0.78,0.86,0.89,0.83,0.92,0.90,0.82,],[0.88,0.93,0.93,0.86,0.86,0.93,0.90,0.93,0.94,0.96,])
-p_05_vs_custom=stats.ttest_rel([0.88,0.92,0.94,0.86,0.89,0.93,0.93,0.97,0.94,0.90,],[0.88,0.93,0.93,0.86,0.86,0.93,0.90,0.93,0.94,0.96,])
-print(f'p_0_vs_05: T({p_0_vs_05.df})={p_0_vs_05[0]:.3f} p={p_0_vs_05[1]:.3f}\np_05_vs_custom: T({p_05_vs_custom.df})={p_05_vs_custom[0]:.3f} p={p_05_vs_custom[1]:.3f}')
+def plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma):
 
+    #Subs 40-60 and 60-80 with subs 20-40 as template, with gamma optimised for subs 0-20. m&s. Procrustes template
+    dictionary = {'MSMSulc only':sulc,\
+                'MSMSulc & FuncAlign\n\u03B3=0':sulc_func,\
+                    f'MSMSulc & FuncAlign\n\u03B3={best_gamma} (integrated)':sulc_comb,\
+                    'MSMAll only':all,\
+                            f'MSMAll & FuncAlign\n\u03B3={best_gamma} (integrated)':all_comb,\
+                        } 
+    label_name=''
+    data_name='Classification accuracy'
+    #plot(dictionary,label_name,data_name,title='GPA template Procrustes')
+    plot_paired(dictionary,figsize=(7,3.5),x_jitter=0,y_jitter=0.05,xlabel=data_name,title=title,fontsize=14)
 
-#Subs 40-60 and 60-80 with with subs 20-40 as template, with gamma optimised for subs 0-20. m&s. Ridge LowDim Template
-dictionary = {'\u03B3=1\n(anatomical)':[0.792,0.903,0.889,0.861,0.806,0.889,0.861,0.903,0.875,0.875,],\
-              '\u03B3=0\n(functional)':[0.861,0.917,0.917,0.847,0.875,0.917,0.903,0.917,0.903,0.889,],\
-                '\u03B3=0.2\n(combined)':[0.861,0.958,0.944,0.847,0.889,0.944,0.903,0.958,0.931,0.931,],\
-                    } 
-# 'Parcel-specific \u03B3':[0.889,0.931,0.917,0.819,0.903,0.917,0.931,0.931,0.917,0.944,]
-label_name=''
-data_name='Classification accuracy'
-#plot(dictionary,label_name,data_name,title='PCA template Ridge')
-plot_paired(dictionary,figsize=(7,3.5),x_jitter=0,y_jitter=0.05,xlabel=data_name,title='PCA template Ridge',fontsize=16)
+    sulc_comb_vs_sulc_func=stats.ttest_rel(sulc_comb,sulc_func)
+    sulc_comb_vs_sulc=stats.ttest_rel(sulc_comb,sulc)
+    sulc_comb_vs_all=stats.ttest_rel(sulc_comb,all)
+    all_comb_vs_all=stats.ttest_rel(all_comb,all)
+    print(f'\nFig 6 {title}')
+    print(f'sulc_comb_vs_sulc_func: T({sulc_comb_vs_sulc_func.df})={sulc_comb_vs_sulc_func[0]:.3f} p={sulc_comb_vs_sulc_func[1]:.3f}')
+    print(f'sulc_comb_vs_sulc: T({sulc_comb_vs_sulc.df})={sulc_comb_vs_sulc[0]:.3f} p={sulc_comb_vs_sulc[1]:.3f}')
+    print(f'sulc_comb_vs_all: T({sulc_comb_vs_all.df})={sulc_comb_vs_all[0]:.3f} p={sulc_comb_vs_all[1]:.3f}')
+    print(f'all_comb_vs_all: T({all_comb_vs_all.df})={all_comb_vs_all[0]:.3f} p={all_comb_vs_all[1]:.3f}')
 
-p_0_vs_05=stats.ttest_rel([0.861,0.917,0.917,0.847,0.875,0.917,0.903,0.917,0.903,0.889,],[0.861,0.958,0.944,0.847,0.889,0.944,0.903,0.958,0.931,0.931,])
-p_05_vs_custom=stats.ttest_rel([0.889,0.931,0.917,0.819,0.903,0.917,0.931,0.931,0.917,0.944,],[0.861,0.958,0.944,0.847,0.889,0.944,0.903,0.958,0.931,0.931,])
-print(f'p_0_vs_05: T({p_0_vs_05.df})={p_0_vs_05[0]:.3f} p={p_0_vs_05[1]:.3f}\np_05_vs_custom: T({p_05_vs_custom.df})={p_05_vs_custom[0]:.3f} p={p_05_vs_custom[1]:.3f}')
+#Anatomical (MSMSUlc or MSMAll only) in test cohort
+sulc=[0.792,0.903,0.889,0.861,0.806,]+[0.889,0.861,0.903,0.875,0.875,]+[0.833,0.875,0.806,0.875,0.722,] 
+all=[0.847,0.958,0.917,0.861,0.903,]+[0.931,0.931,0.931,0.944,0.944,]+[0.875,0.903,0.889,0.931,0.833,] 
+
+print('ALIGN WITH MOVIE')
+#Movie: GPA template Procrustes
+title='GPA template Procrustes'
+lineplot(gammas, [.856, .875, .892, .9, .933, .936, .872],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc,fontsize=14) #Figure 6A top
+best_gamma=0.5
+sulc_func=[0.76,0.86,0.88,0.78,0.86,]+[0.89,0.83,0.92,0.90,0.82,]+[0.847,0.792,0.778,0.889,0.764,] 
+sulc_comb=[0.88,0.93,0.93,0.86,0.86,]+[0.93,0.90,0.93,0.94,0.96,]+[0.875,0.875,0.875,0.944,0.764,]
+all_comb=[0.889,0.972,0.958,0.903,0.903,]+[0.958,0.931,0.972,0.972,0.972,]+[0.903,0.903,0.903,0.958,0.833,]
+plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma) #Figure 6B top
+
+#Movie: PCA template Ridge
+title='PCA template Ridge'
+lineplot(gammas, [.892, .897, .911, .925, .931, .917, .883],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc,fontsize=14) #Figure 6A bottom
+best_gamma=0.2
+sulc_func=[0.861,0.917,0.917,0.847,0.875,]+[0.917,0.903,0.917,0.903,0.889,]+[0.889,0.889,0.889,0.931,0.861,]
+sulc_comb=[0.861,0.958,0.944,0.847,0.889,]+[0.944,0.903,0.958,0.931,0.931,]+[0.931,0.944,0.917,0.944,0.819,] 
+all_comb=[0.889,0.958,0.944,0.833,0.903,] + [0.944,0.944,1.000,0.958,0.972,]+[0.931,0.917,0.917,0.958,0.875,]
+plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma) #Figure 6B bottom
+
+print('ALIGN WITH REST_FC')
+#Rest: GPA template Procrustes
+title='GPA template Procrustes'
+lineplot(gammas, [0.894, 0.894, 0.894, 0.894, 0.894, 0.9, 0.872],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc,fontsize=14) #Figure 6A top
+best_gamma=0.5
+sulc_func=[0.833,0.889,0.917,0.847,0.903,]+ [0.917,0.917,0.903,0.903,0.889,]+[0.903,0.889,0.833,0.931,0.833,]
+sulc_comb=[0.806,0.889,0.903,0.833,0.833,]+[0.903,0.861,0.903,0.889,0.861,]+[0.847,0.889,0.819,0.903,0.764,]
+all_comb=[0.875,0.958,0.944,0.875,0.917,]+[0.944,0.931,0.944,0.944,0.972,]+[0.875,0.931,0.903,0.944,0.889,]
+plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma) #Figure 6B top
+
+#Rest: PCA template Ridge
+title='PCA template Ridge'
+lineplot(gammas, [0.897, 0.9, 0.897, 0.894, 0.903, 0.892, 0.881],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc,fontsize=14) #Figure 6A top
+best_gamma=0.2
+sulc_func=[0.833,0.903,0.917,0.819,0.847,]+[0.903,0.917,0.889,0.875,0.861,]+[0.875,0.875,0.833,0.889,0.806,]
+sulc_comb=[0.819,0.889,0.931,0.806,0.875,]+[0.875,0.903,0.903,0.917,0.875,]+[0.889,0.889,0.833,0.889,0.792,]
+all_comb=[0.861,0.903,0.944,0.806,0.944,]+[0.931,0.917,0.931,0.944,0.944,]+[0.889,0.903,0.903,0.903,0.847,]
+plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma) #Figure 6B top
+
 
 plt.show()
 

@@ -186,23 +186,6 @@ def get_rowsums(fats,align_labels,axis=0):
     return rowsums
 
 
-def get_corr_with_neighbour(nearest_vertex_array,time_series):
-    """
-    For each vertex, find correlation between its time series and that of its nearest neighbour
-    Parameters:
-    ----------
-    nearest_vertex_array: array of shape (nvertices,)
-        element i is the index of the nearest vertex to vertex i
-    time_series: array of shape (ntimepoints,nvertices)
-    """
-    nvertices=len(nearest_vertex_array)
-    result = np.zeros(nvertices,dtype=np.float32)
-    for i in range(nvertices):
-        source_vertex_time_series = time_series[:,i]
-        target_vertex_time_series = time_series[:,nearest_vertex_array[i]]
-        result[i] = np.corrcoef(source_vertex_time_series,target_vertex_time_series)[0,1]
-    return result
-
 
 def ident_from_data(structdata,funcdata,nsubjects,nparcs,nblocks,blocks,align_labels,arn):
 
@@ -297,7 +280,7 @@ def get_tck_file():
     import socket
     hostname=socket.gethostname()
     if hostname=='DESKTOP-EGSQF3A': #home pc
-        tckfile= 'tracks_5M_sift1M_200k.tck' #'tracks_5M_sift1M_200k.tck','tracks_5M.tck' 
+        tckfile= 'tracks_5M_1M_end_sift2act.tck' #'tracks_5M_sift1M_200k.tck' #'tracks_5M_sift1M_200k.tck','tracks_5M.tck' 
     else: #service workbench
         tckfile='tracks_5M_1M_end.tck'
     return tckfile

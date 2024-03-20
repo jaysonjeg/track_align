@@ -502,7 +502,7 @@ if __name__=='__main__':
             temp = Parallel(n_jobs=-1,prefer='processes')(delayed(butils.get_nearest_vertices)(meshes[i],mask) for i in range(nsubjects))
             nearest_vertices,nearest_distances = [list(item) for item in zip(*temp)]
             print(f'{c.time()}: corr neighbour start', end=", ")   
-            movs_nextcorr = Parallel(n_jobs=-1,prefer='processes')(delayed(tutils.get_corr_with_neighbour)(nearest_vertices[i],movs[i]) for i in range(nsubjects))
+            movs_nextcorr = Parallel(n_jobs=-1,prefer='processes')(delayed(butils.get_corr_with_neighbours)(nearest_vertices[i],movs[i]) for i in range(nsubjects))
 
             """
             print(f'{c.time()}: Get temporal autocorrs', end=", "
