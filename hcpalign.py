@@ -426,60 +426,6 @@ if __name__=='__main__':
 
 
 
-                ##DOOMSDAY START
-                '''
-                import tkalign_utils as tutils
-                fats = aligners.estimators
-                nsubjects = len(fats)
-                parcellation_string='S300'
-                align_labels = hutils.parcellation_string_to_parcellation(parcellation_string)
-                nparcs = align_labels.max()+1
-
-                #Look at a single subject, all parcels together
-                nsubject=0
-                import getmesh_utils
-                vertices_visual,faces_visual = getmesh_utils.get_verts_and_triangles(subjects[nsubject],'white',False)
-                p = hutils.surfplot('',mesh=(vertices_visual,faces_visual),plot_type = 'open_in_browser')
-                rs = [fats[nsubject].fit_[nparc].R for nparc in range(nparcs)]
-                rs_abs = [np.abs(tutils.divide_by_Frobenius_norm(i)) for i in rs]
-                rs_abs_sum0 = [np.sum(i,axis=0) for i in rs_abs]
-                rs_abs_sum1 = [np.sum(i,axis=1) for i in rs_abs]
-                def put_parcels_together(list_of_parcel_values,align_labels):
-                    length = np.sum([i.shape[0] for i in list_of_parcel_values])
-                    out = np.zeros(length)
-                    for i in range(len(list_of_parcel_values)):
-                        out[align_labels==i] = list_of_parcel_values[i]
-                    return out
-                rs_abs_sum0x = put_parcels_together(rs_abs_sum0,align_labels)
-                rs_abs_sum1x = put_parcels_together(rs_abs_sum1,align_labels)
-                import biasfmri_utils as butils
-                sulc = butils.get_sulc(subjects[nsubject])
-                sulc_rs_corrs = np.array([np.corrcoef(sulc[align_labels==i],rs_abs_sum0x[align_labels==i])[0,1] for i in range(nparcs)])
-                print(np.sum(sulc_rs_corrs<0))
-
-                #Look at a single parcel, in  many subjects
-                nparc=1 
-                mp = [i[:,align_labels==nparc] for i in imgs_align] #single parcel time series
-                mpc = [np.corrcoef(i.T) for i in mp] #within-single-parcel functional connectivity
-                mpcm = [np.max(hutils.diag0(i),axis=0) for i in mpc] #for each vertex, its highest correlation with a different vertex in the same parcel
-                rs = [np.abs(tutils.divide_by_Frobenius_norm(fats[subject].fit_[nparc].R)) for subject in range(len(fats))]
-                rs_sum = [np.sum(i,axis=0) for i in rs]
-                rs_max = [np.max(i,axis=0) for i in rs]
-                rs_diag = [np.diagonal(i) for i in rs]
-                rs_offsum = [np.sum(hutils.diag0(i),axis=0) for i in rs]
-                print(np.corrcoef(mpcm[0],rs_diag[0])) #corr bw each vertex's maximum correlation with any other vertex, vs diagonal elements of R
-                from tkalign_utils import ident_plot
-                ident_plot(mpcm,'maxcorrs',rs_diag,'Rdiag',reg=False,normed=False)
-                ident_plot(mpcm,'maxcorrs',rs_offsum,'Roffdiagsum_reg',reg=False,normed=False)
-                fig,axs=plt.subplots(3)
-                axs[0].imshow(mp[0],aspect='auto')
-                axs[1].imshow(mp[1],aspect='auto')
-                cax = axs[2].imshow(mpc[0])
-                fig.colorbar(cax,ax=axs[2])
-                plt.show(block=False)
-                assert(0)
-                '''
-                ### DOOMSDAY END
 
                 if True: #save aligner for each subject separately in alignpickles3
                     t.print(f"{c.time()}: Downsample aligner start")
