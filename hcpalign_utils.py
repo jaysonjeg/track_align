@@ -781,30 +781,37 @@ def jaccard_binomtest(x,y):
     result_binom=stats.binom_test(binom_k,binom_n,binom_p,alternative='greater')
     return result_binom
 
-def corr_rows_parcel(imgs_decode_parcel):
-    return np.dstack(Parallel(n_jobs=-1,prefer='processes')(delayed(corr_rows)(i,prefer='noparallel') for i in imgs_decode_parcel)) #array (nsamples,nsubjectpairs,nparcels)
+def corr_rows_parcel(imgs_decode_parcel,rows_or_cols='cols'):
+    temp = Parallel(n_jobs=-1,prefer='processes')(delayed(corr_rows)(i,rows_or_cols=rows_or_cols,prefer='noparallel') for i in imgs_decode_parcel)
+    return np.dstack(temp) #array (nsamples,nsubjectpairs,nparcels)
 
 import itertools
 
-def corr_rows(x,prefer='noparallel'):
+def corr_rows(x,rows_or_cols='cols',prefer='noparallel'):
     """
-    Given a list of 2D arrays (nsamples,nfeatures), one array for each subject, for each row index, for each pair of subjects, calculate the correlation coefficient between their corresponding rows
+    Given a list of 2D arrays (nsamples,nfeatures), one array for each subject, for each row index or column index, for each pair of subjects, calculate the correlation coefficient between their corresponding rows/columns.
+    'rows' means take the brain map for one sample/contrast at a time, and calculate the correlation (across feature/vertices) between that brain maps for each pair of subjects.
+    'cols' means take the pattern of brain activity across all samples/contrasts for one feature/vertex at a time, and calculate the correlation (across samples/contrasts) in that vertex for each pair of subjects. This is the traditional 'ISC'
 
     Parameters:
     ----------
     x: list (nsubjects) of arrays (nsamples,nfeatures)
+    rows_or_cols: 'rows' or 'cols'
     prefer: 'processes', 'threads', or 'noparallel'
+
 
     Returns:
     ----------
     correlations: array (nsamples,nsubjectpairs)
         correlations between rows of x
     """
+    if rows_or_cols=='rows':
+        x=[i.T for i in x]
     nsubjects=len(x)
     if prefer=='noparallel':
-        temp = [rowcorr_nonsparse(x[i].T,x[j].T) for i,j in itertools.combinations(range(nsubjects),2)] #list (nsubjectpairs) of arrays (nfeatures). Each array containing correlations between rows of x[i] and x[j]
+        temp = [rowcorr_nonsparse(x[i],x[j]) for i,j in itertools.combinations(range(nsubjects),2)] #list (nsubjectpairs) of arrays (nfeatures). Each array containing correlations between rows of x[i] and x[j]
     else:
-        temp = Parallel(n_jobs=-1,prefer=prefer)(delayed(rowcorr_nonsparse)(x[i].T,x[j].T) for i,j in itertools.combinations(range(nsubjects),2))
+        temp = Parallel(n_jobs=-1,prefer=prefer)(delayed(rowcorr_nonsparse)(x[i],x[j]) for i,j in itertools.combinations(range(nsubjects),2))
     result = np.vstack(temp).T
     del temp
     return result
@@ -1510,6 +1517,7 @@ class surfplot():
             ones[0:data.shape[0]]=data
             data=ones
         """
+        data = np.squeeze(data) 
         if np.min(data)<0: 
             self.symmetric_cmap=True
         else: 
