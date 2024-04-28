@@ -30,16 +30,20 @@ biasfmri_intermediates_path = ospath(f'{project_path}/intermediates')
 
 ### SETTABLE PARAMETERS ###
 mesh_template = 'fsLR32k' #'fsaverage5','fsLR32k'
-surface = 'midthickness' #which surface for calculating neighbour distances, e.g. 'white','inflated','pial','midthickness'
-surface_visual = 'white' #which surface for visualization
 which_subject = '100610' #'100610','standard'
 which_subject_visual = which_subject #which_subject or a specific subject eg 102311
+surface = 'midthickness' #which surface for calculating neighbour distances, e.g. 'white','inflated','pial','midthickness'
+surface_visual = 'white' #which surface for visualization
+folder='MNINonLinear' #More parameters for getmesh_utils.get_verts_and_triangles. 'MNINonLinear' (default) or 'T1w'
+version='fsaverage_LR32k' #'native', 'fsaverage_LR32k' (default) or '164k'
+
 noise_source = 'surface' #'volume' or 'surface'. 'volume' means noise data in volume space projected to 'surface'. 'surface' means noise data generated in surface space
-smooth_data_fwhm = 2 #mm of surface smoothing. Try 0 or 2
+smooth_data_fwhm = 0 #mm of surface smoothing. Try 0 or 2
+MSMAll=False
 which_neighbours = 'local' #'local','nearest','distant'
 distance_range=(3,5) #Only relevant if which_neighbours=='distant'. Geodesic distance range in mm, e.g. (0,4), (2,4), (3,5), (4,6)
 subtract_parcelmeans_for_visual = False #whether surface plots will subtract parcel-specific mean values. This is useful for looking at within-parcel correlations and can improve visualization of gyral bias
-load_neighbours = True
+load_neighbours = False
 save_neighbours = False
 
 
@@ -66,17 +70,41 @@ if which_subject == 'standard':
 elif which_subject != 'standard':
     if mesh_template == 'fsLR32k':
         import getmesh_utils
-        vertices,faces = getmesh_utils.get_verts_and_triangles(which_subject,surface)
-        vertices_visual,faces_visual = getmesh_utils.get_verts_and_triangles(which_subject_visual,surface_visual)
+        vertices,faces = getmesh_utils.get_verts_and_triangles(which_subject,surface,folder=folder,version=version)
+        vertices_visual,faces_visual = getmesh_utils.get_verts_and_triangles(which_subject_visual,surface_visual,folder=folder,version=version)
+        if not(folder=='MNINonLinear' and version=='fsaverage_LR32k'):
+            print('Setting mask to all 1s')
+            mask = np.zeros(vertices.shape[0],dtype=bool)
+            mask[:]=True
         noise_data_prefix = f'{which_subject}.32k_fs_LR.func'
     else:
         assert('Do not currently have fsaverage5 mesh for individual subjects')
 p = hutils.surfplot('',mesh=(vertices_visual,faces_visual),plot_type = 'open_in_browser')
-mesh = (hutils.cortex_64kto59k(vertices),hutils.cortex_64kto59k_for_triangles(faces)) #downsample from 64k to 59k
+#mesh = (hutils.cortex_64kto59k(vertices),hutils.cortex_64kto59k_for_triangles(faces)) #downsample from 64k to 59k
+
+mesh = (vertices[mask],butils.triangles_removenongray(faces,mask))
 
 ### Get neighbour distances ###
 
-neighbour_vertices, neighbour_distances = butils.get_subjects_neighbour_vertices(c, which_subject,surface,mesh, biasfmri_intermediates_path, which_neighbours, distance_range, load_neighbours, save_neighbours)
+neighbour_vertices, neighbour_distances = butils.get_subjects_neighbour_vertices(c, which_subject,surface,mesh, biasfmri_intermediates_path, which_neighbours, distance_range, load_neighbours, save_neighbours,MSMAll)
+
+'''
+#See on other meshes other than fsLR32k (e.g. Native, 164k, T1w folder)
+from scipy import stats
+print(f'{vertices.shape[0]} vertices')
+print(vertices[0:2,:])
+sulc = butils.get_sulc(which_subject,version=version)[mask]
+fig,axs=plt.subplots(2)
+ax = axs[0]
+ax.hist(neighbour_distances,bins=100)
+ax = axs[1]
+ax.scatter(sulc,neighbour_distances,1,alpha=0.05,color='k')
+ax.set_title(f'Correlation: {np.corrcoef(sulc,neighbour_distances)[0,1]:.3f}')
+p.plot(butils.fillnongray(sulc,mask),cmap='inferno')
+p.plot(butils.fillnongray(neighbour_distances,mask),cmap='inferno')
+plt.show(block=False)
+assert(0)
+'''
 
 ### GET NOISE DATA AND CALCULATE NEIGHBOUR CORRELATIONS ###
 print(f'{c.time()}: Get noise data start')
@@ -97,18 +125,21 @@ if smooth_data_fwhm>0:
     #noise = smoother(noise)
     fwhm_values_for_gdist = np.array([3,5,10]) #fwhm values for which geodesic distances have been pre-calculated
     fwhm_for_gdist = fwhm_values_for_gdist[np.where(fwhm_values_for_gdist>smooth_data_fwhm)[0][0]] #find smallest value greater than fwhm in the above list
-    skernel = butils.get_smoothing_kernel(which_subject,surface,fwhm_for_gdist,smooth_data_fwhm)
+    skernel = butils.get_smoothing_kernel(which_subject,surface,fwhm_for_gdist,smooth_data_fwhm,MSMAll,mesh_template)
     noise = butils.smooth(noise,skernel)
 
 
 print(f'{c.time()}: Get corr with neighbours start')
 noise_adjcorr = butils.get_corr_with_neighbours(neighbour_vertices,noise)
 noise_adjcorr[np.isnan(noise_adjcorr)] = 0 #replace NaNs with 0s
-#noise_adjcorr[noise_vol2surf_adjcorr<0] = 0 #set negative correlations to 0
+#noise_adjcorr[noise_adjcorr<0] = 0 #set negative correlations to 0
 print(f'{c.time()}: Get corr with neighbours end')
 
-if mesh_template == 'fsLR32k' and which_subject !='standard':
-    sulc = butils.get_sulc(which_subject)
+if mesh_template == 'fsLR32k':
+    if which_subject == 'standard':
+        sulc = -hcp.mesh.sulc[mask]
+    else:
+        sulc = butils.get_sulc(which_subject)[mask]
 if subtract_parcelmeans_for_visual:
     parc_string='S300'
     parc_labels = hutils.parcellation_string_to_parcellation(parc_string)
@@ -122,26 +153,41 @@ if subtract_parcelmeans_for_visual:
 ### PLOTTING ###
 
 #p.plot(butils.fillnongray(im[500,:],mask))
-p.plot(butils.fillnongray(noise_adjcorr,mask))
-p.plot(butils.fillnongray(neighbour_distances,mask))
+p.plot(butils.fillnongray(noise_adjcorr,mask),cmap='inferno')
+p.plot(butils.fillnongray(neighbour_distances,mask),cmap='inferno')
+
+"""
+#Visualize with different subjects' surfaces
+neighbour_distances_full = butils.fillnongray(neighbour_distances,mask)
+for which_subject_visual in ['standard','100610']:
+    if which_subject_visual == 'standard':
+        import hcp_utils as hcp
+        vertices_visual,faces_visual = hcp.mesh[surface_visual]
+    else:
+        import getmesh_utils
+        vertices_visual,faces_visual = getmesh_utils.get_verts_and_triangles(which_subject_visual,surface_visual)
+    p.mesh = (vertices_visual,faces_visual)
+    p.plot(neighbour_distances_full)
+    p.plot(sulc)
+"""
 
 fig,axs=plt.subplots(2,2)
 ax=axs[0,0]
-ax.scatter(neighbour_distances,noise_adjcorr,1,alpha=0.05)
-ax.set_xlabel('(mean) distance to neighbour(s)')
-ax.set_ylabel('(mean) correlation with nearest vertice(s)')
+ax.scatter(neighbour_distances,noise_adjcorr,1,alpha=0.05,color='k')
+ax.set_xlabel('Inter-vertex distance (mm)')
+ax.set_ylabel('Correlation with neighbours')
 ax.set_title(f'Correlation: {np.corrcoef(neighbour_distances,noise_adjcorr)[0,1]:.3f}')
-if mesh_template == 'fsLR32k' and which_subject !='standard':
+if mesh_template == 'fsLR32k':
     ax=axs[0,1]
-    p.plot(butils.fillnongray(sulc,mask))
-    ax.scatter(sulc,neighbour_distances,1,alpha=0.05)
+    #p.plot(butils.fillnongray(sulc,mask))
+    ax.scatter(sulc,neighbour_distances,1,alpha=0.05,color='k')
     ax.set_xlabel('Sulcal depth')
-    ax.set_ylabel('(mean) distance to neighbour(s)')
+    ax.set_ylabel('Inter-vertex distance (mm)')
     ax.set_title(f'Correlation: {np.corrcoef(sulc,neighbour_distances)[0,1]:.3f}')
     ax=axs[1,0]
-    ax.scatter(sulc,noise_adjcorr,1,alpha=0.05)
+    ax.scatter(sulc,noise_adjcorr,1,alpha=0.05,color='k')
     ax.set_xlabel('Sulcal depth')
-    ax.set_ylabel('(mean) correlation with nearest vertice(s)')
+    ax.set_ylabel('Correlation with neighbours')
     ax.set_title(f'Correlation: {np.corrcoef(sulc,noise_adjcorr)[0,1]:.3f}')
 fig.tight_layout()
 
@@ -154,10 +200,14 @@ if mesh_template =='fsaverage5':
     for scalar in [sulc,curv,area,thick]:
         p.plot(scalar)
     print('Correlations between ims_nextcorr and:')
-    print(f'sulc: {np.corrcoef(noise_vol2surf_adjcorr,sulc[mask])[0,1]:.2f}')
-    print(f'curv: {np.corrcoef(noise_vol2surf_adjcorr,curv[mask])[0,1]:.2f}')
-    print(f'area: {np.corrcoef(noise_vol2surf_adjcorr,area[mask])[0,1]:.2f}')
-    print(f'thick: {np.corrcoef(noise_vol2surf_adjcorr,thick[mask])[0,1]:.2f}')
+    print(f'sulc: {np.corrcoef(noise_adjcorr,sulc[mask])[0,1]:.2f}')
+    print(f'curv: {np.corrcoef(noise_adjcorr,curv[mask])[0,1]:.2f}')
+    print(f'area: {np.corrcoef(noise_adjcorr,area[mask])[0,1]:.2f}')
+    print(f'thick: {np.corrcoef(noise_adjcorr,thick[mask])[0,1]:.2f}')
+    print('Correlations between neighbour_distances and:')
+    print(f'sulc: {np.corrcoef(neighbour_distances,sulc[mask])[0,1]:.2f}')
+    print(f'curv: {np.corrcoef(neighbour_distances,curv[mask])[0,1]:.2f}')
+
 
 plt.show(block=False)
 assert(0)
@@ -237,9 +287,8 @@ print(f'Single-parcel FC: test-retest identifiability is {tutils.identifiability
 
 import getmesh_utils
 import tkalign_utils as tutils
-from get_gdistances import get_gdistances
 meshes = [getmesh_utils.get_verts_and_triangles(subject,'white') for subject in subjects]
-sulcs = [butils.get_sulc(i) for i in subjects] #list (subjects) of sulcal depth maps
+sulcs = [butils.get_sulc(i)[mask] for i in subjects] #list (subjects) of sulcal depth maps
 
 print(f'{c.time()}: Get maxcorr maps', end=", ")
 ims_maxcorr = Parallel(n_jobs=-1,prefer='processes')(delayed(tutils.get_max_within_parcel_corrs)(img,parc_labels,nparcs) for img in ims) #list (subjects) of maxcorr maps. For each vertex, maximum correlation with any other vertex in the same parcel

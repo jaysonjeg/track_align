@@ -7,33 +7,52 @@ from joblib import Parallel, delayed
 #from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
 
+
 ### Get parcellated connectomes for Anna Behler ###
+'''
 import tkalign_utils as tutils
 import hcpalign_utils as hutils
 from hcpalign_utils import ospath
 c=hutils.clock()
 
 #Settable parameters
-subjects = hutils.all_subs[0:5]
+subjects = hutils.all_subs[0:2]
 MSMAll=False
 sift2=True
 tckfile = tutils.get_tck_file()
 par_prefer_hrc='threads'  #'threads' (default) or 'processes' for getting high-res connectomes from file
 sift2=not('sift' in tckfile) #True, unless there is 'sift' in tckfile
-parcellation_string = 'M'
 
-#Get connectome
-align_parc_matrix=hutils.parcellation_string_to_parcmatrix(parcellation_string)
-connectomes = tutils.get_parcellated_connectomes(c,tckfile, MSMAll, sift2, align_parc_matrix, subjects, par_prefer_hrc)  
+parcellated = False
+if parcellated:
+    parcellation_string = 'M'
+    #Get connectome
+    align_parc_matrix=hutils.parcellation_string_to_parcmatrix(parcellation_string)
+    connectomes = tutils.get_parcellated_connectomes(c,tckfile, MSMAll, sift2, align_parc_matrix, subjects, par_prefer_hrc)  
+    #Save file
+    for subject,connectome in zip(subjects,connectomes):
+        file_name = f'{tckfile[:-4]}_{parcellation_string}_{subject}.npy'
+        save_path = ospath(f'{hutils.intermediates_path}/parcellated_connectomes/{file_name}')
+        np.save(save_path,connectome.toarray())
+else:
+    connectomes = hutils.get_highres_connectomes(c,subjects,tckfile,MSMAll=MSMAll,sift2=sift2,prefer=par_prefer_hrc,n_jobs=-1)
+    from scipy import sparse
+    for fwhm in [3]:
+        for subject,connectome in zip(subjects,connectomes):
+            if fwhm==0: 
+                file_name = f'{tckfile[:-4]}_{subject}.npz'
+            else:
+                skernel=sparse.load_npz(ospath(f'{hutils.intermediates_path}/smoothers/{subject}_{fwhm}_0.01.npz'))
+                from Connectome_Spatial_Smoothing import CSS as css   
+                connectome = css.smooth_high_resolution_connectome(connectome,skernel)
+                file_name = f'{tckfile[:-4]}_{subject}_smooth_{fwhm}mm.npz'
 
-#Save file
-for subject,connectome in zip(subjects,connectomes):
-    file_name = f'{tckfile[:-4]}_{parcellation_string}_{subject}.npy'
-    save_path = ospath(f'{hutils.intermediates_path}/parcellated_connectomes/{file_name}')
-    np.save(save_path,connectome.toarray())
+            save_path = ospath(f'{hutils.intermediates_path}/highres_connectomes/{file_name}')
+            sparse.save_npz(save_path,connectome)
+            #Load with x=sparse.load_npz(save_path)
+'''
 
-import matplotlib.pyplot as plt
-plt.imshow(connectome)
+
 
 """
 from make_gdistances_full import get_searchlights
@@ -80,8 +99,8 @@ hcp_folder=hutils.hcp_folder
 intermediates_path=hutils.intermediates_path
 results_path=hutils.results_path
 
-subs=hutils.all_subs[slice(0,3)]
-subs_template=hutils.all_subs[slice(2,4)]
+subs=hutils.all_subs[slice(0,2)]
+subs_template=hutils.all_subs[slice(0,5)]
 nsubs = np.arange(len(subs)) #number of subjects
 
 post_decode_smooth=hutils.make_smoother_100610(0)

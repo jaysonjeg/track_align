@@ -84,7 +84,7 @@ def get_fsaverage_mesh(string,meshname='fsaverage5'):
 
 #Functions for dealing with surface meshes
 
-def fillnongray(arr,mask):
+def fillnongray(arr,mask,fillvalue=0):
     """
     Takes a 1D array of fMRI grayordinates and returns the values on the vertices of the left cortex mesh which is neccessary for surface visualization. 
     The unused vertices are filled with a constant (zero by default).
@@ -92,6 +92,7 @@ def fillnongray(arr,mask):
     Like hcp_utils.cortex_data()
     """
     out = np.zeros(len(mask))
+    out[:]=fillvalue
     out[mask] = arr
     return out
 
@@ -105,10 +106,32 @@ def removenongray(mask):
         temp[value]=index
     return temp
 
-def get_sulc(subject_id):
-    sulc_path = ospath(f'{hcp_folder}/{subject_id}/MNINonLinear/fsaverage_LR32k/{subject_id}.sulc.32k_fs_LR.dscalar.nii')
-    sulc = hutils.cortex_64kto59k(hutils.get(sulc_path).squeeze())
-    return sulc
+def triangles_removenongray(triangles,mask):
+    """
+    Given a list of triangles in a 64984-vertex mesh, return a list of triangles in a 64984-vertex mesh with only gray matter vertices. First remove the rows containing non-gray vertices, then renumber the vertices so they are 0 to nGrayVertices
+    triangles: array (n,3) list of triangles in a 64984-vertex mesh
+    mask: boolean array (64984,) indicating which vertices are gray matter
+    """
+    gray = np.where(mask)[0]
+    temp=np.isin(triangles,gray)
+    temp2=np.all(temp,axis=1)
+    triangles_v2 = triangles[temp2,:]
+    triangles_v3 = removenongray(mask)[triangles_v2] #renumbering
+    return triangles_v3
+
+def get_sulc(subject_id,version='fsaverage_LR32k'):
+    """
+    version: 'native', 'fsaverage_LR32k' (default) or '164k'
+    """
+    if version=='fsaverage_LR32k':
+        sulc_path = ospath(f'{hcp_folder}/{subject_id}/MNINonLinear/fsaverage_LR32k/{subject_id}.sulc.32k_fs_LR.dscalar.nii')
+    elif version=='native':
+        sulc_path = ospath(f'{hcp_folder}/{subject_id}/MNINonLinear/Native/{subject_id}.sulc.native.dscalar.nii')
+    elif version=='164k':
+        sulc_path = ospath(f'{hcp_folder}/{subject_id}/MNINonLinear/{subject_id}.sulc.164k_fs_LR.dscalar.nii')
+    else: 
+        assert(0)
+    return hutils.get(sulc_path).squeeze()
 
 #Functions for neighbour vertices and correlations
 
@@ -137,7 +160,7 @@ def _get_all_neighbour_vertices(mesh,mask):
     i=0
     for face in faces:
         i+=1
-        if i%10000==0:
+        if i%30000==0:
             print(f'Face {i} of {len(faces)}')
         #Each triangle is a 3-tuple of vertices. For each vertex in the triangle, add the other two vertices to its list of neighbours. Add the distance to the other two vertices to the distance array. This procedure counts each edge twice, because each edge is in two triangles
         for vertex1,vertex2 in combinations(face,2):
@@ -161,56 +184,78 @@ def _get_all_neighbour_vertices(mesh,mask):
         neighbour_distances = neighbour_distances[mask]
     return neighbour_vertices,neighbour_distances 
 
-def get_neighbour_vertices(c, mesh, which_neighbours, distance_range=None):
+'''
+def get_neighbour_vertices(c, mesh, which_neighbours, distance_range=None,MSMAll=False):
     if which_neighbours == 'distant':
         from get_gdistances import get_gdistances
         print(f'{c.time()}: Get geodesic distances start')
-        if which_subject != 'standard':
-            d = get_gdistances(which_subject,surface,10) #d is a sparse matrix in compressed sparse row format
-        else:
-            pass
+        d = get_gdistances(which_subject,surface,10,MSMAll=MSMAll) #d is a sparse matrix in compressed sparse row format
         print(f'{c.time()}: Get vertices at distance range start')
-        distant_vertices, distant_vertices_distances = butils.get_vertices_in_distance_range(distance_range,d)
+        neighbour_vertices, neighbour_distances = get_vertices_in_distance_range(distance_range,d)
         nVerticesWithZeroNeighbours = np.sum(np.array([len(i) for i in distant_vertices])==0)
         print(f'{nVerticesWithZeroNeighbours} vertices with 0 neighbours in distance range {distance_range}')
         assert(nVerticesWithZeroNeighbours==0)
-        distant_vertices_distances_mean = np.array([np.mean(i) for i in distant_vertices_distances])
-        neighbour_vertices = distant_vertices
-        neighbour_distances = distant_vertices_distances_mean
-    elif which_neighbours in ['local','nearest']:
+    elif which_neighbours == 'local':
         print(f'{c.time()}: Get neighbour vertices start')
-        all_neighbour_vertices,all_neighbour_distances = _get_all_neighbour_vertices(mesh,None)
-        neighbour_distance_mean = np.array([np.mean(i) for i in all_neighbour_distances])
-        nearest_neighbour_distances = np.array([np.min(i) for i in all_neighbour_distances])
-        nearest_neighbour_indices = np.array([np.argmin(i) for i in all_neighbour_distances])
-        nearest_neighbour_vertices = [i[j] for i,j in zip(all_neighbour_vertices,nearest_neighbour_indices)]
-        if which_neighbours == 'local':
-            neighbour_vertices = all_neighbour_vertices
-            neighbour_distances = neighbour_distance_mean
-        elif which_neighbours == 'nearest':
-            neighbour_vertices = nearest_neighbour_vertices
-            neighbour_distances = nearest_neighbour_distances
+        neighbour_vertices,neighbour_distances = _get_all_neighbour_vertices(mesh,None)       
+        #nearest_neighbour_distances = np.array([np.min(i) for i in all_neighbour_distances])
+        #nearest_neighbour_indices = np.array([np.argmin(i) for i in all_neighbour_distances])
+        #nearest_neighbour_vertices = [i[j] for i,j in zip(all_neighbour_vertices,nearest_neighbour_indices)]
     return neighbour_vertices, neighbour_distances
+'''
 
 import pickle
-def get_subjects_neighbour_vertices(c, subject,surface,mesh, biasfmri_intermediates_path, which_neighbours, distance_range, load_neighbours, save_neighbours):
-    neighbour_verts_path = ospath(f'{biasfmri_intermediates_path}/neighbour_vertices/adj_{subject}_{surface}_{which_neighbours}_verts.pkl')
-    neighbour_dists_path = ospath(f'{biasfmri_intermediates_path}/neighbour_vertices/adj_{subject}_{surface}_{which_neighbours}_dists.npy')
+def get_subjects_neighbour_vertices(c, subject,surface,mesh, biasfmri_intermediates_path, which_neighbours, distance_range, load_neighbours, save_neighbours,MSMAll=False):
+    """
+    For each vertex belonging to this subject, find neighbouring vertices and distances, and optionally save to file
+    Save neighbour vertex indices in verts.pkl (list (len 59412) of lists)
+    Save neighbour vertex distances in dists.pkl (list (len 59412) of lists)
+    Save the mean distance to neighbours in dists.npy (np.array of shape 59412)
+    """
+    if MSMAll:
+        MSMstring='_MSMAll'
+    else:
+        MSMstring=''
+    if which_neighbours=='distant':
+        dist_string=f'_{distance_range[0]}to{distance_range[1]}'
+    else:
+        dist_string = ''
+    neighbour_verts_path = ospath(f'{biasfmri_intermediates_path}/neighbour_vertices/adj_{subject}_{surface}{MSMstring}_{which_neighbours}{dist_string}_verts.pkl')
+    neighbour_dists_path = ospath(f'{biasfmri_intermediates_path}/neighbour_vertices/adj_{subject}_{surface}{MSMstring}_{which_neighbours}{dist_string}_dists.pkl')
+    #neighbour_dists_mean_path = ospath(f'{biasfmri_intermediates_path}/neighbour_vertices/adj_{subject}_{surface}{MSMstring}_{which_neighbours}_dists.npy')
+    if subject=='standard': 
+        load_neighbours = False
+        save_neighbours = False
     if load_neighbours:
-        print(f'Loading neighbours {subject}')
+        print(f'Loading neighbour vertices in {subject}')
         with open(neighbour_verts_path,'rb') as f:
             neighbour_vertices = pickle.load(f)
-        neighbour_distances = np.load(neighbour_dists_path)
+        with open(neighbour_dists_path,'rb') as f:
+            neighbour_distances = pickle.load(f)
+        #neighbour_distances_mean = np.load(neighbour_dists_mean_path)
     else:
-        print(f'Finding neighbours {subject}')
-        neighbour_vertices, neighbour_distances = get_neighbour_vertices(c, mesh, which_neighbours, distance_range)
+        print(f'Finding neighbour vertices in {subject}')
+        #neighbour_vertices, neighbour_distances = get_neighbour_vertices(c, mesh, which_neighbours, distance_range,MSMAll=MSMAll)
+        if which_neighbours == 'distant':
+            from get_gdistances import get_gdistances
+            print(f'{c.time()}: Get geodesic distances start')
+            d = get_gdistances(subject,surface,10,MSMAll=MSMAll) #d is a sparse matrix in compressed sparse row format
+            print(f'{c.time()}: Get vertices at distance range start')
+            neighbour_vertices, neighbour_distances = get_vertices_in_distance_range(distance_range,d)
+            nVerticesWithZeroNeighbours = np.sum(np.array([len(i) for i in neighbour_vertices])==0)
+            print(f'{nVerticesWithZeroNeighbours} vertices with 0 neighbours in distance range {distance_range}')
+        elif which_neighbours == 'local':
+            print(f'{c.time()}: Get neighbour vertices start')
+            neighbour_vertices,neighbour_distances = _get_all_neighbour_vertices(mesh,None)       
         if save_neighbours:
-            print(f'Saving neighbours {subject}')
-            #save neighbour_distances by pickling
+            print(f'Saving neighbour vertices in {subject}')
             with open(neighbour_verts_path,'wb') as f:
                 pickle.dump(neighbour_vertices,f)
-            np.save(neighbour_dists_path,neighbour_distances)
-    return neighbour_vertices, neighbour_distances
+            with open(neighbour_dists_path,'wb') as f:
+                pickle.dump(neighbour_distances,f)
+            #np.save(neighbour_dists_mean_path,neighbour_distances_mean)
+    neighbour_distances_mean = np.array([np.mean(i) for i in neighbour_distances])
+    return neighbour_vertices, neighbour_distances, neighbour_distances_mean
 
 def get_vertices_in_distance_range(distance_range,csr_matrix):
     """
@@ -235,9 +280,9 @@ def get_vertices_in_distance_range(distance_range,csr_matrix):
         drow = csr_matrix[nrow,:]
         for i in range(len(drow.indices)):
             distance = drow.data[i]
-            if (distance >= distance_range[0]) and (distance < distance_range[1]):
+            if (distance >= distance_range[0]) and (distance <= distance_range[1]):
                 vertices_at_distance[nrow].append(drow.indices[i]) 
-                distances[nrow].append(distance)
+                distances[nrow].append(distance.astype(np.float32))
     return vertices_at_distance, distances
 
 
@@ -265,43 +310,57 @@ def get_corr_with_neighbours(nearest_vertices_array,time_series,parallelize=True
     else:
         scenario = 1
 
+    nvertices=len(nearest_vertices_array)
+    corrs = [i[:] for i in nearest_vertices_array] #of same size as nearest_vertices_array. Stores correlations
+    corrs_mean = np.zeros(nvertices,dtype=np.float32)
+
     if parallelize: 
         def yield_chunks(nearest_vertices_array,nchunks):
-            nvertices = len(nearest_vertices_array)
             chunk_size = 1 + nvertices//nchunks
             for i in range(0, nvertices, chunk_size):
                 chunk_indices = range(i, min(i + chunk_size, nvertices))
                 #print(chunk_indices)
                 yield chunk_indices
         def compute_correlation(time_series,nearest_vertices_array,scenario,chunk_indices):
-            result = np.zeros(len(chunk_indices),dtype=np.float32)
+            chunked_corrs = [i[:] for i in nearest_vertices_array[slice(chunk_indices.start,chunk_indices.stop)]]
+            chunked_corrs_mean = np.zeros(len(chunk_indices),dtype=np.float32)
             for source_vertex_index,source_vertex in enumerate(chunk_indices):
                 source_vertex_time_series = time_series[:, source_vertex]
+                """
                 if scenario == 1:
                     target_vertex_time_series = time_series[:, nearest_vertices_array[source_vertex]]
                     result[source_vertex_index] = np.corrcoef(source_vertex_time_series, target_vertex_time_series)[0, 1]
+                
                 elif scenario == 2:
-                    target_vertex_time_series = time_series[:, np.array(nearest_vertices_array[source_vertex])]
-                    result[source_vertex_index] = np.mean([np.corrcoef(source_vertex_time_series, target_vertex_time_series[:, j])[0, 1] for j in range(target_vertex_time_series.shape[1])])
-            return result
-        chunked_results = Parallel(n_jobs=-1, prefer='processes')(delayed(compute_correlation)(time_series,nearest_vertices_array,scenario,chunk_indices) for chunk_indices in yield_chunks(nearest_vertices_array, 12))
-        result = np.concatenate(chunked_results)
-        return result
+                """
+                target_vertex_time_series = time_series[:, np.array(nearest_vertices_array[source_vertex])]
+                list_of_corrs = [np.corrcoef(source_vertex_time_series, target_vertex_time_series[:, j])[0, 1] for j in range(target_vertex_time_series.shape[1])]
+                chunked_corrs[source_vertex_index] = list_of_corrs
+                chunked_corrs_mean[source_vertex_index] = np.mean(list_of_corrs)
+            return chunked_corrs_mean, chunked_corrs
+        temp = Parallel(n_jobs=-1, prefer='processes')(delayed(compute_correlation)(time_series,nearest_vertices_array,scenario,chunk_indices) for chunk_indices in yield_chunks(nearest_vertices_array, 12))
+        chunked_corrs_mean, chunked_corrs = zip(*temp)
+        corrs_mean = np.concatenate(chunked_corrs_mean)
+        import itertools
+        corrs = list(itertools.chain.from_iterable(chunked_corrs))
+        return corrs_mean, corrs
 
     else:
-        nvertices=len(nearest_vertices_array)
-        result = np.zeros(nvertices,dtype=np.float32)
         for i in range(nvertices):
             if i % 10000 == 0:
                 print(f"Vertex {i} of {nvertices}")  
             source_vertex_time_series = time_series[:, i]
+            """
             if scenario == 1:
                 target_vertex_time_series = time_series[:, nearest_vertices_array[i]]
-                result[i] = np.corrcoef(source_vertex_time_series, target_vertex_time_series)[0, 1]
+                corrs_mean[i] = np.corrcoef(source_vertex_time_series, target_vertex_time_series)[0, 1]
             elif scenario == 2:
-                target_vertex_time_series = time_series[:, np.array(nearest_vertices_array[i])]
-                result[i] = np.mean([np.corrcoef(source_vertex_time_series, target_vertex_time_series[:, j])[0, 1] for j in range(target_vertex_time_series.shape[1])])
-        return result
+            """
+            target_vertex_time_series = time_series[:, np.array(nearest_vertices_array[i])]
+            temp = [np.corrcoef(source_vertex_time_series, target_vertex_time_series[:, j])[0, 1] for j in range(target_vertex_time_series.shape[1])]
+            corrs[i] = temp
+            corrs_mean[i] = np.mean(temp)
+        return corrs_mean, corrs
 
 def get_corr_with_neighbours_nifti(nifti_image, mask_image = None):
     """
@@ -387,14 +446,20 @@ def fourier_randomize(img):
     img = np.fft.irfft(fourier,axis=0)
     return img
 
-def parcel_mean(img,parc_matrix):
+def parcel_mean(img,parc_matrix,vertex_area=None):
     """
     Parcellate a 2D image (ntimepoints,nvertices) into a 2D image (ntimepoints,nparcels) by averaging over vertices in each parcel
     Parameters
     ----------
     img : 2D numpy array (ntimepoints,nvertices) or 1D array (nvertices)
-    parc_matrix : 2D numpy array (nparcels,nvertices) with 1s and 0s    
+    parc_matrix : 2D numpy array (nparcels,nvertices) with 1s and 0s   
+    vertex_area: 1D numpy array (nvertices,) or None
+        Normalize values by vertex area 
     """
+    if vertex_area is not None:
+        print('Normalizing values by vertex areas')
+        img = img / vertex_area
+
     parcel_sums = img @ parc_matrix.T #sum of all vertices in each parcel
     nvertices_sums=parc_matrix.sum(axis=1) #no. of vertices in each parcel
     if img.ndim==1:
@@ -405,7 +470,7 @@ def parcel_mean(img,parc_matrix):
  
 def subtract_parcelmean(data,parc_matrix):
     """
-    Given a data vector, calculate the subtract the mean value from each parcel. First, find the mean value for each parcel. Then, multiply by parc_matrix to get the parcel-mean value for each vertex. Then, subtract this from the data.
+    Given a data vector, calculate and subtract the parcel-mean value from each vertex. First, find the mean value for each parcel. Then, multiply by parc_matrix to get the parcel-mean value for each vertex. Then, subtract this from the data. Finally, add mean value of whole-brain to each vertex
     Parameters:
     ------------
     data: np.array, shape (nvertices,)
@@ -416,13 +481,13 @@ def subtract_parcelmean(data,parc_matrix):
     """
     parc_means = parcel_mean(np.reshape(data,(1,-1)),parc_matrix)
     parc_means_at_vertices = parc_means @ parc_matrix
-    return data - parc_means_at_vertices
+    return (data - parc_means_at_vertices)
 
 
 from get_gdistances import get_gdistances
 from Connectome_Spatial_Smoothing import CSS as css
-def get_smoothing_kernel(subject,surface,fwhm_for_gdist,smooth_noise_fwhm):
-        gdistances = get_gdistances(subject,surface,fwhm_for_gdist,epsilon=0.01,load_from_cache=True,save_to_cache=True)
+def get_smoothing_kernel(subject,surface,fwhm_for_gdist,smooth_noise_fwhm,MSMAll=False,mesh_template='fsLR32k'):
+        gdistances = get_gdistances(subject,surface,fwhm_for_gdist,epsilon=0.01,load_from_cache=True,save_to_cache=True,MSMAll=MSMAll,mesh_template=mesh_template)
         skernel = css._local_distances_to_smoothing_coefficients(gdistances, css._fwhm2sigma(smooth_noise_fwhm))
         return skernel
 def smooth(x,skernel):
@@ -460,14 +525,16 @@ def find_edges_left(edges, ngrayl):
 def get_border_vertices(ngrayl,edges_left,labels):
         
     #Get border points on left hemisphere (points straddling a parcel boundary)
-    border = np.zeros(ngrayl)
-    for i in range(edges_left.shape[0]):
-        first_vert = edges_left[i,0]
-        second_vert = edges_left[i,1]
-        if (labels[first_vert]!=labels[second_vert]):
-            border[first_vert]=1
-            border[second_vert]=1
-
+    n_repeats = labels.shape[1]
+    border = np.zeros((ngrayl,n_repeats))
+    for j in range(n_repeats):
+        for i in range(edges_left.shape[0]):
+            first_vert = edges_left[i,0]
+            second_vert = edges_left[i,1]
+            if (labels[first_vert,j]!=labels[second_vert,j]):
+                border[first_vert,j]=1
+                border[second_vert,j]=1
+    """
     #Make a map of 'distance' from the border, for each vertex. Initialize by setting vertices adjacent to the border (n=1) as the reference points. In each iteration, for any vertices which are adjacent to any reference points and still at value 0, set their value to (n+1). Iterate for n = 1,2,3,4
     n=0
     n_max = 0
@@ -483,7 +550,8 @@ def get_border_vertices(ngrayl,edges_left,labels):
                 border[first_vert] = n+1
     border_bool = border>0 
     border[border==0] = n_max+2
-    return border,border_bool
+    """
+    return border
 
 def get_cohen_d(x,y):
     #correct if the population S.D. is expected to be equal for the two groups
@@ -492,3 +560,92 @@ def get_cohen_d(x,y):
     ny = len(y)
     dof = nx + ny - 2
     return (mean(x) - mean(y)) / sqrt(((nx-1)*std(x, ddof=1) ** 2 + (ny-1)*std(y, ddof=1) ** 2) / dof)
+
+
+def corr_between_vertex_and_parcelmean(img, img_parc, parc_labels):
+    """
+    Given time series for all vertices, and parcel-mean time series, compute the correlation between each vertex and its parcel's mean
+    Parameters:
+    ----------
+    img: np.array (ntimepoints,nvertices)
+        Time series for all vertices
+    img_parc: np.array (ntimepoints,nparcels)
+        Parcel-mean time series
+    parc_labels: np.array (nvertices)
+        Parcel labels for each vertex
+    Returns:
+    -------
+    np.array (nvertices,)
+        Correlation between each vertex and its parcel's mean
+    """
+    nvertices = img.shape[1]
+    corrs = np.zeros(nvertices)
+    for i in range(nvertices):
+        corrs[i] = np.corrcoef(img[:,i],img_parc[:,parc_labels[i]])[0,1]
+    return corrs
+
+def sum_each_quantile(x,y,n):
+    """
+    x and y are vectors of the same length. Divide x into n quantiles. For each quantile, find the mean x value, and sum the corresponding y values. Return the mean x values and summed y values for each quantile
+    """
+    x_sorted = np.sort(x)
+    y_sorted = y[np.argsort(x)]
+    x_quantiles = np.array_split(x_sorted,n)
+    y_quantiles = np.array_split(y_sorted,n)
+    x_means = [np.mean(q) for q in x_quantiles]
+    y_sums = [np.sum(q) for q in y_quantiles]
+    return x_means,y_sums
+
+def do_spin_test(x,mask,n_perm):
+    from neuromaps import stats, nulls
+    print(f"Do spin test")
+    x2=fillnongray(x,mask)
+    x2_nulls = nulls.alexander_bloch(x2,atlas='fsLR',density='32k',n_perm=n_perm,seed=0)
+    return x2_nulls[mask]
+
+def corr_with_nulls(x,y,mask,method='spin_test',n_perm=100):
+    """
+    Put zeros in the non-gray vertices of brain maps x and y, then correlate them using a null method
+    Parameters:
+    ----------
+    x: np.array, shape (59412,)
+        Brain map in fsLR 32k space without medial wall vertices (i.e. 59,412 vertices)
+    y: np.array, shape (59412,)
+    method: str, 'spin_test' or 'eigenstrapping'
+    n_perm: int, number of permutations for the null method
+    Returns:
+    ----------
+    corr: float, correlation between x and y
+    pval: float, p-value of the correlation
+    """
+
+    if method=='no_null':
+        from scipy.stats import pearsonr
+        corr,pval = pearsonr(x,y)
+    else:
+        from neuromaps import stats, nulls 
+        if method=='spin_test':
+            x_nulls = do_spin_test(x,mask,n_perm)
+        corr,pval = stats.compare_images(x,y,nulls=x_nulls,metric='pearsonr')
+    return corr,pval
+
+def ttest_ind_with_nulldata_given(groups,observed_data,null_data):
+    """
+    Vector "group" which contains group memberships of each individual, and another vector "data" which contains the values for each individual. I wish to compare the mean value in "data" across the two different groups. I wish to do the test non-parametrically. To this end, I have generated 100 randomized versions of "data" where the values are randomized across all individuals. This null dataset is given in variable "data_null", and it is a 2D matrix (number of individuals, number of surrogates). I wish do conduct a t-test for group differences in "data", and compare the t-statistic to the distribution of t-statistics when I do the same thing with "data_null", and hence derive a p-value for the deviation of the observed statistic from the expected distribution from the null
+    """
+    from scipy.stats import ttest_ind
+    group_names = np.unique(groups)
+    def calculate_t_statistic(data, groups):
+        group_A = data[groups == group_names[0]]
+        group_B = data[groups == group_names[1]]
+        tstat, p_val = ttest_ind(group_A, group_B, equal_var=True)
+        return tstat
+    observed_t_stat = calculate_t_statistic(observed_data,groups)
+    n_perm = null_data.shape[1]
+    null_t_stats = np.array([calculate_t_statistic(null_data[:,i],groups) for i in range(n_perm)])
+    percentile = (np.sum(null_t_stats <= observed_t_stat) / len(null_t_stats))
+    p_value = 2 * min(percentile, 1 - percentile)
+    if p_value==0: 
+        p_value = 1/n_perm
+    cohen_d = get_cohen_d(observed_data[groups==group_names[0]],observed_data[groups==group_names[1]])
+    return cohen_d, observed_t_stat, p_value

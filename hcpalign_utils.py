@@ -1018,7 +1018,7 @@ def get_triangle_areas(mesh):
 
 def get_vertex_areas(mesh):
     """
-    Given a surface mesh containing 64984 vertices, and 129960 triangles/faces, in 3D space. 'mesh' is a list containing two arrays, ['vertices','faces']. The mesh is described by a numpy array called 'vertices' which has shape (64984,3), and an array 'faces' which has shape (129960,3). Each row of 'vertices' describes the x, y and z coordinates of a single vertex. Each row of 'faces' corresponds to a triangle/face, and lists the vertex indices of the three vertices making up that triangle/face. Calculate the area corresponding to each vertex
+    Given a surface mesh containing 64984 vertices, and 129960 triangles/faces, in 3D space. 'mesh' is a list containing two arrays, ['vertices','faces']. The mesh is described by a numpy array called 'vertices' which has shape (64984,3), and an array 'faces' which has shape (129960,3). Each row of 'vertices' describes the x, y and z coordinates of a single vertex. Each row of 'faces' corresponds to a triangle/face, and lists the vertex indices of the three vertices making up that triangle/face. Calculate the area corresponding to each vertex. For each face, give 1/3 of its area to each of its 3 vertices
     """
     vertices=mesh[0]
     faces=mesh[1]
@@ -1028,7 +1028,9 @@ def get_vertex_areas(mesh):
     # Sum the areas of triangles for each vertex
     for i, face in enumerate(faces):
         for vertex in face:
-            vertex_areas[vertex] += triangle_areas[i]
+            vertex_areas[vertex] += triangle_areas[i]/3
+
+    """
     # Count the number of triangles each vertex is part of
     vertex_counts = np.zeros(len(vertices))
     for face in faces:
@@ -1036,7 +1038,12 @@ def get_vertex_areas(mesh):
             vertex_counts[vertex] += 1
     # Calculate the mean area for each vertex
     mean_vertex_areas = vertex_areas / vertex_counts
-    return cortex_64kto59k(mean_vertex_areas)
+    """
+    mean_vertex_areas = vertex_areas
+    if len(mean_vertex_areas) > 59412:
+        return cortex_64kto59k(mean_vertex_areas)
+    else:
+        return mean_vertex_areas
 
 def diag0(X):
     X = np.copy(X)

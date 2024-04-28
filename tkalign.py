@@ -147,8 +147,9 @@ if __name__=='__main__':
                 if parcellation_string[0]=='R': #searchlight
                     fa_S300, _ = tutils.new_func(c,subs_inds, alignfile_S300, aligner2sparsearray, aligner_descale, aligner_negatives, sorter_S300, slices_S300, None, groups)
 
-            """
+            
             #TRY THIS
+            """
             r0 = fa['test'][0].fit_[0].R
             r0t = tutils.randomise_but_preserve_row_col_sums(r0)
             print(np.corrcoef(r0.ravel(),r0t.ravel())[0,1])
@@ -404,7 +405,7 @@ if __name__=='__main__':
 
     load_file=False
     save_file=False  
-    to_plot=False
+    to_plot=True
     plot_type='open_in_browser' #save_as_html
 
     if load_file:
@@ -415,12 +416,12 @@ if __name__=='__main__':
         save_file=False
 
     else:
-        nblocks=50 #how many (parcel x parcel) blocks to examine
+        nblocks=20 #how many (parcel x parcel) blocks to examine
         block_choice='largest' #'largest', 'fromsourcevertex', 'all','few_from_each_vertex'
         howtoalign = 'RDRT' #'RDRT','RD','RD+','RT','RT+'     
         
         pre_hrc_fwhm=3 #smoothing kernel (mm) for high-res connectomes. Default 3
-        post_hrc_fwhm=0 #smoothing kernel after alignment. Default 3
+        post_hrc_fwhm=3 #smoothing kernel after alignment. Default 3
 
         tckfile = tutils.get_tck_file()
         #tckfile = 'tracks_5M_1M_end.tck'
@@ -435,13 +436,16 @@ if __name__=='__main__':
         alignfiles = [alignfile_pre] + alignfiles
         """
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to3_G0ffrr_TempScal_gam0.2'] #DESKTOP
-        alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to3_RG0ffrr_TempScal_gam0.2'] #DESKTOP R
+        #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub0to3_RG0ffrr_TempScal_gam0.2'] #DESKTOP R
         #alignfiles = ['Amovf0t0_R5_Tmovf0t0sub0to2_RG0ffrr_TempScal_gam0.3'] #DESKTOP R searchlight
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub30to40_G0ffrr_TempScal_gam0.2'] #MOVIE
         #alignfiles = ['Amovf0123t0_S300_Tmovf0123t0sub20to30_RG0ffrr_TempScal_gam0.3'] #MOVIE R
         #alignfiles = ['Aresfcf0123t0S1000t_S300_Tresfcf0123t0S1000tsub20to30_RG0ffrr_TempScal_gam0.3'] #REST R
         #alignfiles = ['Amovf0123t0_R10_Tmovf0123t0sub20to30_RG0ffrr_TempScal_gam0.3'] #MOVIE R searchlight
 
+        alignfiles = ['Amovf0t0_S300_Tmovf0t0sub0to5_RG0ffrr_TempScal_'] #bad for some reason
+        #alignfiles = ['Amovf0t3_S300_Tmovf0t3sub5to10_RG0ffrr_TempScal_gam0.2'] 
+        alignfiles = ['Amovf0t0_S300_Tmovf0t0sub5to10_RG0ffrr_TempScal_gam0.2']
     
     for alignfile in alignfiles:
 
@@ -455,9 +459,9 @@ if __name__=='__main__':
         else: 
             align_template_to_imgs=False
         subs_blocks_range = range(0,10) #subjects to use to determine blocks with most streamlines, range(10,30)
-        for subs_test_range in [range(3,10)]: #range(20,30)
-            #temp = [i for i in subs_blocks_range if i not in subs_test_range]
-            temp = [i for i in range(0,3)]
+        for subs_test_range in [range(0,5)]: #range(20,30)
+            temp = [i for i in subs_blocks_range if i not in subs_test_range]
+            #temp = [i for i in range(0,5)]
             if load_file:
                 assert(subs_test_range_start==subs_test_range.start and subs_test_range_end==subs_test_range.stop)
             if align_template_to_imgs: #that template_subs are consistent between the aligner and this script
@@ -466,9 +470,10 @@ if __name__=='__main__':
             print(f'{c.time()}: Getting data start', end=", ")
             sorter, unsorter, slices, smoother_pre, smoother_post, figures_subfolder, p, c, subs, align_labels, align_parc_matrix, nparcs, blocks, hr, fa, a, an, arn = func(subs_inds,nblocks,alignfile,howtoalign,block_choice,save_file,load_file,to_plot,plot_type,pre_hrc_fwhm,post_hrc_fwhm,MSMAll, tckfile=tckfile, align_template_to_imgs=align_template_to_imgs)
 
+            assert(0)
 
             ### DOOMSDAY TESTING ###
-
+            
             norm = lambda x: hutils.subtract_parcelmean(x,align_labels)
             from tkalign_utils import ident_plot
 
@@ -486,6 +491,7 @@ if __name__=='__main__':
                 hr_strengths = hr_strengths[0:max_sub]
                 rowsums = rowsums[0:max_sub]
 
+            assert(0)
 
             import getmesh_utils
             meshes = [getmesh_utils.get_verts_and_triangles(subject,'white') for subject in subjects]
@@ -532,9 +538,9 @@ if __name__=='__main__':
             corrs = np.diagonal(cc).T #corrs bw structdata and funcdata for each subject (same subject for both) and parcel
             corrsm = np.mean(corrs,axis=0)
             cci=tutils.identifiability(cc)
+            
 
-
-
+        '''
         for mesh_sub in [0,1]:
             p.mesh = meshes[mesh_sub]
             p.plot(sulcs[0],cmap='bwr')
@@ -587,7 +593,6 @@ if __name__=='__main__':
                     i+=1
                     print(f"i={i}")
 
-
-            
+        '''
 
 

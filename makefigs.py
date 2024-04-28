@@ -1,31 +1,12 @@
 """
 Script to make simple figures from data
 Can use conda env nilearn
+
+Use for figures in AlignmentAnatFunc paper
 """
 
 
-'''
-"""
-Generates random data with 10 features, and 100 samples. Then, it replaces the last 3 features with copies of the first feature. Then do a PCA on this data. Print the first two principal components.
-"""
-import numpy as np
-from sklearn.decomposition import PCA
-X = np.random.randn(100,10)
-X[:,7:10] = X[:,0:1]
-pca = PCA(n_components=2)
-pca.fit(X)
-print(pca.components_)
-
-import matplotlib.pyplot as plt
-plt.plot(pca.components_[0],label='PC1')
-#plt.imshow(X)
-
-plt.show(block=False)
-assert(0)
-'''
-
-
-#Generate example figure for the problem with in-sample templates
+#Generate example figure for the problem with in-sample templates. Also tests DOOMSDAY
 '''
 import matplotlib.pyplot as plt
 from fmralign.alignment_methods import scaled_procrustes
@@ -44,43 +25,139 @@ def plot_time_series(array,title=''):
     fig.suptitle(title)
     fig.tight_layout()
 
-nsamples = 400 #default 6
-nvertices = 100 #default 3
-nothers = 5 #default 1
-x = np.random.randn(nsamples,nvertices)
+nsamples = 1000
+nvertices_covarying = 200  #number of covarying vertices. Needs to be over 200
+nvertices_independent = 200 #number of independent vertices. Any number okay
+nvertices = nvertices_independent + nvertices_covarying
+ntemplateimages = 1 #how many images in template
+#x = np.random.randn(nsamples,nvertices)
 
+#Generate template images
+imgs_template = [np.random.randn(nsamples,nvertices) for i in range(ntemplateimages)] 
+mean_imgs_template = np.stack(imgs_template).mean(axis=0)
 
-n = 50
-cov = np.random.random((nvertices-n,nvertices-n))
-cov = (cov/2) +0.5
+#Generate correlated vertex time series
+cov = np.random.random((nvertices_covarying,nvertices_covarying))
+cov = (cov+40)/41 #covariances 0.8 - 1
 cov = (cov+cov.T)/2
 np.fill_diagonal(cov,1)
-x = np.random.multivariate_normal(np.zeros(nvertices-n),cov,nsamples)
-if n>0:
-    x2 = np.random.randn(nsamples,n)
-    x = np.concatenate((x,x2),axis=1)
+x_correlated = np.random.multivariate_normal(np.zeros(nvertices_covarying),cov,nsamples)
 
-imgs_template = [np.random.randn(nsamples,nvertices) for i in range(nothers)]
+#Generate independent vertex time series
+x_independent = np.random.randn(nsamples,nvertices_independent)
 
+#Combine the two
+x = np.concatenate((x_correlated,x_independent),axis=1) 
+
+#Procrustes alignment with gamma regularization
 gamma = 0.3
-align_template_to_imgs = False
-if align_template_to_imgs:
-    source = np.stack(imgs_template).mean(axis=0)
-    target = x*(1-gamma) + source*gamma
+align_template_to_imgs = True #align from template to image (True) or image to template (False). Default True
+add_source_to_target = True #gamma regularization adds some of the source image to the target image (True), or vice versa (False). Default True
+
+if align_template_to_imgs: #align from the mean of template images
+    source = mean_imgs_template
+    target = x
 else:
     source = x
-    target = [x] + imgs_template
-    target = np.stack(target).mean(axis=0)
+    target = mean_imgs_template
+if add_source_to_target:
+    target = target*(1-gamma) + source*gamma
+else: #add target to source
+    source = source*(1-gamma) + target*gamma
+
 
 R, sc = scaled_procrustes(source,target)
-'''
+absum0 = np.sum(np.abs(R),axis=0)
+absum1 = np.sum(np.abs(R),axis=1)
 
+def diag0(array):
+    """
+    Given a 2D array, set diagonal to zero
+    """
+    copy = array.copy()
+    np.fill_diagonal(copy,0)
+    return copy
+
+def symmetry(array):
+    """
+    Evaluate symmetry of a square array after setting diagonal to zeros
+    +1: symmetric
+    -1: antisymmetric
+    0: neither
+    """
+    array = diag0(array)
+    Asym = 0.5*(array+array.T)
+    Aanti = 0.5*(array-array.T)
+    norm = lambda x: np.linalg.norm(x)
+    return (norm(Asym)-norm(Aanti))/(norm(Asym)+norm(Aanti))
+
+R_correlated = R[0:nvertices_covarying,0:nvertices_covarying]
+R_independent = R[nvertices_covarying:,nvertices_covarying:]
+sym_R = symmetry(R)
+sym_R_correlated = symmetry(R_correlated)
+sym_R_independent = symmetry(R_independent)
+print(f'Symmetry of R: {sym_R:.3f}')
+print(f'Symmetry of R_correlated: {sym_R_correlated:.3f}')
+print(f'Symmetry of R_independent: {sym_R_independent:.3f}')
+
+upperv_correlated = R_correlated[np.triu_indices(nvertices_covarying,1)]
+lowerv_correlated = R_correlated.T[np.triu_indices(nvertices_covarying,1)]
+upperv_independent = R_independent[np.triu_indices(nvertices_independent,1)]
+lowerv_independent = R_independent.T[np.triu_indices(nvertices_independent,1)]
+
+
+fig,axs=plt.subplots(3,5,figsize=(15,7))
+axs = axs.flatten()
+i=0
+cax=axs[i].imshow(x,aspect='auto')
+axs[i].set_title('x')
+plt.colorbar(cax,ax=axs[i])
+i+=1
+cax=axs[i].imshow(mean_imgs_template,aspect='auto')
+axs[i].set_title('mean_imgs_template')
+plt.colorbar(cax,ax=axs[i])
+i+=1
+cax=axs[i].imshow(diag0(R),aspect='auto')
+axs[i].set_title('R')
+plt.colorbar(cax,ax=axs[i])
+i+=1
+cax=axs[i].imshow(np.abs(diag0(R)),aspect='auto')
+axs[i].set_title('abs(R)')
+plt.colorbar(cax,ax=axs[i])
+i+=1
+cax=axs[i].imshow(diag0(np.corrcoef(source.T)),aspect='auto')
+axs[i].set_title('Corrs between source verts ')
+plt.colorbar(cax,ax=axs[i])
+i+=1
+cax=axs[i].imshow(diag0(np.corrcoef(target.T)),aspect='auto')
+axs[i].set_title('Corrs between target verts')
+plt.colorbar(cax,ax=axs[i])
+i+=1
+axs[i].plot(absum0)
+axs[i].set_title('absum0')
+i+=1
+axs[i].plot(absum1)
+axs[i].set_title('absum1')
+i+=1
+axs[i].plot(np.diag(R))
+axs[i].set_title('Diagonal of R')
+i+=1
+axs[i].scatter(upperv_correlated,lowerv_correlated,1,alpha=0.1,color='k')
+axs[i].set_title('R_correlated upper vs lower')
+i+=1
+axs[i].scatter(upperv_independent,lowerv_independent,1,alpha=0.1,color='k')
+axs[i].set_title('R_independent upper vs lower')
+i+=1
+
+fig.tight_layout()
+plt.show(block=False)
+assert(0)
 
 """
 plot_time_series(source,'Source')
-plot_time_series(others[0],'Target')
+plot_time_series(target,'Target')
 plot_time_series(target,'Target=Mean(Source,Other)')
-
+"""
 
 fig,axs=plt.subplots(source.shape[1],figsize=(4,8))
 for i in range(source.shape[1]):
@@ -101,7 +178,7 @@ ax.set_xlabel('Source vertex')
 ax.set_ylabel('Target vertex')
 ax.set_axis_off()
 fig.tight_layout()
-"""
+'''
 
 #This section tests whether vertices with high correlation with their neighbours, are related to those with high rowsum
 """
@@ -293,8 +370,7 @@ dictionary = {'In-sample\ntemplate':[0.94,0.94,0.89,0.92,0.86,],\
 print('\nFigure 3: align subs 1-10 to template from 1-10 (in), 11-20 (out) or 21-30 (out)')
 plot_figure3(dictionary)
 
-plt.show()
-assert(0)
+plt.show(block=False)
 
 """
 #Figure 3 with LOO / 10-fold
@@ -349,6 +425,15 @@ print(f'sulc_comb_vs_sulc_prom: T({sulc_comb_vs_sulc_prom.df})={sulc_comb_vs_sul
 
 #### Figure 6A. Parameter optimization. Subs 0-20 with subs 20-40 as template, then 6B in test cohort ###
 
+def print_ttest(title,x,y):
+    #Given vectors x and y, do a paired t-test and print the results
+    statistics = stats.ttest_rel(x,y)
+    print(f'{title}: T({statistics.df})={statistics[0]:.3f} p={statistics[1]:.3f}')
+
+def print_wilcoxon(title,x,y):
+    statistics = stats.wilcoxon(x, y, zero_method='wilcox', method='approx')
+    print(f'{title}: W({len(x)-1})={statistics[0]:.3f} p={statistics[1]:.3f}')
+
 def plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma):
 
     #Subs 40-60 and 60-80 with subs 20-40 as template, with gamma optimised for subs 0-20. m&s. Procrustes template
@@ -363,15 +448,18 @@ def plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma):
     #plot(dictionary,label_name,data_name,title='GPA template Procrustes')
     plot_paired(dictionary,figsize=(7,3.5),x_jitter=0,y_jitter=0.05,xlabel=data_name,title=title,fontsize=14)
 
-    sulc_comb_vs_sulc_func=stats.ttest_rel(sulc_comb,sulc_func)
-    sulc_comb_vs_sulc=stats.ttest_rel(sulc_comb,sulc)
-    sulc_comb_vs_all=stats.ttest_rel(sulc_comb,all)
-    all_comb_vs_all=stats.ttest_rel(all_comb,all)
-    print(f'\nFig 6 {title}')
-    print(f'sulc_comb_vs_sulc_func: T({sulc_comb_vs_sulc_func.df})={sulc_comb_vs_sulc_func[0]:.3f} p={sulc_comb_vs_sulc_func[1]:.3f}')
-    print(f'sulc_comb_vs_sulc: T({sulc_comb_vs_sulc.df})={sulc_comb_vs_sulc[0]:.3f} p={sulc_comb_vs_sulc[1]:.3f}')
-    print(f'sulc_comb_vs_all: T({sulc_comb_vs_all.df})={sulc_comb_vs_all[0]:.3f} p={sulc_comb_vs_all[1]:.3f}')
-    print(f'all_comb_vs_all: T({all_comb_vs_all.df})={all_comb_vs_all[0]:.3f} p={all_comb_vs_all[1]:.3f}')
+    print(f'Fig 6 {title}')
+    print_ttest('sulc_comb_vs_sulc_func',sulc_comb,sulc_func)
+    print_ttest('sulc_comb_vs_sulc',sulc_comb,sulc)
+    print_ttest('sulc_comb_vs_all',sulc_comb,all)
+    print_ttest('all_comb_vs_all',all_comb,all)
+
+    print_wilcoxon('sulc_comb_vs_sulc_func',sulc_comb,sulc_func)
+    print_wilcoxon('sulc_comb_vs_sulc',sulc_comb,sulc)
+    print_wilcoxon('sulc_comb_vs_all',sulc_comb,all)
+    print_wilcoxon('all_comb_vs_all',all_comb,all)
+    print('')
+
 
 #Anatomical (MSMSUlc or MSMAll only) in test cohort
 sulc=[0.792,0.903,0.889,0.861,0.806,]+[0.889,0.861,0.903,0.875,0.875,]+[0.833,0.875,0.806,0.875,0.722,] 

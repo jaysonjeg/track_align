@@ -27,16 +27,24 @@ Input data is single subject's resting state fMRI data as a nifti file
 First we get that subject's aparc+aseg.nii.gz and find the 'cutoff value' to convert this segmentation map to a boolean mask of gray matter
 Then we get the neighbourhood correlation map for the fMRI data, masked by the gray matter mask, and save it for visualization
 """
-subject = '100610'
-directions = ['LR','RL']
-runs = ['1']
-corrs_filename = f"corrs_{subject}_{''.join(directions)+''.join(runs)}"
+
+rests=['REST1_LR','REST1_RL','REST2_LR','REST2_RL']
+subject = '100610' #100610, 102311
+
+runs = [0]
+
+#directions = ['LR','RL']
+#runs = ['1']
+#corrs_filename = f"corrs_{subject}_{''.join(directions)+''.join(runs)}"
+corrs_filename = f"corrs_{subject}_runs{''.join([str(i) for i in runs])}"
 corrs_volume_path = ospath(f'{project_path}\\intermediates\\restfmri_volume_corr\\{corrs_filename}.nii.gz')
 corrs_vol2surf_folder = ospath(f'{project_path}/intermediates/restfmri_volume_corr_surf')
 
 make_corrs_volume = False
 if make_corrs_volume:
-    nifti_filepaths = [ospath(f'{hcp_folder}/{subject}/MNINonLinear/Results/rfMRI_REST{run}_{direction}/rfMRI_REST{run}_{direction}_hp2000_clean.nii.gz') for direction in directions for run in runs]
+    #nifti_filepaths = [ospath(f'{hcp_folder}/{subject}/MNINonLinear/Results/rfMRI_REST{run}_{direction}/rfMRI_REST{run}_{direction}_hp2000_clean.nii.gz') for direction in directions for run in runs]
+    nifti_filepaths = [ospath(f'{hcp_folder}/{subject}/MNINonLinear/Results/rfMRI_{rests[run]}/rfMRI_{rests[run]}_hp2000_clean.nii.gz') for run in runs]
+
     print(f'{c.time()}: Load images')
     nifti_images = [nib.load(filepath) for filepath in nifti_filepaths]
     #now concatenate these nifti images
@@ -47,10 +55,11 @@ if make_corrs_volume:
     from nilearn import image
     mask_image_resampled = image.resample_img(mask_image,nifti_image.affine)
 
-    view_different_cutoffs = False
+    view_different_cutoffs = True
     if view_different_cutoffs:
         view = plotting.view_img(mask_image_resampled)
-        view.open_in_browser()
+        view.open_in_browser() 
+
         for cutoff in [20,50,100,200,500]:
             mask_image_resampled_bool = image.math_img(f"img>{cutoff}",img=mask_image_resampled)
             view = plotting.view_img(mask_image_resampled_bool)
@@ -113,12 +122,22 @@ if use_corrs_vol2surf:
     valid = ~np.isnan(im) #The other nan values are those without a close-enough volume voxel
 
     ### PLOTTING
+    from scipy.stats import pearsonr
     sulc = butils.get_sulc(subject)
-    fig,ax=plt.subplots()
-    ax.scatter(sulc[valid],im[valid],1,alpha=0.1,color='black')
+    fig,ax=plt.subplots(figsize=(4,4))
+    ax.scatter(sulc[mask][valid],im[valid],1,alpha=0.1,color='k')
     ax.set_xlabel('Sulcal depth')
-    ax.set_ylabel('Local correlation')
-    ax.set_title(f'Correlation is {np.corrcoef(sulc[valid],im[valid])[0,1]:.3f}')
+    ax.set_ylabel('Correlation with neighbours')
+
+
+    corr,pval=butils.corr_with_nulls(sulc[mask],im,mask,method='spin_test',n_perm=100)
+    ax.set_title(f'Correlation is {corr:.3f}, p-value is {pval:.3f}')
+
+    #statistics = pearsonr(sulc[valid],im[valid])
+    #ax.set_title(f'Correlation is {statistics.statistic:.3f}, p-value is {statistics.pvalue:.3f}')
+    fig.tight_layout()
+
+    #print(f'With parcel-mean subtracted, correlation is {np.corrcoef(butils.subtract_parcelmean(sulc[valid],parc_matrix[:,valid]),butils.subtract_parcelmean(im[valid],parc_matrix[:,valid]))[0,1]:.3f}')
 
     im[np.isnan(im)] = np.nanmean(im) #for surface plot, replace nans with mean value
     p.plot(im,cmap='inferno')
