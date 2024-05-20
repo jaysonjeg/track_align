@@ -262,9 +262,9 @@ def plot(dictionary,label_name='group',data_name='data',title=None):
         ax.set_title(title)
     fig.tight_layout()
 
-def plot_paired(dictionary,x_jitter=0,y_jitter=0.05,figsize=(8,5),xlabel='',ylabel='',title='',fontsize=14,markersize=7):
+def plot_paired(dictionary,x_jitter=0,y_jitter=0.05,figsize=(8,5),xlabel='',ylabel='',title='',fontsize=14,markersize=7,connect=None):
     """
-    Given a dictionary where each key is a condition, and the values are paired, plot a paired plot of the data. The vertical axis is the condition, and the horizontal axis is the data. The data is plotted as a strip plot, with dotted lines joining the pairs of data. The data is jittered in the x and y directions to avoid overplotting. Add a asterisk at the mean of each condition.
+    Given a dictionary where each key is a condition, and the values are paired, plot a paired plot of the data. The vertical axis is the condition, and the horizontal axis is the data. The data is plotted as a strip plot, with dotted lines joining the pairs of data. The data is jittered in the x and y directions to avoid overplotting. Add a asterisk at the mean of each condition. If connect is not None, it is a list of integers that specify which conditions to connect with a line, e.g. [0,2,4]
     """
     import pandas as pd
     sns.set_context('talk')
@@ -282,7 +282,11 @@ def plot_paired(dictionary,x_jitter=0,y_jitter=0.05,figsize=(8,5),xlabel='',ylab
     ax.set_yticks(range(len(df.columns)))
     ax.set_yticklabels(df.columns)
     ax.set_ylim(-0.5,len(df.columns)-0.5)
-    for col_number in range(len(df.columns)-1):
+
+    if connect is None:
+        connect = range(len(df.columns)-1)
+
+    for col_number in connect:
         column0 = df.columns[col_number]
         column1 = df.columns[col_number+1]
         #Add grey lines connecting paired data
@@ -293,7 +297,8 @@ def plot_paired(dictionary,x_jitter=0,y_jitter=0.05,figsize=(8,5),xlabel='',ylab
     ax.set_ylabel(ylabel)  
     ax.set_title(title)
     #add asterisk at the mean of each condition, with same color as the condition
-    for i in range(len(df.columns)):
+
+    for i in list(range(len(df.columns))):
         color = ax.get_children()[i].get_color()
         #color = mpl.colors.to_rgba(color, 1) #to make it darker
         #color2 = [i*1.3 for i in color]
@@ -325,6 +330,23 @@ def lineplot(xdata,ydata,xlabel=None,ylabel=None,title=None,ylim=None,xlim=None,
             item.set_fontsize(fontsize)
     return ax
 
+#rev01fig04: Plot ISC spatial maps from file
+"""
+import hcpalign_utils as hutils
+from hcpalign_utils import ospath
+p=hutils.surfplot('',plot_type='open_in_browser')
+filenames=['20240428_212410','20240428_212357','20240428_223912','20240428_222854','20240428_223932','20240428_222934']
+titles=['sulc','all','sulc_func','sulc_comb','all_func','all_comb']
+values = np.zeros((len(filenames),59412))
+for i,filename in enumerate(filenames):
+    plot_dir=ospath(f'{hutils.results_path}/figures/hcpalign/{filename}')
+    values[i,:] = np.load(ospath(f'{hutils.results_path}/figures/hcpalign/{filename}/ISCs_vertexmeans.npy')) 
+values[values<0] = 0
+for i in [1,-1]: #range(values.shape[0]):
+    p.plot(values[i,:],'ISCs_vertexmeans',vmax=values.max())
+p.plot(values[-1,:]-values[1,:],'all_comb - all',vmax=0.1)
+assert(0)
+"""
 gammas = [0,0.02,0.05,0.1,0.2,0.5,1]
 ylim=[0.8,1.0]
 
@@ -349,10 +371,34 @@ lineplot([0,.003,.01,.03,.1,.3,1,3,10],[.81,.8,.8,.8,.84,.9,.87,.86,.84],'Parame
 ### With M&S ###
 
 #Stats for Supp methods 2.2. Appending parcel-specific means
-#For Procrustes method
-x = [0.83,0.92,0.78,0.78,0.75,] #without means
-y =  [0.83,0.92,0.81,0.81,0.81,] #with means
-t,p = stats.ttest_rel(y,x,alternative='greater')
+
+x =  [0.833,0.917,0.806,0.806,0.806,] #with means
+y = [0.833,0.917,0.778,0.778,0.750,] #without means
+t,p = stats.ttest_rel(x,y,alternative='greater')
+print(f'Procrustes N=10: With parcel-means: {np.mean(x):.3f} Without parcel-means: {np.mean(y):.3f}, T(4)={t:.3f}, p={p:.3f}')
+
+x =   [0.861,0.847,0.806,0.903,0.861,] #with means
+y = [0.861,0.792,0.792,0.875,0.833,] #without means
+t,p = stats.ttest_rel(x,y,alternative='greater')
+print(f'Procrustes N=20: With parcel-means: {np.mean(x):.3f} Without parcel-means: {np.mean(y):.3f}, T(4)={t:.3f}, p={p:.3f}')
+
+x =   [0.861,0.910,0.868,0.854,0.868,] #with means
+y = [0.826,0.896,0.840,0.833,0.833,] #without means
+t,p = stats.ttest_rel(x,y,alternative='greater')
+print(f'Procrustes N=40: With parcel-means: {np.mean(x):.3f} Without parcel-means: {np.mean(y):.3f}, T(4)={t:.3f}, p={p:.3f}')
+
+x =   [0.806,0.861,0.833,0.889,0.806,] #with means
+y = [0.833,0.861,0.833,0.833,0.694,] #without means
+t,p = stats.ttest_rel(x,y,alternative='greater')
+print(f'PCA Ridge N=10: With parcel-means: {np.mean(x):.3f} Without parcel-means: {np.mean(y):.3f}, T(4)={t:.3f}, p={p:.3f}')
+
+x =   [0.875,0.889,0.917,0.944,0.833,] #with means
+y = [0.861,0.861,0.889,0.889,0.792,] #without means
+t,p = stats.ttest_rel(x,y,alternative='greater')
+print(f'PCA Ridge N=20: With parcel-means: {np.mean(x):.3f} Without parcel-means: {np.mean(y):.3f}, T(4)={t:.3f}, p={p:.3f}')
+
+
+assert(0)
 
 #Figure 3. Out-of-sample vs in-sample template
 def plot_figure3(dictionary):
@@ -389,6 +435,41 @@ dictionary = {'In-sample\ntemplate':[0.833,0.861,0.889,0.944,0.722,0.917,0.833,0
 print('\nSupp Figure 1: align subs 80-100 to template from 80-100 (in), 100-120 (out) or 120-140 (out)')
 plot_figure3(dictionary)
 
+#rev01fig02 = Supp Figure 2: Figure 3 with MSMAll
+"""
+dictionary = {'In-sample\ntemplate':[0.944,0.889,0.833,0.944,0.861,],\
+              'Out-of-sample\ntemplate A':[0.833,0.889,0.750,0.861,0.778,],\
+                'Out-of-sample\ntemplate B':[0.833,0.889,0.778,0.833,0.750,],\
+                'MSMAll':[0.944,0.944,0.889,0.833,0.833,]}
+print('\nrev01fig02: align subs 1-10 to template from 1-10 (in), 11-20 (out) or 21-30 (out)')
+plot_figure3(dictionary)
+"""
+
+#rev01fig01 = Supp Figure 3
+"""
+dictionary = {'5(a)':[0.833,0.889,0.917,0.944,0.861,0.972,0.861,0.750,0.861,0.861,],\
+              '5(b)':[0.861,0.889,0.972,0.889,0.861,1.000,0.833,0.750,0.861,0.833,],\
+                '10(a)':[0.861,0.889,0.889,0.889,0.861,0.972,0.833,0.750,0.861,0.833,],\
+                '10(b)':[0.806,0.861,0.917,0.889,0.806,0.944,0.861,0.778,0.861,0.806,],\
+                '20(a)':[0.806,0.833,0.861,0.861,0.833,0.944,0.806,0.778,0.833,0.806,],\
+                '20(b)':[0.778,0.861,0.889,0.889,0.806,0.917,0.861,0.750,0.833,0.833,],\
+                }
+print('\nrev01fig01')
+plot_paired(dictionary,figsize=(7,4),x_jitter=0,y_jitter=0.05,fontsize=13,xlabel='Classification accuracy',ylabel='Number of template participants',markersize=10,connect=[0,2,4])
+dictionary_ratios = {}
+mean_ratios = []
+for n in [5,10,20]:
+    x = np.array(dictionary[f'{n}(a)'])
+    y = np.array(dictionary[f'{n}(b)'])
+    absolute_differences = np.abs(x-y)
+    mean_of_absolute_differences = np.mean(np.abs(x-y))
+    mean_value = np.mean(np.hstack([x,y]))
+    ratios = absolute_differences/mean_value
+    mean_ratios.append(np.mean(ratios))
+    dictionary_ratios[str(n)] = ratios
+print(f'Mean ratios: {mean_ratios}')
+plot_paired(dictionary_ratios,figsize=(7,4),x_jitter=0,y_jitter=0.05,fontsize=13,xlabel='Ratio',ylabel='Number of template participants',markersize=10)
+"""
 
 #Figure 4e Ratio at different sample sizes
 lineplot([5,10,20,50,100],[.82,.69,.53,.40,.28],'Number of participants','Spatial constraint ratio')
@@ -396,7 +477,7 @@ lineplot([5,10,20,50,100],[.82,.69,.53,.40,.28],'Number of participants','Spatia
 #Not a plot in the paper
 lineplot([0.02,0.05,0.1,0.2,0.5,1], [0.20, 0.35, 0.65, 0.79, 0.97,1],'Parameter','Ratio within source ROI',ylim=[0,1])
 
-#Supp Figure 3. Pairwise, subs 0-10
+#Supp Figure 5. Pairwise, subs 0-10
 anat_acc = 0.84
 lineplot(gammas, [0.8, 0.83, 0.87, 0.87, 0.88, 0.86, 0.84],'Parameter','Classification Accuracy','Pairwise Procrustes',ylim,hline=anat_acc) 
 lineplot(gammas, [0.89, 0.89, 0.92, 0.92, 0.84, 0.84, 0.84],'Parameter','Classification Accuracy','Pairwise optimal transport',ylim,hline=anat_acc) 
@@ -405,9 +486,7 @@ anat_corr = 0.070
 anat_acc = 0.87
 ylim_corr = [.065, .180]
 
-#### Figure 7. Compare integrated alignment to ProMises model ###
-
-## ALIGN WITH MOVIE
+#### Figure 8. Compare integrated alignment to ProMises model ####
 
 # Parameter optimization cohort: subs 0-20 with subs 20-40 as template
 ks = [0,.01,.03,.1,.3,1,3,10]
@@ -423,6 +502,22 @@ print(f'\nFig 7 {title}')
 print(f'sulc_comb_vs_sulc_prom: T({sulc_comb_vs_sulc_prom.df})={sulc_comb_vs_sulc_prom[0]:.3f} p={sulc_comb_vs_sulc_prom[1]:.3f}')
 
 
+#### rev01fig03: Like Figure 7 but with MSMAll ####
+"""
+ks = [0,.01,.03,.1,.3,1,3,10]
+title='GPA template Procrustes\nProMises'
+ax=lineplot(ks, [0.875, 0.883, 0.889, 0.911, 0.944, 0.95, 0.931, 0.925],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc)
+ax.set_xscale('log')
+
+# Test cohort: subs 40-60, 60-80, and 80-100 with subs 20-40 as template
+all_comb=[0.889,0.972,0.958,0.903,0.903,]+[0.958,0.931,0.972,0.972,0.972,]+[0.903,0.903,0.903,0.958,0.833,]
+all_prom = [0.903,0.972,0.958,0.889,0.903,]+[0.944,0.917,0.958,0.972,0.972,]+[0.903,0.917,0.931,0.958,0.847,]
+all_comb_vs_all_prom=stats.ttest_rel(all_comb,all_prom)
+print(f'\nrev01fig03 {title}')
+print(f'all_comb_vs_all_prom: T({all_comb_vs_all_prom.df})={all_comb_vs_all_prom[0]:.3f} p={all_comb_vs_all_prom[1]:.3f}')
+"""
+
+
 #### Figure 6A. Parameter optimization. Subs 0-20 with subs 20-40 as template, then 6B in test cohort ###
 
 def print_ttest(title,x,y):
@@ -434,21 +529,34 @@ def print_wilcoxon(title,x,y):
     statistics = stats.wilcoxon(x, y, zero_method='wilcox', method='approx')
     print(f'{title}: W({len(x)-1})={statistics[0]:.3f} p={statistics[1]:.3f}')
 
-def plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma):
+def test_normality(title,x):
+    #Given a vector x, test if it is normally distributed
+    statistics = stats.shapiro(x)
+    print(f'normality of {title}: p={statistics[1]:.3f}')
+
+def plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gammas,xlabel=None):
 
     #Subs 40-60 and 60-80 with subs 20-40 as template, with gamma optimised for subs 0-20. m&s. Procrustes template
     dictionary = {'MSMSulc only':sulc,\
                 'MSMSulc & FuncAlign\n\u03B3=0':sulc_func,\
-                    f'MSMSulc & FuncAlign\n\u03B3={best_gamma} (integrated)':sulc_comb,\
+                    f'MSMSulc & FuncAlign\n\u03B3={best_gammas[0]} (integrated)':sulc_comb,\
                     'MSMAll only':all,\
-                            f'MSMAll & FuncAlign\n\u03B3={best_gamma} (integrated)':all_comb,\
+                            f'MSMAll & FuncAlign\n\u03B3={best_gammas[1]} (integrated)':all_comb,\
                         } 
     label_name=''
-    data_name='Classification accuracy'
+    if xlabel is None:
+        xlabel='Classification accuracy'
     #plot(dictionary,label_name,data_name,title='GPA template Procrustes')
-    plot_paired(dictionary,figsize=(7,3.5),x_jitter=0,y_jitter=0.05,xlabel=data_name,title=title,fontsize=14)
+    plot_paired(dictionary,figsize=(7,3.5),x_jitter=0,y_jitter=0.05,xlabel=xlabel,title=title,fontsize=14)
 
     print(f'Fig 6 {title}')
+
+    test_normality('sulc',sulc)
+    test_normality('sulc_func',sulc_func)
+    test_normality('sulc_comb',sulc_comb)
+    test_normality('all',all)
+    test_normality('all_comb',all_comb)
+
     print_ttest('sulc_comb_vs_sulc_func',sulc_comb,sulc_func)
     print_ttest('sulc_comb_vs_sulc',sulc_comb,sulc)
     print_ttest('sulc_comb_vs_all',sulc_comb,all)
@@ -469,40 +577,53 @@ print('ALIGN WITH MOVIE')
 #Movie: GPA template Procrustes
 title='GPA template Procrustes'
 lineplot(gammas, [.856, .875, .892, .9, .933, .936, .872],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc,fontsize=14) #Figure 6A top
-best_gamma=0.5
+best_gammas=[0.5,0.5]
 sulc_func=[0.76,0.86,0.88,0.78,0.86,]+[0.89,0.83,0.92,0.90,0.82,]+[0.847,0.792,0.778,0.889,0.764,] 
 sulc_comb=[0.88,0.93,0.93,0.86,0.86,]+[0.93,0.90,0.93,0.94,0.96,]+[0.875,0.875,0.875,0.944,0.764,]
 all_comb=[0.889,0.972,0.958,0.903,0.903,]+[0.958,0.931,0.972,0.972,0.972,]+[0.903,0.903,0.903,0.958,0.833,]
-plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma) #Figure 6B top
+plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gammas) #Figure 6B top
 
 #Movie: PCA template Ridge
 title='PCA template Ridge'
 lineplot(gammas, [.892, .897, .911, .925, .931, .917, .883],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc,fontsize=14) #Figure 6A bottom
-best_gamma=0.2
+best_gammas=[0.2,0.2]
 sulc_func=[0.861,0.917,0.917,0.847,0.875,]+[0.917,0.903,0.917,0.903,0.889,]+[0.889,0.889,0.889,0.931,0.861,]
 sulc_comb=[0.861,0.958,0.944,0.847,0.889,]+[0.944,0.903,0.958,0.931,0.931,]+[0.931,0.944,0.917,0.944,0.819,] 
 all_comb=[0.889,0.958,0.944,0.833,0.903,] + [0.944,0.944,1.000,0.958,0.972,]+[0.931,0.917,0.917,0.958,0.875,]
-plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma) #Figure 6B bottom
+plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gammas) #Figure 6B bottom
 
+
+#rev01fig04=Figure 7: Like Figure 6 but with ISC of movie-viewing
+sulc=[0.146, 0.127, 0.074, 0.14, 0.139, 0.122, 0.119, 0.12, 0.142, 0.163, 0.141, 0.117, 0.132, 0.091, 0.128, 0.143, 0.145, 0.14, 0.124, 0.108, 0.053, 0.145, 0.131, 0.115, 0.107, 0.137, 0.123, 0.1, 0.085, 0.125, 0.127, 0.082, 0.11, 0.125, 0.13, 0.112, 0.109, 0.068, 0.095, 0.13, 0.127, 0.11, 0.119, 0.001, 0.129, 0.158, 0.122, 0.092, 0.155, 0.119, 0.157, 0.12, 0.123, 0.107, 0.122, 0.118, 0.121, 0.114, 0.14, 0.082]
+all=[0.162, 0.139, 0.081, 0.157, 0.155, 0.134, 0.133, 0.132, 0.169, 0.187, 0.157, 0.13, 0.148, 0.104, 0.141, 0.158, 0.162, 0.154, 0.143, 0.117, 0.06, 0.166, 0.148, 0.13, 0.122, 0.15, 0.138, 0.111, 0.094, 0.143, 0.14, 0.097, 0.12, 0.142, 0.148, 0.126, 0.124, 0.076, 0.108, 0.148, 0.149, 0.125, 0.131, 0.0, 0.144, 0.181, 0.141, 0.104, 0.172, 0.133, 0.176, 0.131, 0.138, 0.121, 0.141, 0.138, 0.136, 0.127, 0.16, 0.096]
+print('ALIGN WITH MOVIE. VALIDATE WITH ISC OF MOVIE')
+title='GPA template Procrustes'
+lineplot(gammas, [.126,.130,.133,.135,.135,.129,.120],'Parameter','Inter-subject correlation',title,hline=None,fontsize=14)
+best_gammas=[0.1,0.2]
+sulc_func=[0.151, 0.141, 0.078, 0.151, 0.15, 0.13, 0.134, 0.13, 0.16, 0.179, 0.156, 0.124, 0.143, 0.097, 0.132, 0.157, 0.151, 0.144, 0.132, 0.122, 0.059, 0.161, 0.148, 0.121, 0.114, 0.145, 0.138, 0.103, 0.096, 0.141, 0.14, 0.097, 0.126, 0.139, 0.13, 0.123, 0.123, 0.036, 0.105, 0.151, 0.141, 0.123, 0.129, 0.004, 0.139, 0.171, 0.141, 0.102, 0.164, 0.126, 0.166, 0.129, 0.13, 0.122, 0.072, 0.125, 0.128, 0.125, 0.161, 0.096]
+sulc_comb=[0.161, 0.147, 0.083, 0.157, 0.159, 0.136, 0.138, 0.138, 0.167, 0.189, 0.163, 0.133, 0.149, 0.104, 0.142, 0.163, 0.161, 0.154, 0.14, 0.125, 0.062, 0.167, 0.153, 0.129, 0.123, 0.153, 0.144, 0.112, 0.1, 0.147, 0.147, 0.1, 0.13, 0.145, 0.144, 0.129, 0.128, 0.061, 0.112, 0.154, 0.148, 0.128, 0.135, 0.004, 0.146, 0.18, 0.145, 0.107, 0.173, 0.134, 0.177, 0.137, 0.138, 0.125, 0.103, 0.135, 0.137, 0.132, 0.166, 0.1]
+all_comb=[0.174, 0.155, 0.088, 0.169, 0.169, 0.145, 0.147, 0.145, 0.184, 0.205, 0.173, 0.142, 0.16, 0.114, 0.152, 0.173, 0.174, 0.164, 0.155, 0.13, 0.066, 0.181, 0.163, 0.14, 0.134, 0.163, 0.152, 0.121, 0.106, 0.159, 0.155, 0.109, 0.133, 0.156, 0.159, 0.137, 0.138, 0.076, 0.12, 0.164, 0.163, 0.138, 0.143, 0.002, 0.156, 0.198, 0.157, 0.116, 0.186, 0.144, 0.19, 0.143, 0.149, 0.134, 0.132, 0.149, 0.148, 0.141, 0.177, 0.108]
+plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gammas,xlabel='Inter-subject correlation')
+"""
 print('ALIGN WITH REST_FC')
 #Rest: GPA template Procrustes
 title='GPA template Procrustes'
 lineplot(gammas, [0.894, 0.894, 0.894, 0.894, 0.894, 0.9, 0.872],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc,fontsize=14) #Figure 6A top
-best_gamma=0.5
+best_gammas=[0.5,0.5]
 sulc_func=[0.833,0.889,0.917,0.847,0.903,]+ [0.917,0.917,0.903,0.903,0.889,]+[0.903,0.889,0.833,0.931,0.833,]
 sulc_comb=[0.806,0.889,0.903,0.833,0.833,]+[0.903,0.861,0.903,0.889,0.861,]+[0.847,0.889,0.819,0.903,0.764,]
 all_comb=[0.875,0.958,0.944,0.875,0.917,]+[0.944,0.931,0.944,0.944,0.972,]+[0.875,0.931,0.903,0.944,0.889,]
-plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma) #Figure 6B top
+plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gammas) #Figure 6B top
 
 #Rest: PCA template Ridge
 title='PCA template Ridge'
 lineplot(gammas, [0.897, 0.9, 0.897, 0.894, 0.903, 0.892, 0.881],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc,fontsize=14) #Figure 6A top
-best_gamma=0.2
+best_gammas=[0.2,0.2]
 sulc_func=[0.833,0.903,0.917,0.819,0.847,]+[0.903,0.917,0.889,0.875,0.861,]+[0.875,0.875,0.833,0.889,0.806,]
 sulc_comb=[0.819,0.889,0.931,0.806,0.875,]+[0.875,0.903,0.903,0.917,0.875,]+[0.889,0.889,0.833,0.889,0.792,]
 all_comb=[0.861,0.903,0.944,0.806,0.944,]+[0.931,0.917,0.931,0.944,0.944,]+[0.889,0.903,0.903,0.903,0.847,]
-plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gamma) #Figure 6B top
-
+plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gammas) #Figure 6B top
+"""
 
 plt.show()
 

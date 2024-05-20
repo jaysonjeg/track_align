@@ -1,12 +1,154 @@
+#######################
+#Visualize a small part of a mesh
+import trimesh
+import hcpalign_utils as hutils
+from hcpalign_utils import ospath
 import hcp_utils as hcp
+import numpy as np
+import getmesh_utils
+import biasfmri_utils as butils
+
+
+#Code to run windows command line commands
+
+import subprocess
+import os
+import sys
+
+hcp_folder=hutils.hcp_folder
+project_path = "D:\\FORSTORAGE\\Data\\Project_GyralBias"
+biasfmri_intermediates_path = ospath(f'{project_path}/intermediates')
+temp_path = ospath(f'{biasfmri_intermediates_path}/temp')
+
+sub='100610'
+hemi="L"
+pt_hemi_32k_mesh_path = surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.{hemi}.{'sphere'}.32k_fs_LR.surf.gii")
+
+onavg_folder = f"{project_path}\\intermediates\\tpl-onavg-main"
+onavg_hemi_10k_file = f"tpl-onavg_hemi-{hemi}_den-10k_sphere.surf.gii"
+onavg_hemi_10k_path = f"{onavg_folder}\\{onavg_hemi_10k_file}"
+
+
+command = f"wb_command -surface-affine-regression {pt_hemi_32k_mesh_path} {onavg_hemi_10k_path} {f'{temp_path}/affine'}"
+print(command)
+os.system(command)
+assert(0)
+
+"""
+      <source> - the surface to warp
+      <target> - the surface to match the coordinates of
+      <affine-out> - output - the output affine file
+"""
+
+#Trimesh stuff. Dont need anymore..
+"""
+c=hutils.clock()
+which_subject='100610'
+surface_type = 'white'
+MSMAll=False
+hemi="L"
+
+#vertices,faces = getmesh_utils.get_verts_and_triangles(which_subject,surface_type,MSMAll)
+vertices_64k,faces_64k = getmesh_utils.get_verts_and_triangles_hemi(which_subject,hemi,surface_type,MSMAll=MSMAll)
+mask = hutils.get_fsLR32k_mask(hemi=hemi)
+vertices = vertices_64k[mask,:]
+faces = hutils.cortex_64kto59k_for_triangles(faces_64k,hemi=hemi)
+
+#mesh = trimesh.Trimesh(vertices=[[0, 0, 0], [0, 0, 1], [0, 1, 0]],faces=[[0, 1, 2]])
+mesh = trimesh.Trimesh(vertices=vertices,faces=faces)
+project_path = "D:\\FORSTORAGE\\Data\\Project_GyralBias"
+biasfmri_intermediates_path = ospath(f'{project_path}/intermediates')
+
+neighbour_vertices, neighbour_distances, neighbour_distances_mean=butils.get_subjects_neighbour_vertices(c, which_subject,'midthickness',None, biasfmri_intermediates_path, 'local', None, True, False,MSMAll=MSMAll)
+color_values = neighbour_distances_mean[0:len(vertices)]
+
+sulc = butils.get_sulc(which_subject,version='fsaverage_LR32k')
+#color_values = sulc[hutils.get_fsLR32k_mask(hemi='both')][0:len(vertices)]
+
+colors = trimesh.visual.color.interpolate(color_values, color_map='viridis')
+
+points=trimesh.points.PointCloud(vertices)
+#points.colors=[100,100,100,150]
+points.colors=colors
+points.show()
+assert(0)
+
+values = vertices[:,1]
+vertices_mask = values>np.quantile(values,0.96)
+mesh.update_vertices(vertices_mask)
+color_values = color_values[vertices_mask]
+colors = trimesh.visual.color.interpolate(color_values, color_map='viridis')
+assert(0)
+mesh.visual.vertex_colors = colors
+mesh.show()
+assert(0)
+"""
+
+"""
+
+
+print(f"{c.time()}: {len(mesh.vertices)} vertices")
+meshes = [trimesh.creation.uv_sphere(radius=0.3,count=(3,1)) for i in range(len(mesh.vertices))]
+color = trimesh.visual.random_color() 
+for i, m in enumerate(meshes):
+    m.apply_translation(mesh.vertices[i,:])
+    m.visual.vertex_colors = colors[i]
+"""
+
+#colors=trimesh.visual.color.interpolate(sulc,color_map='viridis')
+#colors = trimesh.visual.color.interpolate(vertices[:,0], color_map='prism')
+#np.random.shuffle(colors)
+#mesh.visual.vertex_colors=colors
+
+#slice = mesh.section(plane_origin=mesh.centroid,plane_normal=[0,0,1]) #Path3D
+#slice_2D, to_3D = slice.to_planar()
+#slice_2D.show()
+#slice.show()
+
+print(f'{c.time()}: Done loading mesh')
+trimesh.Scene([mesh]+meshes).show()
+
+#mesh.show() 
+assert(0)
+
+#######################
+
 import numpy as np
 import os
 from sklearn.svm import LinearSVC
 import hcpalign_utils as hutils
+from hcpalign_utils import ospath
+from hcpalign_utils import ospath
 from joblib import Parallel, delayed
 #from my_surf_pairwise_alignment import MySurfacePairwiseAlignment, LowDimSurfacePairwiseAlignment
 
 
+
+
+
+
+
+
+
+#Plot ISC spatial maps from file
+filenames=['20240428_212410','20240428_212357','20240428_223912','20240428_222854','20240428_223932','20240428_222934']
+titles=['sulc','all','sulc_func','sulc_comb','all_func','all_comb']
+for filename in filenames:
+    plot_dir=ospath(f'{hutils.results_path}/figures/hcpalign/{filename}')
+    values = np.load(ospath(f'{plot_dir}\\ISCs_vertexmeans.npy'))
+    p=hutils.surfplot(plot_dir,plot_type='open_in_browser')
+    values[values<0] = 0
+    p.plot(values,'ISCs_vertexmeans',vmax=1)
+assert(0)
+
+#Get individualized parcellations
+"""
+nparcs = 300
+subjects = hutils.all_subs[0:3]
+labels,colors=hutils.get_individualized_parcellation(nparcs,subjects)
+p=hutils.surfplot('')
+p.plot(labels[0,:],cmap='tab20')
+"""
 
 ### Get parcellated connectomes for Anna Behler ###
 '''

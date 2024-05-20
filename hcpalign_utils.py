@@ -36,7 +36,7 @@ all_top_block_labels=0 #for hcpalign.py using top most connected blocks for DA
 
 movies=['MOVIE1_7T_AP','MOVIE2_7T_PA','MOVIE3_7T_PA','MOVIE4_7T_AP']
 rests=['REST1_7T_PA','REST2_7T_AP','REST3_7T_PA','REST4_7T_AP']
-#rests=['REST1_LR','REST1_RL','REST2_LR','REST2_RL']
+rests_3T=['REST1_LR','REST1_RL','REST2_LR','REST2_RL']
 tasks=['WM','GAMBLING','RELATIONAL','MOTOR','EMOTION','LANGUAGE','SOCIAL']
 all_subs=['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823','115017','115825','116726','118225','125525']
 all_subs=list(np.loadtxt('included_subs_minus3.csv',dtype='str')) #made from findpts.py
@@ -150,6 +150,8 @@ def get_filenames(func_type,func_nruns):
         filenames = [movies[i] for i in func_nruns]
     elif func_type=='rest':
         filenames = [rests[i] for i in func_nruns]
+    elif func_type=='rest_3T':
+        filenames = [rests_3T[i] for i in func_nruns]
     return filenames
 
 def getfilepath(filename,ts_type,sub,MSMAll=False,cleaned=True):
@@ -197,7 +199,7 @@ def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_preproc):
 
 def get_movie_or_rest_string(align_with,runs,fwhm,clean,MSMAll,FC_parcellation_string,FC_normalize,circshift=False):
     runs_string = ''.join([str(i) for i in runs])
-    dict1 = {'movie':'mov','rest':'res','movie_FC':'movfc','rest_FC':'resfc','diffusion':'diff'}
+    dict1 = {'movie':'mov','rest':'res','rest_3T':'res3T','movie_FC':'movfc','rest_FC':'resfc','diffusion':'diff'}
     string = f'{dict1[align_with]}{logical2str[MSMAll]}{runs_string}{logical2str[clean]}{fwhm}'
     if circshift: string+='CIRC'
     if 'FC' in align_with:
@@ -224,7 +226,7 @@ def get_movie_or_rest_data(subs,align_with,prefer='threads',runs=None,fwhm=0,cle
     if string_only:
         return  [[] for sub in subs],align_string
     else:
-        if align_with in ['movie','rest']:
+        if align_with in ['movie','rest','rest_3T']:
             align_preproc = make_preproc(fwhm,clean,'zscore_sample',True,None,None,1.0)
             filenames = get_filenames(align_with,runs)
             func = lambda sub: get_all_timeseries_sub(sub,align_with,filenames,MSMAll,align_preproc)
@@ -340,8 +342,9 @@ def get_decode_data(c,subs,decode_with,align_fwhm,align_clean,MSMAll,decode_ncom
     if decode_with=='tasks': #task fMRI contrasts
         imgs_decode,decode_string = get_task_data(subs,tasks[0:7],MSMAll=MSMAll)
     elif decode_with=='movie': #### Decode movie viewing data instead
-        print("Decode data is movie viewing runs 2 and 3")
+        print(f"{c.time()}: Decode data is movie viewing runs 2 and 3")
         imgs_decode,decode_string = get_movie_or_rest_data(subs,'movie',runs=[2,3],fwhm=align_fwhm,clean=align_clean,MSMAll=MSMAll)
+        print(f"{c.time()} Decode data, movie viewing gotten")
     if decode_ncomponents is not None:
         print(f"{c.time()} Decode data, PCA start")
         imgs_decode, string = reduce_dimensionality_samples(c,imgs_decode,ncomponents=decode_ncomponents,method='pca')
@@ -781,12 +784,40 @@ def jaccard_binomtest(x,y):
     result_binom=stats.binom_test(binom_k,binom_n,binom_p,alternative='greater')
     return result_binom
 
+def get_ISC(x):
+    """
+    Given a list (nsubjects) of 2D arrays (nsamples,nfeatures), for each feature and each subject, find the Pearson correlation between that feature in that subject, and that same feature in the group mean of all other subjects. The calculation is sped up by pre-calculating the sum (across subjects) of all the 2D arrays. Then, for each subject X, the "group mean of all other subjects" is obtained by subtracting the data of subject X from this sum, and dividing by nsubjects-1.
+    Parameters:
+    ----------
+    x: list (nsubjects) of arrays (nsamples,nfeatures)
+
+    Returns:
+    ----------
+    correlations: array (nfeatures,nsubjects)
+        correlations between each feature/vertex and the other subjects' mean
+    """
+    nsubjects=len(x)
+    x=np.array(x).astype(np.float32)
+    
+    #xsum=np.sum(x,0) #sum across subjects, shape (nsamples,nfeatures)
+    #xsum=xsum-x #sum of all other subjects, shape (nsubjects,nsamples,nfeatures)
+    #xmeans=xsum/(nsubjects-1) #mean of all other subjects, shape (nsubjects,nsamples,nfeatures)
+
+    xmeans = np.mean(x,0) #mean across subjects, shape (nsamples,nfeatures)
+    xmeans = xmeans*(nsubjects/(nsubjects-1)) - x/(nsubjects-1) #remove each subject from the group mean
+
+    temp = Parallel(n_jobs=-1,prefer='processes')(delayed(rowcorr_nonsparse)(x[i,:,:],xmeans[i,:,:]) for i in range(nsubjects)) #list (nsubjects) of arrays (nfeatures). Each array containing correlations between x[i] and the group mean of all other subjects
+
+    return np.array(temp).T
+
+"""
 def corr_rows_parcel(imgs_decode_parcel,rows_or_cols='cols'):
     temp = Parallel(n_jobs=-1,prefer='processes')(delayed(corr_rows)(i,rows_or_cols=rows_or_cols,prefer='noparallel') for i in imgs_decode_parcel)
     return np.dstack(temp) #array (nsamples,nsubjectpairs,nparcels)
+"""
 
+'''
 import itertools
-
 def corr_rows(x,rows_or_cols='cols',prefer='noparallel'):
     """
     Given a list of 2D arrays (nsamples,nfeatures), one array for each subject, for each row index or column index, for each pair of subjects, calculate the correlation coefficient between their corresponding rows/columns.
@@ -815,6 +846,7 @@ def corr_rows(x,rows_or_cols='cols',prefer='noparallel'):
     result = np.vstack(temp).T
     del temp
     return result
+'''
 
 def rowcorr(sp1, sp2):
     '''
@@ -1090,13 +1122,22 @@ def vertexmap_64kto59k(hemi='both'):
         temp[value]=index
     return temp
 
-def get_fsLR32k_mask():
+def get_fsLR32k_mask(hemi='both'):
     """
     Returns a boolean array indicating, for each vertex in fsaverage5 surface, whether it is gray matter (1) or medial wall (0)
+    hemi='both','L','R'
     """
     import hcp_utils as hcp
-    gray = vertexmap_59kto64k()
-    num_mesh_64k = hcp.vertex_info.num_meshl+hcp.vertex_info.num_meshr
+    gray = vertexmap_59kto64k(hemi=hemi)
+    num_mesh_64k = gray.max()+1 #number of vertices in 64k cortex mesh
+    """
+    if hemi=='both':
+        num_mesh_64k = hcp.vertex_info.num_meshl+hcp.vertex_info.num_meshr
+    elif hemi=='L':
+        num_mesh_64k = hcp.vertex_info.num_meshl
+    elif hemi=='R':
+        num_mesh_64k = hcp.vertex_info.num_meshr
+    """
     temp=np.zeros(num_mesh_64k,dtype=bool)
     for index,value in enumerate(gray):
         temp[value]=True
@@ -1116,16 +1157,22 @@ def cortex_64kto59k_for_triangles(triangles,hemi='both'):
     triangles: array (n,3) list of triangles in a 64984-vertex mesh
     Returns an abridged version of 'triangles' within 59412-vertex mesh
     """
-    #first remove unnecessary vertices
+
+    """
     gray=vertexmap_59kto64k(hemi=hemi)
     temp=np.isin(triangles,gray)
     temp2=np.all(temp,axis=1)
     triangles_v2 = triangles[temp2,:]
-
-    #then renumber vertices so they are 0 to 59411
-    triangles_v3 = vertexmap_64kto59k(hemi=hemi)[triangles_v2]
-    
+    triangles_v3 = vertexmap_64kto59k(hemi=hemi)[triangles_v2] #renumbering
     return triangles_v3
+    """
+
+    import biasfmri_utils as butils
+    mask = get_fsLR32k_mask(hemi=hemi)
+    return butils.triangles_removenongray(triangles,mask)
+
+
+
 
 def vertex_59kto64k(vertices):
     """Given a list of vertices in 59k, convert each index to the corresponding index in 64k cortex mesh
@@ -1354,8 +1401,8 @@ def searchlights(radius, sub='100610',surface='midthickness'):
     parcels = pickle.load(open(ospath(save_path), "rb" ))
     return parcels
 
-def parcellation_string_to_parcellation(parcellation_string):
-    #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'R10' for searchlight radius 10mm, 'M' for HCP multimodal parcellation
+def parcellation_string_to_parcellation(parcellation_string,subjects=None):
+    #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'R10' for searchlight radius 10mm, 'M' for HCP multimodal parcellation. 'I300' for individualized from Kong(2022)
     #Returns an array of size (59412,) with parcel labels for each vertex in fs32k cortex
     import hcp_utils as hcp
     if len(parcellation_string) > 1:
@@ -1368,6 +1415,8 @@ def parcellation_string_to_parcellation(parcellation_string):
         parcellation = hcp.mmp.map_all[hcp.struct.cortex]
     elif parcellation_string[0]=='R':
         parcellation = searchlights(nparcs)
+    elif parcellation_string[0]=='I':
+        parcellation = get_individualized_parcellation(nparcs,subjects)
     return parcellation
 
 def parcellation_string_to_parcmatrix(parcellation_string):
@@ -1538,12 +1587,13 @@ class surfplot():
         else:
             new_data = data
 
-        view=plotting.view_surf(self.mesh,new_data,cmap=self.cmap,vmin=self.vmin,vmax=self.vmax,symmetric_cmap=self.symmetric_cmap)  
+        view=plotting.view_surf(self.mesh,new_data,cmap=self.cmap,vmin=self.vmin,vmax=self.vmax,symmetric_cmap=self.symmetric_cmap) 
         if self.plot_type=='save_as_html':
             view.save_as_html(ospath('{}/{}.html'.format(self.figpath,savename)))
         elif self.plot_type=='open_in_browser':
             view.open_in_browser()
         self.vmin=None
+        self.vmax=None
 
 
 def plot_parc(p,align_parc_matrix,data,savename=None):
@@ -1764,3 +1814,35 @@ def movieVolumeSelect(time_list,start=0, end=0):
     temp=[list(range(x+start,y+end)) for x,y in time_list]
     return [item for sublist in temp for item in sublist]
 
+def get_individualized_parcellation(nparcs,subjects):
+    """
+    Get individualized parcellations, saved from https://github.com/ThomasYeoLab/Kong2022_ArealMSHBM/
+    Get the list of subjects from HCP_subject_list.txt. Then find indices of desired subjects from that list. Load the parcellation file (nvertices,1029 subjects). Remove gray matter vertices, and select the desired subjects. Finaly, check that each subject has the correct number of parcels.
+    Parameters:
+    ----------
+    nparcs: int
+        number of parcels
+    subjects: list of strings
+        list of subject IDs
+    Returns:
+    ----------
+    labels: np.array
+        array containing individualized parcellations. Array of shape (nsubjects,nvertices) containing parcel labels for each vertex
+    """
+    folder =  f"{intermediates_path}/Kong2022_ArealMSHBM"
+    subject_list_file = ospath(f"{folder}/HCP_subject_list.txt")
+    subject_list=list(np.loadtxt(subject_list_file,dtype='str')) #or dtype 'str'
+    subject_indices = [subject_list.index(sub) for sub in subjects]
+    parcellation_file = ospath(f"{folder}/Parcellations/HCP_1029sub_{nparcs}Parcels_Kong2022_gMSHBM.mat")
+    import h5py
+    f = h5py.File(parcellation_file,'r')
+    colors = np.array(f.get('colors')).astype(int)
+    lh_labels_all = np.array(f.get('lh_labels_all')).astype(int)
+    rh_labels_all = np.array(f.get('rh_labels_all')).astype(int)
+    labels_all = np.hstack([lh_labels_all,rh_labels_all])
+    gray_mask=get_fsLR32k_mask()
+    labels = labels_all[:,gray_mask]
+    labels = labels[subject_indices,:]
+    num_unique_labels = [len(np.unique(labels[i,:])) for i in range(len(subjects))]
+    assert(all([num_unique_labels[i]==nparcs for i in range(len(subjects))])) 
+    return labels #,colors

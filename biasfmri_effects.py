@@ -29,8 +29,8 @@ if __name__=='__main__':
     biasfmri_intermediates_path = ospath(f'{project_path}/intermediates')
 
     ### GENERAL PARAMETERS
-    sub_slice = slice(0,1)
-    real_or_noise = 'real' # 'real' or 'noise
+    sub_slice = slice(0,3)
+    real_or_noise = 'noise' # 'real' or 'noise
     this_parc = 1 #which parcel for within-parcel analysis
     parc_string='S300'
     surface = 'midthickness' #which surface for calculating distances, e.g. 'white','inflated','pial','midthickness'
@@ -38,16 +38,17 @@ if __name__=='__main__':
     surface_visual = 'white'
     MSMAll = False
 
-    ### PARAMETERS FOR NULL TESTS OF CORRELATIONS BETWEEN TWO MAPS
-    null_method = 'spin_test' #spin_test, no_null, eigenstrapping
-    n_perm = 100 
+    ### PARAMETERS FOR TESTS OF CORRELATIONS BETWEEN TWO MAPS
+    to_subtract_parcelmean = False #subtract parcel means from data like sulcal depth, local correlations, etc, before doing correlations
+    null_method = 'no_null' #no_null, spin_test, eigenstrapping
+    n_perm = 100 #number of surrogates for spin test or eigenstrapping
 
     ### PARAMETERS FOR SPECIFIC SUB-SECTIONS
 
     which_neighbours = 'local' #'local','distant'
-    distance_range=(1,10) #Only relevant if which_neighbours=='distant'. Geodesic distance range in mm, e.g. (0,4), (2,4), (3,5), (4,6)
-    load_neighbours = False
-    save_neighbours = True
+    distance_range=(1,10) #Only relevant if which_neighbours=='distant'. Geodesic distance range in mm, e.g. (0,4), (2,4), (3,5), (4,6). (1,10) is default.
+    load_neighbours = True
+    save_neighbours = False
 
     ### PARAMETERS FOR NOISE OR REAL DATA
     subjects=hutils.all_subs[sub_slice]
@@ -56,10 +57,10 @@ if __name__=='__main__':
     if real_or_noise == 'noise':
         noise_source = 'surface' #'volume' or 'surface'. 'volume' means noise data in volume space projected to 'surface'. 'surface' means noise data generated in surface space
         smooth_noise_fwhm = 2 #mm of surface smoothing. Try 0 or 2
-        ntimepoints = 1000 #number of timepoints
+        ntimepoints = 1000 #number of timepoints, default 1000
         print(f'{c.time()}: Noise data, source: {noise_source}, smooth: {smooth_noise_fwhm}mm, ntimepoints: {ntimepoints}, test first-half, retest second-half')
     elif real_or_noise == 'real':
-            img_type = 'movie' #'movie' or 'rest'
+            img_type = 'rest' #'movie', 'rest', 'rest_3T'
             runs = [0]
             #assert(len(runs)%2==0) #even number of runs, to split into test and retest
             print(f'{c.time()}: Real HCP data, img_type: {img_type}, MSMAll: {MSMAll}, runs {runs}, test is first half, retest is second half')
@@ -80,10 +81,28 @@ if __name__=='__main__':
 
     print(f'{c.time()}: Get meshes')
     import getmesh_utils
-    meshes = [getmesh_utils.get_verts_and_triangles(subject,surface,MSMAll) for subject in subjects]
+
+    try_different_meshes = False
+    if try_different_meshes:
+        folder='MNINonLinear'
+        version='native'
+        mesh = getmesh_utils.get_verts_and_triangles(subjects[0],surface,MSMAll,folder=folder,version=version)
+        mesh_visual = getmesh_utils.get_verts_and_triangles(subjects[0],'very_inflated',MSMAll,folder=folder,version=version)
+        neighbour_vertices,neighbour_distances = butils._get_all_neighbour_vertices(mesh,None)   
+        neighbour_distances_mean = np.array([np.mean(i) for i in neighbour_distances])
+        p2 = hutils.surfplot('',mesh=mesh_visual,plot_type='open_in_browser')
+        p2.plot(np.log10(neighbour_distances_mean))
+        sulc = butils.get_sulc(subjects[0],version=version)
+        corr = stats.pearsonr(sulc,neighbour_distances_mean)
+        print(f'Correlation between sulcal depth and mean neighbour distance is {corr[0]:.3f}, p={corr[1]:.3f}')
+        assert(0)
+
+    meshes = [getmesh_utils.get_verts_and_triangles(subject,surface,MSMAll,folder='MNINonLinear',version='fsaverage_LR32k') for subject in subjects]
     meshes = [(hutils.cortex_64kto59k(vertices),hutils.cortex_64kto59k_for_triangles(faces)) for vertices,faces in meshes] #downsample from 64k to 59k
     all_vertices, all_faces = zip(*meshes)
     sulcs = [butils.get_sulc(i)[mask] for i in subjects] #list (subjects) of sulcal depth maps
+
+
 
     print(f'{c.time()}: Get fMRI data')   
     if real_or_noise == 'noise':
@@ -116,20 +135,29 @@ if __name__=='__main__':
     ### Bias in fMRI-based parcellation (do left hemisphere alone)
     do_bias_parcellation = False
     if do_bias_parcellation:
+        use_precomputed_parcellation=True
+        if use_precomputed_parcellation:
+            parcellation_string = 'S300'
+            print(f"Using pre-computed parcellation labels from {parcellation_string}")
+            if nsubjects==1: #use HCP standard sulc values
+                print("Using HCP standard sulcal depth values")
+
         ngrayl = len(hcp.vertex_info.grayl) #left hemisphere only
-        
         tstats_all_subjects = []
         cohend_all_subjects = []
         for nsubject in range(nsubjects): #range(nsubjects)
 
-            use_precomputed_parcellation=False
+            sulc = sulcs[nsubject] 
+            #sulc = sulcs[(nsubject+1)%nsubjects] #uncomment to compare to the sulc map of a different subject
+
             if use_precomputed_parcellation:
-                #Use standard mesh sulc vaule, and pre-computed parcellation labels
-                parcellation_string = 'M'
-                print(f"Using standard mesh sulc values and pre-computed parcellation labels from {parcellation_string}")
-                labels = hutils.parcellation_string_to_parcellation(parcellation_string)[0:ngrayl]
-                labels = np.expand_dims(labels,1) #change from (nvertices,) to (nvertices,1)
-                sulc = -hcp.mesh.sulc[mask] #because this standard sulc values are flipped
+                #Use pre-computed parcellation labels
+                labels = hutils.parcellation_string_to_parcellation(parcellation_string,[subjects[nsubject]])
+                if labels.ndim==2: labels=np.squeeze(labels)
+                labels = labels[0:ngrayl]
+                labels = np.expand_dims(labels,1) #change from (nvertices,) to (nvertices,1). 
+                if nsubjects==1: #use HCP standard sulc values
+                    sulc = -hcp.mesh.sulc[mask] #because standard sulc values are flipped
                 faces = butils.triangles_removenongray(hcp.mesh.midthickness_left[1],mask)
                 _,edges = butils.faces2connectivity(faces)
             else:
@@ -137,7 +165,6 @@ if __name__=='__main__':
                 n_clusters = 50 #how many functional clusters
                 n_repeats_per_subject = 1 #how many different random parcellations to find per subject
                 imgt = ims[nsubject].T
-                sulc = sulcs[nsubject] #could put (nsubjects+1) to compare to the sulc map of a different subject
                 faces = meshes[nsubject][1]
                 print(f'{c.time()}: Faces to structural adjacency matrix')
                 connectivity,edges = butils.faces2connectivity(faces)
@@ -161,7 +188,7 @@ if __name__=='__main__':
             border = butils.get_border_vertices(ngrayl,edges_left,labels)
             border = np.sum(border,axis=1)
             border_bool = border>0
-            labels = labels[:,0] #first repetition
+            labels = labels[:,0] #relevant if n_repeats_per_subject>1
 
             #Convert L hemisphere data to bihemispheric brain data (with zeros in the R hemi)
             border_full = np.zeros(59412)
@@ -170,27 +197,21 @@ if __name__=='__main__':
             parcels_full[0:ngrayl] = labels
             sulc_border = sulc_left[border_bool] #sulcal depth values at the border of parcels
             sulc_nonborder = sulc_left[~border_bool] #sulcal depth values not at the border of parcels
-        
 
             cohend_all_subjects.append(butils.get_cohen_d(sulc_border,sulc_nonborder))
             tstats_all_subjects.append(stats.ttest_ind(sulc_border,sulc_nonborder)[0])
 
             plot_single_subject_parcellations = False
             if plot_single_subject_parcellations:
-                p.plot(sulc)
-                p.plot(border_full,cmap='inferno') #Plot border points
-                p.plot(parcels_full,cmap='tab20') #Plot parcellation
+                #p.plot(sulc)
+                p.plot((border_full+1)/2,cmap='inferno',vmin=0,vmax=1) #Plot border points
+                p.plot(parcels_full,cmap='tab20',vmin=None,vmax=None) #Plot parcellation
                 fig,axs=plt.subplots(figsize=(4,3))
                 ax=axs
-                vp = ax.violinplot([sulc_border,sulc_nonborder],showmeans=True,showextrema=True)
+                vp = ax.violinplot([sulc_border,sulc_nonborder],showmeans=True,showextrema=False)
                 ax.set_ylabel('Sulcal depth')
                 ax.set_xticks([1,2],labels=['Border','Non-border'])
                 ax.set_xlabel('Vertex location')
-                """
-                axs[1].scatter(sulc_left,border,1,alpha=0.05,color='k')
-                axs[1].set_xlabel('Sulcal depth')
-                axs[1].set_ylabel('Distance from parcel boundary')
-                """
                 fig.tight_layout()
                 plt.show(block=False)
                 sulc_both = np.zeros(59412)
@@ -205,14 +226,24 @@ if __name__=='__main__':
                 corr,pval = neuromaps.stats.compare_images(sulc_left,-border,nulls=sulc_left_nulls,metric='pearsonr')
                 print(f"Correlation is {corr:.3f}, spin test p={pval:.3f}")
         
-        print(f'{c.time()}: Func parcellation. Cohen\'s d of all participants:')
+        print(f'{c.time()}: Func parcellation. Sulcal depth in border vs. non-border vertices in each participant') 
+        print(f"Cohen\'s d in each participants:")
         print(cohend_all_subjects)
-        print(f'Func parcellation. t-statistic of all participants:')
+        print(f't-statistic in each participants:')
         print(tstats_all_subjects)
-        result = stats.ttest_1samp(tstats_all_subjects,0,alternative='greater')
-        print(f'T({result.df})={result.statistic:.3f}, p={result.pvalue:.3f}')
-
+        if len(cohend_all_subjects)>1:
+            result = stats.ttest_1samp(tstats_all_subjects,0,alternative='greater')
+            print(f'T({result.df})={result.statistic:.3f}, p={result.pvalue:.3f}')
+        
+        
+        #x is "matched". y is "mismatched", where sulc and parcel borders belong to different participants
+        """
+        x=[5.972067161978508, 4.200001724847725, 7.541103585007607, 9.647505744232744, 9.257547053985983, 10.310557605592088, 2.4880528770743906, 7.177858058572761, 7.286142525423939, 0.7765097580619749] #data from parcellation_string=='I300'
+        y=[2.587842844948114, 1.4626501408007213, 1.7848729840837478, 3.9404892558753404, 4.366622999248193, 5.400840682065983, 3.8781698476385755, 0.472326956298086, 2.3287401266091416, 1.2342674147144064]
+        result = stats.ttest_rel(x,y,alternative='greater')         
+        print(f'2nd level, matched vs. mismatched: T({result.df})={result.statistic:.3f}, p={result.pvalue:.3f}')
         assert(0)
+        """
 
     ### Will the largest PCA components be biased towards the sulci?
     do_pca = False
@@ -263,7 +294,6 @@ if __name__=='__main__':
         sulcs_parc = [butils.parcel_mean(sulc,parc_matrix) for sulc in sulcs] #subjects' parcellated sulcal depth maps (nparcels,)
         sulcs_singleparc = [sulc[parc_labels==1] for sulc in sulcs] #subjects' single-parcel sulcal depth maps (nverticesInParcel,)
 
-
     ### Parcel-mean values might be a bit biased towards the sulci within each parcel
     do_parcelmean = False
     if do_parcelmean:
@@ -284,10 +314,7 @@ if __name__=='__main__':
                 xvals = eval(xname)
                 yvals = eval(yname)
                 p.plot(yvals,cmap='inferno')
-
                 corr,pval = butils.corr_with_nulls(xvals,yvals,mask,null_method,n_perm)
-
-                #stat = stats.pearsonr(xvals,yvals)
                 print(f'{xname} vs {yname}: R={corr:.3f}, p={pval:.3f}')
                 fig,ax=plt.subplots(figsize=(3.5,3.5))
                 ax.scatter(xvals,yvals,1,alpha=0.05,color='k')
@@ -297,7 +324,7 @@ if __name__=='__main__':
         assert(0)
 
     ### Get neighbours and correlations
-    do_neighbours = True
+    do_neighbours = False
     if do_neighbours:
         func = lambda subject,mesh: butils.get_subjects_neighbour_vertices(c, subject,surface,mesh,biasfmri_intermediates_path, which_neighbours, distance_range,load_neighbours, save_neighbours,MSMAll)
         print(f'{c.time()}: Get neighbour vertices')  
@@ -310,88 +337,40 @@ if __name__=='__main__':
         print(f'{c.time()}: Get corr neighbour end')   
 
         ### Interpolate neighbourhood correlations to get plot of correlation vs. geodesic distance
-        do_interpolate_corrs = False
-        if do_interpolate_corrs:
-            print(f'{c.time()}: Interpolate start') 
-            from scipy.interpolate import interp1d
+        do_interpolate_corrs_linearspline = False #interpolate with linear spline
+        do_interpolate_corrs_exp = False #interpolate with exponential function
+        if do_interpolate_corrs_exp or do_interpolate_corrs_linearspline:
+            assert(which_neighbours=='distant')
             nsubject = 0      
             nvertices = len(ims_adjcorr[0])
-
-            from scipy.optimize import curve_fit
-            def exp_func(x, a, b, c):
-                return a * np.exp(-b * x) + c
-            expfit_params = np.zeros((nvertices,3)) #parameters for exponential fit to each vertex's correlation-distance curve
-
-
-            minval = int(np.ceil(distance_range[0]))
-            minval = max(minval,4) #only interpolate for distances 4mm and above
-            maxval = int(np.floor(distance_range[1]+1))
-            interp_dists = np.array(range(minval,maxval)) #distance values at which to interpolate, 0mm, 1mm, 2mm, 3mm, etc
-            interp_corrs = np.zeros((nvertices,len(interp_dists))) #save interpolated correlations
-            for nvertex in range(nvertices):
-                if nvertex%10000==0: print(f'{c.time()}: Vertex {nvertex}/{nvertices}')
-                distsx = all_neighbour_distances[nsubject][nvertex]
-                corrsx = ims_adjcorr_full[nsubject][nvertex]
-                f = interp1d(distsx, corrsx, kind='linear', fill_value='extrapolate')
-                interp_corrs[nvertex,:] = f(interp_dists)
-
-                #popt, pcov = curve_fit(exp_func, distsx, corrsx,p0=[1.5,0.5,0.1],bounds=((0.5,0.001,-0.1),(2.5,1.0,0.5)))
-                #expfit_params[nvertex,:] = popt
-
-            interp_corrs[interp_corrs<0] = 0 #set min and max interpolated values to 0 and 1
-            interp_corrs[interp_corrs>1] = 1
-            print(f'{c.time()}: Interpolate end')  
-
-            #Test whether interpolated correlations at any distance is associated with sulcal depth, and plot
-            print(f"{c.time()}: Checking for associations with sulcal depth. interp_dists is {interp_dists}")
-            ndists = len(interp_dists)
-            nrows = int(np.ceil(np.sqrt(ndists)))
-            fig,axs = plt.subplots(nrows,nrows,figsize=(10,7))
-            for i in range(ndists): #iterate through distances, 0mm, 1mm, etc.
-                corrs = interp_corrs[:,i]
-                p.plot(corrs) #plot interpolated correlation on brain surface
-                ax=axs.flatten()[i]
-                valid = ((corrs!=0) & (corrs!=1))
-                ax.scatter(sulcs[nsubject][valid],corrs[valid],1,alpha=0.05,color='k')
-                ax.set_xlabel('Sulcal depth')
-                ax.set_ylabel('Interpolated correlation')
-                corr,pval = butils.corr_with_nulls(sulcs[nsubject],corrs,mask,null_method,n_perm)
-                ax.set_title(f'Distance {interp_dists[i]}mm\nR={corr:.3f}, p={pval:.3f}')
-            fig.tight_layout()
-
-            # Plot correlation vs. geodesic distance for some example vertices
-            samplevertices = np.linspace(0,nvertices-1,16).astype(int)
-            nrows = int(np.ceil(np.sqrt(len(samplevertices))))
-            fig,axs = plt.subplots(nrows,nrows,figsize=(10,7))
-            for i,nvertex in enumerate(samplevertices):
-                ax=axs.flatten()[i]
-                distsx = all_neighbour_distances[nsubject][nvertex]
-                corrsx = ims_adjcorr_full[nsubject][nvertex]
-                interp_corrs_vertex = interp_corrs[nvertex,:]
-                ax.scatter(distsx,corrsx,20,alpha=1,color='k')
-                ax.plot(interp_dists, interp_corrs_vertex, '-', color='r')
-                ax.set_xlim(distance_range[0],distance_range[1])
-                ax.set_ylim(0,1)
-                ax.set_xlabel('Distance from source vertex (mm)')
-                ax.set_ylabel('Correlation')
-                ax.set_title(f'Source vertex is {nvertex}')
-            fig.tight_layout()
+            interp_dists = butils.get_interp_dists(distance_range) #distance values at which to interpolate
+            print(f'Interpolate at distances {interp_dists}mm')
+        if do_interpolate_corrs_linearspline:
+            """
+            Fit linear spline to each vertex's correlation-distance curve. Store interpolated correlations at integer intervals. Plot interpolated correlations vs. sulcal depth. Plot spatial map of interpolated correlation at a particular geodesic distance
+            """
+            print(f'{c.time()}: Fit and interpolate linear-spline start') 
+            interp_corrs = butils.corr_dist_fit_linear_spline(c,interp_dists,all_neighbour_distances[nsubject],ims_adjcorr_full[nsubject])
+            print(f'{c.time()}: Fit and interpolate linear-spline end')   
+            fig,axs = butils.corr_dist_plot_linear_spline(c,interp_dists,interp_corrs,sulcs[nsubject],mask,null_method,n_perm)
+            fig,axs=butils.corr_dist_plot_samples(all_neighbour_distances[nsubject],ims_adjcorr_full[nsubject],distance_range,interp_dists,interp_corrs)
+            for i in range(len(interp_dists)): p.plot(interp_corrs[:,i])
+        if do_interpolate_corrs_exp:
+            """
+            Fit exponential function to each vertex's correlation-distance curve. Store expfit parameters for each vertex. Plot expfit parameters on brain. Test whether expfit parameters are associated with sulcal depth.
+            """
+            print(f'{c.time()}: Fit exponentials start')  
+            expfit_params = butils.corr_dist_fit_exp(c,distance_range,all_neighbour_distances[nsubject],ims_adjcorr_full[nsubject])
+            print(f'{c.time()}: Fit exponentials end') 
+            print(f'{c.time()}: Interpolate exponentials start')  
+            interp_dists = np.array(list(range(distance_range[0],distance_range[1]+1)))
+            interp_corrs = butils.interpolate_from_expfit_params(expfit_params,interp_dists)
+            print(f'{c.time()}: Interpolate exponentials end')  
+            fig,axs=butils.corr_dist_plot_samples(all_neighbour_distances[nsubject],ims_adjcorr_full[nsubject],distance_range,interp_dists,interp_corrs)
+            fig,axs = butils.corr_dist_plot_exp(c,expfit_params,sulcs[nsubject],mask,null_method,n_perm)
+            for i in range(len(expfit_params[1])): p.plot(expfit_params[:,i]) #plot on brain map
+        if do_interpolate_corrs_exp or do_interpolate_corrs_linearspline:
             plt.show(block=False)
-
-            #plot exponential fit parameters
-            expfit_param_names = ['Amplitude','Decay rate','Bias']
-            fig,axs = plt.subplots(3,figsize=(4,9))
-            for i in range(3):
-                values = expfit_params[:,i]
-                p.plot(values) 
-                ax=axs.flatten()[i]
-                ax.scatter(sulcs[nsubject],values,1,alpha=0.05,color='k')
-                ax.set_xlabel('Sulcal depth')
-                ax.set_ylabel(f'{expfit_param_names[i]}')
-                corr,pval = butils.corr_with_nulls(sulcs[nsubject],values,mask,null_method,n_perm)
-                ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
-            fig.tight_layout()
-
             assert(0)
 
 
@@ -404,47 +383,97 @@ if __name__=='__main__':
             parc_means = butils.parcel_mean(np.reshape(ims_adjcorr[0],(1,-1)),parc_matrix)
             p.plot(parc_means @ parc_matrix) #Plot parcel-means of local correlations for subject 0
 
-            for to_subtract_parcelmean in [True]:
-                if to_subtract_parcelmean:
-                    ims_adjcorr = [butils.subtract_parcelmean(i,parc_matrix) for i in ims_adjcorr]
-                    all_neighbour_distances_mean = [butils.subtract_parcelmean(i,parc_matrix) for i in all_neighbour_distances_mean]       
-                    sulcs = [butils.subtract_parcelmean(i,parc_matrix) for i in sulcs]         
-                for i in [0,1]:
-                    p.plot(ims_adjcorr[i],cmap='inferno')
-                    p.plot(all_neighbour_distances_mean[i],cmap='inferno')
-                    p.plot(sulcs[i])
-                    fig,axs=plt.subplots(2,2,figsize=(7,7))
-                    ax=axs[0,0]
-                    ax.scatter(all_neighbour_distances_mean[i],ims_adjcorr[i],1,alpha=0.05,color='k')
-                    ax.set_xlabel('Inter-vertex distance (mm)')
-                    ax.set_ylabel('Correlation with neighbours')
-                    corr,pval = butils.corr_with_nulls(all_neighbour_distances_mean[i],ims_adjcorr[i],mask,null_method,n_perm)
-                    ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
-                    #ax.set_title(f'Correlation: {np.corrcoef(all_neighbour_distances_mean[i],ims_adjcorr[i])[0,1]:.3f}')
-                    ax=axs[0,1]
-                    ax.scatter(sulcs[i],all_neighbour_distances_mean[i],1,alpha=0.05,color='k')
-                    ax.set_xlabel('Sulcal depth')
-                    ax.set_ylabel('Inter-vertex distance (mm)')
-                    corr,pval = butils.corr_with_nulls(sulcs[i],all_neighbour_distances_mean[i],mask,null_method,n_perm)
-                    ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
-                    #ax.set_title(f'Correlation: {np.corrcoef(sulcs[i],all_neighbour_distances_mean[i])[0,1]:.3f}')
-                    ax=axs[1,0]
-                    ax.scatter(sulcs[i],ims_adjcorr[i],1,alpha=0.05,color='k')
-                    ax.set_xlabel('Sulcal depth')
-                    ax.set_ylabel('Correlation with neighbours')
-                    corr,pval = butils.corr_with_nulls(sulcs[i],ims_adjcorr[i],mask,null_method,n_perm)
-                    ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
-                    #ax.set_title(f'Correlation: {np.corrcoef(sulcs[i],ims_adjcorr[i])[0,1]:.3f}')
-                    ax=axs[1,1]
-                    ax.scatter(sulcs[i],ims_adjcorr[(i+1)%nsubjects],1,alpha=0.05,color='k')
-                    ax.set_xlabel('Sulcal depth')
-                    ax.set_ylabel('Correlation with neighbours')
-                    corr,pval = butils.corr_with_nulls(sulcs[i],ims_adjcorr[(i+2)%2],mask,null_method,n_perm)
-                    ax.set_title(f'Correlation of this sub\'s sulc with \nlocalcorrs of {subjects[(i+1)%nsubjects]}: R={corr:.3f}, p={pval:.3f}')
-                    #ax.set_title(f'Correlation of this sub\'s sulc with \nlocalcorrs of {subjects[(i+1)%2]}: {np.corrcoef(sulcs[i],ims_adjcorr[(i+1)%2])[0,1]:.3f}')
-                    fig.suptitle(f'Subject {subjects[i]}')
-                    fig.tight_layout()
-                    plt.show(block=False)
+            if to_subtract_parcelmean:
+                ims_adjcorr = [butils.subtract_parcelmean(i,parc_matrix) for i in ims_adjcorr]
+                all_neighbour_distances_mean = [butils.subtract_parcelmean(i,parc_matrix) for i in all_neighbour_distances_mean]       
+                sulcs = [butils.subtract_parcelmean(i,parc_matrix) for i in sulcs]  
+
+            compare_to_ReHoPaperFig4 = False
+            if compare_to_ReHoPaperFig4:
+                #replicate fig 4 of https://link.springer.com/article/10.1007/s00429-014-0795-8
+                im = ims_adjcorr[0]
+                labels_yeo = butils.get_Yeo17Networks_fsLR32k()[mask]
+                names_yeo = ['0','VisCent','VisPeri','SommMotA','SomMotB','DorsAttnA','DorsAttnB','SalVentAttnA','SalVentAttnB','LimbicB','LimbicA','ContA','ContB','ContC','DefaultA','DefaultB','DefaultC','TempPar']
+                #VentAttnA, ContA,DorsAttnB, DefaultB, VentAttnB, ContB, DefaultA, LimbicB.
+                parc_means = np.zeros(labels_yeo.max()+1)
+                parc_stds = np.zeros(labels_yeo.max()+1)
+                for i in range(labels_yeo.max()+1): parc_means[i] = np.mean(im[labels_yeo==i])
+                for i in range(labels_yeo.max()+1): parc_stds[i] = np.std(im[labels_yeo==i])
+
+                names_yeo_new = ['SalVentAttnA','ContA','DorsAttnB','DefaultB','SalVentAttnB','ContB','DefaultA','LimbicB']
+                parc_means_new = [parc_means[names_yeo.index(name)] for name in names_yeo_new]
+
+                fig,axs=plt.subplots(3)
+                ax=axs[0]
+                ax.bar(names_yeo,parc_means)
+                ax.set_ylabel('Local correlation (mean)')
+                ax=axs[1]
+                ax.bar(names_yeo,parc_stds)
+                ax.set_ylabel('Local correlation (std)')
+                ax=axs[2]
+                ax.plot(names_yeo_new,parc_means_new)
+                ax.set_ylabel('Local correlation (mean)')
+                fig.tight_layout()
+                plt.show(block=False)
+                assert(0)
+
+            depth_vs_corrs_stats=False
+            if depth_vs_corrs_stats:
+                corrs = np.zeros((nsubjects,2)) #stores correlation between sulcal depth and local correlations. First column uses same subjects for both variables, second column uses different subjects (mismatched)
+                for i in range(nsubjects):
+                    corr,pval = stats.pearsonr(sulcs[i],ims_adjcorr[i])
+                    corrs[i,0] = corr
+                    corr,pval = stats.pearsonr(sulcs[i],ims_adjcorr[(i+1)%nsubjects])
+                    corrs[i,1] = corr
+                ttest = stats.ttest_rel(corrs[:,0],corrs[:,1],alternative='less')
+                print(f"Correlation of sulcal depth with local correlations: same subjects mean {np.mean(corrs[:,0]):.3f} vs different subjects mean {np.mean(corrs[:,1]):.3f}, paired t-test, t({ttest.df})={ttest.statistic:.3f}, p={ttest.pvalue:.3f}")
+
+                #Stripplot of the correlation between sulcal depth and local correlations, for the same subjects and different subjects. Each column of variable "corrs" will be a different column in the stripplot
+                import seaborn as sns #need env py390 with package seaborn
+                import pandas as pd
+                columns = ['Same\nparticipants','Different\nparticipants']
+                corrs_df = pd.DataFrame(corrs,columns=columns)                   
+                corrs_df = corrs_df.melt(value_vars=columns,var_name='Participants',value_name='Correlation') #convert to single column format
+                fig,ax=plt.subplots(figsize=(3,4))
+                sns.stripplot(x='Participants',y='Correlation',data=corrs_df,ax=ax)
+                ax.set_xlabel('')
+                ax.set_ylabel('Association between sulcal\ndepth and local correlation')
+                fig.tight_layout()
+                plt.show(block=False)
+                assert(0)
+
+            for i in [0]:
+                p.plot(ims_adjcorr[i],cmap='inferno')
+                p.plot(all_neighbour_distances_mean[i],cmap='inferno')
+                p.plot(sulcs[i])
+                fig,axs=plt.subplots(2,2,figsize=(7,7))
+                ax=axs[0,0]
+                ax.scatter(all_neighbour_distances_mean[i],ims_adjcorr[i],1,alpha=0.05,color='k')
+                ax.set_xlabel('Inter-vertex distance (mm)')
+                ax.set_ylabel('Correlation with neighbours')
+                corr,pval = butils.corr_with_nulls(all_neighbour_distances_mean[i],ims_adjcorr[i],mask,null_method,n_perm)
+                ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
+                ax=axs[0,1]
+                ax.scatter(sulcs[i],all_neighbour_distances_mean[i],1,alpha=0.05,color='k')
+                ax.set_xlabel('Sulcal depth')
+                ax.set_ylabel('Inter-vertex distance (mm)')
+                corr,pval = butils.corr_with_nulls(sulcs[i],all_neighbour_distances_mean[i],mask,null_method,n_perm)
+                ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
+                ax=axs[1,0]
+                ax.scatter(sulcs[i],ims_adjcorr[i],1,alpha=0.05,color='k')
+                ax.set_xlabel('Sulcal depth')
+                ax.set_ylabel('Correlation with neighbours')
+                corr,pval = butils.corr_with_nulls(sulcs[i],ims_adjcorr[i],mask,null_method,n_perm)
+                ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
+                ax=axs[1,1]
+                ax.scatter(sulcs[i],ims_adjcorr[(i+1)%nsubjects],1,alpha=0.05,color='k')
+                ax.set_xlabel('Sulcal depth')
+                ax.set_ylabel('Correlation with neighbours')
+                corr,pval = butils.corr_with_nulls(sulcs[i],ims_adjcorr[(i+1)%nsubjects],mask,null_method,n_perm)
+                ax.set_title(f'Correlation of this sub\'s sulc with \nlocalcorrs of {subjects[(i+1)%nsubjects]}: R={corr:.3f}, p={pval:.3f}')
+                fig.suptitle(f'Subject {subjects[i]}')
+                fig.tight_layout()
+                plt.show(block=False)
 
             assert(0) #because we've modified the data
 
@@ -469,9 +498,15 @@ if __name__=='__main__':
             print(corrs_sulc_adjcorr_singleparc)
 
     ### Analyse reliability and identifiability of functional connectivity
-    do_FC = False
+    do_FC = True
     if do_FC:
         print(f'{c.time()}: Calculate FC')   
+
+        #Get geodesic distances within the single parcel
+
+        mask_singleparc = (parc_labels==1)
+        all_gdists = [butils.get_geodesic_distances_within_masked_mesh(mesh,mask_singleparc).ravel() for mesh in meshes[0:1]]
+        gdist = all_gdists[0]
 
         ntimepoints_per_half = ims[0].shape[0]//2 #number of time points in the test and retest halves of each subject's data
 
@@ -481,6 +516,8 @@ if __name__=='__main__':
 
         ims_pfc = Parallel(n_jobs=-1,prefer='processes')(delayed(np.corrcoef)(im.T) for im in ims_parc) #list (nsubjects) of parcellated FC Matrices (nparcels,nparcels)
         ims_sfc = Parallel(n_jobs=-1,prefer='processes')(delayed(np.corrcoef)(im.T) for im in ims_singleparc) #list (nsubjects) of within-single-parcel FC Matrices (nvertices,nvertices)
+
+        for cutoff_mm in [-1,1,2,3,5,8,10]:
 
         ims_pfcv = [i.ravel() for i in ims_pfc] #list (nsubjects) of parcellated FC matrices vectorized, shape (nparcls*nparcels,)
         ims_sfcv = [i.ravel() for i in ims_sfc] #list (nsubjects) of single parcel FC matrices vectorized, shape (nverticesInParcel*nverticesInParcel,)
@@ -497,7 +534,7 @@ if __name__=='__main__':
         figsize = (4,4)
         x_axis_label = 'Test scans'
         y_axis_label = 'Retest scans'
-        for reg in [False,True]:
+        for reg in [False]:
             prefix = f'Parcellated FC (reg={reg})'
             corrs = tutils.ident_plot(ims_pfcvx,x_axis_label,ims_pfcvy,y_axis_label,reg=reg,normed=False,figsize=figsize,title=prefix) 
             print(f'{prefix}, test-retest identifiability is {tutils.identifiability(corrs):.2f}%')

@@ -133,6 +133,26 @@ def get_sulc(subject_id,version='fsaverage_LR32k'):
         assert(0)
     return hutils.get(sulc_path).squeeze()
 
+def filepath_to_parcellation(filepath):
+    import nibabel as nib
+    x=nib.load(filepath)
+    labels=x.darrays[0].data
+    return labels
+def get_Yeo17Networks_fsLR32k():
+    file_left = ospath(f"{project_path}/intermediates/parcellations/Yeo_JNeurophysiol11_17Networks.32k.L.label.gii")
+    labels_left = filepath_to_parcellation(file_left)
+    file_right = ospath(f"{project_path}/intermediates/parcellations/Yeo_JNeurophysiol11_17Networks.32k.R.label.gii")
+    labels_right = filepath_to_parcellation(file_right)
+    return np.hstack([labels_left,labels_right])
+def get_brodmann_fsLR32k():
+    prefix = 'BAprobatlas.32k.R.func'
+    prefix = 'BA_handArea.32k.L.label'
+    file_left = ospath(f"{project_path}/intermediates/parcellations/{prefix}.gii")
+    labels_left = filepath_to_parcellation(file_left)
+    file_right = ospath(f"{project_path}/intermediates/parcellations/{prefix}.gii")
+    labels_right = filepath_to_parcellation(file_right)
+    return np.hstack([labels_left,labels_right])
+
 #Functions for neighbour vertices and correlations
 
 def _get_all_neighbour_vertices(mesh,mask):
@@ -467,7 +487,7 @@ def parcel_mean(img,parc_matrix,vertex_area=None):
     elif img.ndim==2:
         nvertices_sum_expanded = np.tile(nvertices_sums,(1,img.shape[0])).T
         return np.squeeze(np.array(parcel_sums/nvertices_sum_expanded))
- 
+
 def subtract_parcelmean(data,parc_matrix):
     """
     Given a data vector, calculate and subtract the parcel-mean value from each vertex. First, find the mean value for each parcel. Then, multiply by parc_matrix to get the parcel-mean value for each vertex. Then, subtract this from the data. Finally, add mean value of whole-brain to each vertex
@@ -484,9 +504,9 @@ def subtract_parcelmean(data,parc_matrix):
     return (data - parc_means_at_vertices)
 
 
-from get_gdistances import get_gdistances
-from Connectome_Spatial_Smoothing import CSS as css
 def get_smoothing_kernel(subject,surface,fwhm_for_gdist,smooth_noise_fwhm,MSMAll=False,mesh_template='fsLR32k'):
+        from get_gdistances import get_gdistances
+        from Connectome_Spatial_Smoothing import CSS as css
         gdistances = get_gdistances(subject,surface,fwhm_for_gdist,epsilon=0.01,load_from_cache=True,save_to_cache=True,MSMAll=MSMAll,mesh_template=mesh_template)
         skernel = css._local_distances_to_smoothing_coefficients(gdistances, css._fwhm2sigma(smooth_noise_fwhm))
         return skernel
@@ -629,6 +649,120 @@ def corr_with_nulls(x,y,mask,method='spin_test',n_perm=100):
         corr,pval = stats.compare_images(x,y,nulls=x_nulls,metric='pearsonr')
     return corr,pval
 
+def get_interp_dists(distance_range):
+    #Return distance values at which to linear-spline interpolate, 0mm, 1mm, 2mm, 3mm, etc
+    #e.g. if distance range is (2,6), return np.array([4,5,6])
+    minval = int(np.ceil(distance_range[0]))
+    minval = max(minval,4) #only interpolate for distances 4mm and above
+    maxval = int(np.floor(distance_range[1]+1))
+    interp_dists = np.array(range(minval,maxval)) 
+    return interp_dists
+
+def corr_dist_fit_linear_spline(c,interp_dists,all_neighbour_distances_sub,ims_adjcorr_full_sub):
+    """
+    For each vertex, fit a linear spline to the correlation-distance curve. Interpolate the correlation at integer distances. Return the interpolated correlations for each vertex, for each distance value
+    """
+    from scipy.interpolate import interp1d
+    nvertices=len(all_neighbour_distances_sub)
+    interp_corrs = np.zeros((nvertices,len(interp_dists))) #save interpolated correlations
+    #Get interpolated correlations for each vertex, for each distance value
+    for nvertex in range(nvertices):
+        if nvertex%10000==0: print(f'{c.time()}: Vertex {nvertex}/{nvertices}')
+        distsx = all_neighbour_distances_sub[nvertex]
+        corrsx = ims_adjcorr_full_sub[nvertex]
+        f = interp1d(distsx, corrsx, kind='linear', fill_value='extrapolate') #fit linear spline
+        interp_corrs[nvertex,:] = f(interp_dists)
+    interp_corrs[interp_corrs<0] = 0 #set min and max interpolated values to 0 and 1
+    interp_corrs[interp_corrs>1] = 1
+    return interp_corrs
+
+def exp_func(x, a, b, c):
+    return a * np.exp(-b * x) + c
+
+def corr_dist_fit_exp(c,distance_range,all_neighbour_distances_sub,ims_adjcorr_full_sub,n_jobs=-1,prefer='processes'):
+    """
+    For each vertex, fit an exponential curve to the correlation-distance curve. Return expfit parameters.
+    Ignore OptimizeWarning
+    """
+    from scipy.optimize import curve_fit
+    from joblib import Parallel,delayed
+    def func(x,y):
+        popt, pcov = curve_fit(exp_func, x, y,p0=[1.5,0.5,0.1],bounds=((0.5,0.001,-0.1),(2.5,1.0,0.5)))
+        return popt
+    nvertices=len(all_neighbour_distances_sub)
+    temp = Parallel(n_jobs=n_jobs,prefer=prefer)(delayed(func)(all_neighbour_distances_sub[i],ims_adjcorr_full_sub[i]) for i in range(nvertices))
+    expfit_params = np.vstack(temp)
+    return expfit_params
+
+def interpolate_from_expfit_params(expfit_params,interp_dists):
+    """
+    Given exponential fit parameters for each vertex, interpolate correlation values at specific x-values given in "interp_dists"
+    """
+    nvertices=expfit_params.shape[0]
+    interp_corrs = np.zeros((nvertices,len(interp_dists))) #interpolated correlations at integer distances
+    for nvertex in range(nvertices):
+        for ndist in range(len(interp_dists)):
+            dist = interp_dists[ndist]
+            interp_corrs[nvertex,ndist] = exp_func(dist, expfit_params[nvertex,0], expfit_params[nvertex,1], expfit_params[nvertex,2])
+    return interp_corrs
+
+def corr_dist_plot_linear_spline(c,interp_dists,interp_corrs,sulcs_subject,mask,null_method,n_perm):
+    #plot interpolated correlations (at particular distance value) as a function of sulcal depth
+    from matplotlib import pyplot as plt
+    ndists = len(interp_dists)
+    nrows = int(np.ceil(np.sqrt(ndists)))
+    fig,axs = plt.subplots(nrows,nrows,figsize=(10,7))
+    for i in range(ndists): #iterate through distances, 0mm, 1mm, etc
+        corrs = interp_corrs[:,i]
+        ax=axs.flatten()[i]
+        valid = ((corrs!=0) & (corrs!=1))
+        ax.scatter(sulcs_subject[valid],corrs[valid],1,alpha=0.05,color='k')
+        ax.set_xlabel('Sulcal depth')
+        ax.set_ylabel('Interpolated correlation')
+        corr,pval = corr_with_nulls(sulcs_subject,corrs,mask,null_method,n_perm)
+        ax.set_title(f'Distance {interp_dists[i]}mm\nR={corr:.3f}, p={pval:.3f}')
+    fig.tight_layout()
+    return fig,axs
+
+def corr_dist_plot_exp(c,expfit_params,sulcs_subject,mask,null_method,n_perm):
+    #plot exponential fit parameters as a function of sulcal depth
+    from matplotlib import pyplot as plt
+    expfit_param_names = ['Amplitude','Decay rate','Bias']
+    fig,axs = plt.subplots(3,figsize=(4,9))
+    for i in range(3):
+        values = expfit_params[:,i]
+        ax=axs.flatten()[i]
+        ax.scatter(sulcs_subject,values,1,alpha=0.05,color='k')
+        ax.set_xlabel('Sulcal depth')
+        ax.set_ylabel(f'{expfit_param_names[i]}')
+        corr,pval = corr_with_nulls(sulcs_subject,values,mask,null_method,n_perm)
+        ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
+    fig.tight_layout()
+    return fig,axs
+
+def corr_dist_plot_samples(all_neighbour_distances_sub,ims_adjcorr_full_sub,distance_range,interp_dists,interp_corrs):
+    # Plot correlation vs. distance for some example vertices, and the linear spline fit
+    from matplotlib import pyplot as plt
+    nvertices=len(all_neighbour_distances_sub)
+    samplevertices = np.linspace(0,nvertices-1,16).astype(int)
+    nrows = int(np.ceil(np.sqrt(len(samplevertices))))
+    fig,axs = plt.subplots(nrows,nrows,figsize=(10,7))
+    for i,nvertex in enumerate(samplevertices):
+        ax=axs.flatten()[i]
+        distsx = all_neighbour_distances_sub[nvertex]
+        corrsx = ims_adjcorr_full_sub[nvertex]
+        interp_corrs_vertex = interp_corrs[nvertex,:]
+        ax.scatter(distsx,corrsx,20,alpha=1,color='k')
+        ax.plot(interp_dists, interp_corrs_vertex, '-', color='r')
+        ax.set_xlim(distance_range[0],distance_range[1])
+        ax.set_ylim(0,1)
+        ax.set_xlabel('Distance from source vertex (mm)')
+        ax.set_ylabel('Correlation')
+        ax.set_title(f'Source vertex is {nvertex}')
+    fig.tight_layout()
+    return fig,axs
+
+
 def ttest_ind_with_nulldata_given(groups,observed_data,null_data):
     """
     Vector "group" which contains group memberships of each individual, and another vector "data" which contains the values for each individual. I wish to compare the mean value in "data" across the two different groups. I wish to do the test non-parametrically. To this end, I have generated 100 randomized versions of "data" where the values are randomized across all individuals. This null dataset is given in variable "data_null", and it is a 2D matrix (number of individuals, number of surrogates). I wish do conduct a t-test for group differences in "data", and compare the t-statistic to the distribution of t-statistics when I do the same thing with "data_null", and hence derive a p-value for the deviation of the observed statistic from the expected distribution from the null
@@ -649,3 +783,22 @@ def ttest_ind_with_nulldata_given(groups,observed_data,null_data):
         p_value = 1/n_perm
     cohen_d = get_cohen_d(observed_data[groups==group_names[0]],observed_data[groups==group_names[1]])
     return cohen_d, observed_t_stat, p_value
+
+"""
+def addfit(x,y,ax,linewidth=1,color='black'):
+    #add a line of best fit
+    m,b = np.polyfit(x,y,1)
+    ax.plot(x,m*x+b,color=color,linewidth=linewidth)
+"""
+
+def get_geodesic_distances_within_masked_mesh(mesh,mask):
+    """
+    Compute all pairwise geodesic distances within a masked region of a mesh
+    """
+    import gdist
+    verts,faces=mesh[0],mesh[1]
+    verts_singleparc = verts[mask] #vertices in the single parcel
+    faces_singleparc = triangles_removenongray(faces,mask)
+    r_sparse=gdist.local_gdist_matrix(verts_singleparc.astype(np.float64),faces_singleparc)
+    r = r_sparse.astype(np.float32).toarray()
+    return r

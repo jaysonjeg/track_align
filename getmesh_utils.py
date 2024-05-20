@@ -29,7 +29,7 @@ def get_surface(surface_gifti_file):
     triangles=surface.darrays[1].data #array (ntriangles,3)
     return vertices,triangles
 
-def get_verts_and_triangles(sub,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k'):
+def get_verts_and_triangles_hemi(sub,hemi,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k'):
     """
     folder: 'MNINonLinear' (default) or 'T1w'
     version: 'native', 'fsaverage_LR32k' (default) or '164k'
@@ -43,31 +43,32 @@ def get_verts_and_triangles(sub,surface_type,MSMAll=False,folder='MNINonLinear',
 
     if folder=='MNINonLinear':
         if version=='fsaverage_LR32k':
-            L_surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.L.{surface_type}{MSMstring}.32k_fs_LR.surf.gii")
-            R_surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.R.{surface_type}{MSMstring}.32k_fs_LR.surf.gii")
+            surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.{hemi}.{surface_type}{MSMstring}.32k_fs_LR.surf.gii")
         elif version=='native':
-            L_surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/Native/{sub}.L.{surface_type}.native.surf.gii")
-            R_surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/Native/{sub}.R.{surface_type}.native.surf.gii")
+            surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/Native/{sub}.{hemi}.{surface_type}.native.surf.gii")
         elif version=='164k':
-            L_surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/{sub}.L.{surface_type}{MSMstring}.164k_fs_LR.surf.gii")
-            R_surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/{sub}.R.{surface_type}{MSMstring}.164k_fs_LR.surf.gii")
+            surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/{sub}.{hemi}.{surface_type}{MSMstring}.164k_fs_LR.surf.gii")
         else: 
             assert(0)
     elif folder=='T1w':
         if version=='native':
-            L_surf_file=ospath(f"{hcp_folder}/{sub}/T1w/Native/{sub}.L.{surface_type}.native.surf.gii")
-            R_surf_file=ospath(f"{hcp_folder}/{sub}/T1w/Native/{sub}.R.{surface_type}.native.surf.gii")
+            surf_file=ospath(f"{hcp_folder}/{sub}/T1w/Native/{sub}.{hemi}.{surface_type}.native.surf.gii")
         else:
             assert(0)
 
+    vertices,triangles=get_surface(surf_file) #triangles are numbered 0 to 32491
+    return vertices,triangles
 
-    Lvertices,Ltriangles=get_surface(L_surf_file) #L triangles are numbered 0 to 32491
-    Rvertices,Rtriangles=get_surface(R_surf_file) #R triangles are originally numbered 0 to 32491
+def get_verts_and_triangles(sub,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k'):
+    """
+    folder: 'MNINonLinear' (default) or 'T1w'
+    version: 'native', 'fsaverage_LR32k' (default) or '164k'
+    """
+    Lvertices,Ltriangles = get_verts_and_triangles_hemi(sub,'L',surface_type,MSMAll,folder,version)
+    Rvertices,Rtriangles = get_verts_and_triangles_hemi(sub,'R',surface_type,MSMAll,folder,version)
     Rtriangles_new=Rtriangles+Lvertices.shape[0] #R triangles now numbered 32492 to 64983
-
     all_vertices_64k=np.vstack((Lvertices,Rvertices)) #array (64984,3)
     all_triangles_64k=np.vstack((Ltriangles,Rtriangles_new))
-
     return all_vertices_64k,all_triangles_64k
 
 def get_verts_and_triangles_59k(sub,surface_type):

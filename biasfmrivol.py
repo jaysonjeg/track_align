@@ -30,7 +30,6 @@ Then we get the neighbourhood correlation map for the fMRI data, masked by the g
 
 rests=['REST1_LR','REST1_RL','REST2_LR','REST2_RL']
 subject = '100610' #100610, 102311
-
 runs = [0]
 
 #directions = ['LR','RL']
@@ -140,11 +139,19 @@ if use_corrs_vol2surf:
     #print(f'With parcel-mean subtracted, correlation is {np.corrcoef(butils.subtract_parcelmean(sulc[valid],parc_matrix[:,valid]),butils.subtract_parcelmean(im[valid],parc_matrix[:,valid]))[0,1]:.3f}')
 
     im[np.isnan(im)] = np.nanmean(im) #for surface plot, replace nans with mean value
-    p.plot(im,cmap='inferno')
+    p.plot(im,cmap='bwr')
     plt.show(block=False)
 
-
-
+    """
+    ngrayl = len(hcp.vertex_info.grayl) #left hemisphere only
+    im_left = im[0:ngrayl]
+    verts,faces = getmesh_utils.get_verts_and_triangles_hemi(subject,'L',surface_visual)
+    mask_left = hutils.get_fsLR32k_mask(hemi='L')
+    verts_left = verts[mask_left,:]
+    faces_left = butils.triangles_removenongray(faces,mask_left)
+    p_left = hutils.surfplot('',mesh = [verts_left,faces_left], plot_type='open_in_browser')
+    p_left.plot(im_left,cmap='inferno')
+    """
 
 
 
