@@ -29,8 +29,8 @@ if __name__=='__main__':
     biasfmri_intermediates_path = ospath(f'{project_path}/intermediates')
 
     ### GENERAL PARAMETERS
-    sub_slice = slice(0,3)
-    real_or_noise = 'noise' # 'real' or 'noise
+    sub_slice = slice(0,1)
+    real_or_noise = 'real' # 'real' or 'noise
     this_parc = 1 #which parcel for within-parcel analysis
     parc_string='S300'
     surface = 'midthickness' #which surface for calculating distances, e.g. 'white','inflated','pial','midthickness'
@@ -39,7 +39,7 @@ if __name__=='__main__':
     MSMAll = False
 
     ### PARAMETERS FOR TESTS OF CORRELATIONS BETWEEN TWO MAPS
-    to_subtract_parcelmean = False #subtract parcel means from data like sulcal depth, local correlations, etc, before doing correlations
+    to_subtract_parcelmean = True #subtract parcel means from data like sulcal depth, local correlations, etc, before doing correlations
     null_method = 'no_null' #no_null, spin_test, eigenstrapping
     n_perm = 100 #number of surrogates for spin test or eigenstrapping
 
@@ -122,7 +122,7 @@ if __name__=='__main__':
             ims = [np.random.randn(ntimepoints,59412).astype(np.float32) for i in range(nsubjects)]
         if smooth_noise_fwhm>0: #smooth the noise data using geodesic distances from subject-specific meshes
             fwhm_values_for_gdist = np.array([3,5,10]) #fwhm values for which geodesic distances have been pre-calculated
-            fwhm_for_gdist = fwhm_values_for_gdist[np.where(fwhm_values_for_gdist>smooth_noise_fwhm)[0][0]] #find smallest value greater than fwhm in the above list
+            fwhm_for_gdist = fwhm_values_for_gdist[np.where(fwhm_values_for_gdist>=smooth_noise_fwhm)[0][0]] #find smallest value greater than fwhm in the above list
             print(f'{c.time()}: Generate smoothers start')
             skernels = Parallel(n_jobs=-1,prefer='threads')(delayed(butils.get_smoothing_kernel)(subject,surface,fwhm_for_gdist,smooth_noise_fwhm,MSMAll) for subject in subjects)
             print(f'{c.time()}: Smooth noise data start')
@@ -324,7 +324,7 @@ if __name__=='__main__':
         assert(0)
 
     ### Get neighbours and correlations
-    do_neighbours = False
+    do_neighbours = True
     if do_neighbours:
         func = lambda subject,mesh: butils.get_subjects_neighbour_vertices(c, subject,surface,mesh,biasfmri_intermediates_path, which_neighbours, distance_range,load_neighbours, save_neighbours,MSMAll)
         print(f'{c.time()}: Get neighbour vertices')  
@@ -381,12 +381,46 @@ if __name__=='__main__':
                 #ims_adjcorr[i][ims_adjcorr[i]<0] = 0 #set negative correlations to 0
 
             parc_means = butils.parcel_mean(np.reshape(ims_adjcorr[0],(1,-1)),parc_matrix)
-            p.plot(parc_means @ parc_matrix) #Plot parcel-means of local correlations for subject 0
+            #p.plot(parc_means @ parc_matrix) #Plot parcel-means of local correlations for subject 0
 
             if to_subtract_parcelmean:
+
+                im = ims_adjcorr[0]
+
+                from Connectome_Spatial_Smoothing import CSS as css
+                fwhm = 40
+                epsilon=0.5
+                sigma=css._fwhm2sigma(fwhm)
+                from get_gdistances import get_gdistances
+                gdists=get_gdistances('100610','midthickness',fwhm,mesh_template='fsLR32k',load_from_cache=True,save_to_cache=False,epsilon=epsilon)
+                skernel = css._local_distances_to_smoothing_coefficients(gdists,sigma)
+                smoother = lambda x: skernel.dot(x.T).T
+                subtract_smoothed = lambda x: x - smoother(x)
+
+                x = np.zeros(59412)
+                for i in np.linspace(0,59000,100): x[int(i)]=1
+                x2 = smoother(x)
+                x3 = subtract_smoothed(x2)
+                p.plot(x)
+                p.plot(x2)
+                p.plot(x3)
+
+                #searchlights = hutils.searchlights(15, sub='100610',surface='midthickness')
+                #assert(0)
+
+                #smoother = hutils.make_smoother_100610(10)
+                ims_adjcorr = [subtract_smoothed(i) for i in ims_adjcorr]
+                all_neighbour_distances_mean = [subtract_smoothed(i) for i in all_neighbour_distances_mean]
+                sulcs = [subtract_smoothed(i) for i in sulcs]
+
+                """
                 ims_adjcorr = [butils.subtract_parcelmean(i,parc_matrix) for i in ims_adjcorr]
                 all_neighbour_distances_mean = [butils.subtract_parcelmean(i,parc_matrix) for i in all_neighbour_distances_mean]       
                 sulcs = [butils.subtract_parcelmean(i,parc_matrix) for i in sulcs]  
+                """
+
+                p.plot(im)
+                p.plot(ims_adjcorr[0])
 
             compare_to_ReHoPaperFig4 = False
             if compare_to_ReHoPaperFig4:
@@ -429,7 +463,7 @@ if __name__=='__main__':
                 print(f"Correlation of sulcal depth with local correlations: same subjects mean {np.mean(corrs[:,0]):.3f} vs different subjects mean {np.mean(corrs[:,1]):.3f}, paired t-test, t({ttest.df})={ttest.statistic:.3f}, p={ttest.pvalue:.3f}")
 
                 #Stripplot of the correlation between sulcal depth and local correlations, for the same subjects and different subjects. Each column of variable "corrs" will be a different column in the stripplot
-                import seaborn as sns #need env py390 with package seaborn
+                import seaborn as sns #need env nilearn with package seaborn
                 import pandas as pd
                 columns = ['Same\nparticipants','Different\nparticipants']
                 corrs_df = pd.DataFrame(corrs,columns=columns)                   
@@ -498,48 +532,79 @@ if __name__=='__main__':
             print(corrs_sulc_adjcorr_singleparc)
 
     ### Analyse reliability and identifiability of functional connectivity
-    do_FC = True
+    do_FC = False
     if do_FC:
         print(f'{c.time()}: Calculate FC')   
 
-        #Get geodesic distances within the single parcel
-
-        mask_singleparc = (parc_labels==1)
-        all_gdists = [butils.get_geodesic_distances_within_masked_mesh(mesh,mask_singleparc).ravel() for mesh in meshes[0:1]]
-        gdist = all_gdists[0]
-
-        ntimepoints_per_half = ims[0].shape[0]//2 #number of time points in the test and retest halves of each subject's data
-
-        #split each subject's data into test and retest halves
-        ims_parc = [array[0:ntimepoints_per_half,:] for array in ims_parc] + [array[ntimepoints_per_half:,:] for array in ims_parc] 
-        ims_singleparc = [array[0:ntimepoints_per_half,:] for array in ims_singleparc] + [array[ntimepoints_per_half:,:] for array in ims_singleparc]
-
-        ims_pfc = Parallel(n_jobs=-1,prefer='processes')(delayed(np.corrcoef)(im.T) for im in ims_parc) #list (nsubjects) of parcellated FC Matrices (nparcels,nparcels)
-        ims_sfc = Parallel(n_jobs=-1,prefer='processes')(delayed(np.corrcoef)(im.T) for im in ims_singleparc) #list (nsubjects) of within-single-parcel FC Matrices (nvertices,nvertices)
-
-        for cutoff_mm in [-1,1,2,3,5,8,10]:
-
-        ims_pfcv = [i.ravel() for i in ims_pfc] #list (nsubjects) of parcellated FC matrices vectorized, shape (nparcls*nparcels,)
-        ims_sfcv = [i.ravel() for i in ims_sfc] #list (nsubjects) of single parcel FC matrices vectorized, shape (nverticesInParcel*nverticesInParcel,)
-
-        #re-split into run 1 and run 2
-        ims_pfcvx = ims_pfcv[0:nsubjects]
-        ims_pfcvy = ims_pfcv[nsubjects:]
-        ims_sfcvx = ims_sfcv[0:nsubjects]
-        ims_sfcvy = ims_sfcv[nsubjects:]
-
-        print(f'{c.time()}: Get identifiability')  
-        #Correlation between test and retest scans, across all subject pairs
-        import tkalign_utils as tutils
+        ### Parameters for identifiability plots ###
         figsize = (4,4)
         x_axis_label = 'Test scans'
         y_axis_label = 'Retest scans'
-        for reg in [False]:
-            prefix = f'Parcellated FC (reg={reg})'
-            corrs = tutils.ident_plot(ims_pfcvx,x_axis_label,ims_pfcvy,y_axis_label,reg=reg,normed=False,figsize=figsize,title=prefix) 
-            print(f'{prefix}, test-retest identifiability is {tutils.identifiability(corrs):.2f}%')
-            prefix = f'Single parcel FC (reg={reg})'
-            corrs = tutils.ident_plot(ims_sfcvx,x_axis_label,ims_sfcvy,y_axis_label,reg=reg,normed=False,figsize=figsize,title=prefix)
-            print(f'{prefix}, test-retest identifiability is {tutils.identifiability(corrs):.2f}%')
+        regress_ident = False #whether to regress out rows/columns in identifiability
+        ntimepoints_per_half = ims[0].shape[0]//2 #number of time points in the test and retest halves of each subject's data
+
+
+        ### Identifiability - parcel level ###    
+        ims_parc = [array[0:ntimepoints_per_half,:] for array in ims_parc] + [array[ntimepoints_per_half:,:] for array in ims_parc] #split each subject's data into test and retest halves
+        ims_pfc = Parallel(n_jobs=-1,prefer='processes')(delayed(np.corrcoef)(im.T) for im in ims_parc) #list (nsubjects) of parcellated FC Matrices (nparcels,nparcels)
+
+        ims_pfcv = [i.ravel() for i in ims_pfc] #list (nsubjects) of parcellated FC matrices vectorized, shape (nparcls*nparcels,)      
+        ims_pfcvx = ims_pfcv[0:nsubjects] #re-split into run 1 and run 2
+        ims_pfcvy = ims_pfcv[nsubjects:]
+
+        #Correlation between test and retest scans, across all subject pairs
+        print(f'{c.time()}: Get identifiability parcellated')  
+        import tkalign_utils as tutils
+        prefix = f'Parcellated FC (reg={regress_ident})'
+        corrs = tutils.ident_plot(ims_pfcvx,x_axis_label,ims_pfcvy,y_axis_label,reg=regress_ident,normed=False,figsize=figsize,title=prefix) 
+        print(f'{prefix}, test-retest identifiability is {tutils.identifiability(corrs):.2f}%')
+
+        ### Identifiability - single parcel level ###
+ 
+        all_parc_labels = list(range(1,11)) #which parcels, default [1], or list(range(1,nparcs))
+        all_min_mm = [0,1,2,3,4,5,6,7,8,9,10,15,20] #which cutoff distances, default [0]
+        results = np.zeros((len(all_parc_labels),len(all_min_mm))) #save identifiability values
+        for n_parc_labels, parc_label in enumerate(all_parc_labels):
+            print(f'{c.time()}: Identifiability: single parcel #{parc_label}')
+            mask_singleparc = (parc_labels==parc_label)
+            gdists = [butils.get_geodesic_distances_within_masked_mesh(mesh,mask_singleparc) for mesh in meshes] #get geodesic distances within the single parcel
+            gdists = [i.ravel() for i in gdists]
+            gdists_use = np.mean(np.stack(gdists),axis=0)
+
+            ims_singleparc = [im[:,mask_singleparc] for im in ims] #subjects' single-parcel time series (ntimepoints,nverticesInParcel)
+            ims_singleparc = [array[0:ntimepoints_per_half,:] for array in ims_singleparc] + [array[ntimepoints_per_half:,:] for array in ims_singleparc] #split each subject's data into test and retest halves
+            ims_sfc = Parallel(n_jobs=-1,prefer='processes')(delayed(np.corrcoef)(im.T) for im in ims_singleparc) #list (nsubjects) of within-single-parcel FC Matrices (nvertices,nvertices)
+
+            for n_min_mm,min_mm in enumerate(all_min_mm):
+                ims_sfcv = [i.ravel() for i in ims_sfc] #list (nsubjects) of single parcel FC matrices vectorized, shape (nverticesInParcel*nverticesInParcel,)   
+
+                gdist_mask = gdists_use > min_mm
+                ratio_admissible = 100*np.sum(gdist_mask)/len(gdists_use)
+                ims_sfcv = [i[gdist_mask] for i in ims_sfcv] #only keep the FC values from vertex pairs greater than a given geodesic distance from each other
+
+                ims_sfcvx = ims_sfcv[0:nsubjects] #re-split into run 1 and run 2
+                ims_sfcvy = ims_sfcv[nsubjects:]
+
+                #Correlation between test and retest scans, across all subject pairs
+                #print(f'{c.time()}: Get identifiability single parcel pairs>{min_mm}mm')  
+                import tkalign_utils as tutils
+                prefix = f'Single parcel FC pairs>{min_mm}mm {ratio_admissible:.1f}% (reg={regress_ident})'
+                corrs = tutils.ident_plot(ims_sfcvx,x_axis_label,ims_sfcvy,y_axis_label,reg=regress_ident,normed=False,figsize=figsize,title=prefix,make_plot=False)
+                identifiability = tutils.identifiability(corrs)
+                print(f'{prefix}, test-retest ident is {identifiability:.0f}%')
+                results[n_parc_labels,n_min_mm] = identifiability
+
+        #Strip-plot of identifiability at each cutoff value
+        results_df = pd.DataFrame(results,columns=all_min_mm)                   
+        results_dfmelt = results_df.melt(value_vars=all_min_mm,var_name='cutoff',value_name='Identifiability') #convert to single column format
+        fig,ax=plt.subplots(figsize=(3,4))
+        import seaborn as sns
+        sns.lineplot(data=results_dfmelt,x="cutoff",y="Identifiability",color='black',ax=ax)
+        ax.axhline(y=10,color='r')
+        ax.set_ylim(0,100)
+        ax.set_xlabel('Distance threshold (mm)')
+        ax.set_ylabel('Identifiability (%)')
+        fig.tight_layout()
+
         print(f'{c.time()}: Finished with identifiability')  
         plt.show(block=False)

@@ -53,16 +53,19 @@ def get_gdistances(sub,surface,fwhm,epsilon=0.01,hcp_folder="/mnt/d/FORSTORAGE/D
             surf_file_R = ospath(f"{os.path.dirname(datasets.__file__)}/data/fsaverage5/{surface}_right.gii.gz")
 
         sigma=css._fwhm2sigma(fwhm)
-        cortical_local_geodesic_distances = css._get_cortical_local_distances(surf_file_L, surf_file_R, css._max_smoothing_distance(sigma, epsilon)) 
+        dd=css._max_smoothing_distance(sigma, epsilon)
+        print(f'maxdist: {dd:.3f}')
+        cortical_local_geodesic_distances = css._get_cortical_local_distances(surf_file_L, surf_file_R, dd) 
         if save_to_cache:
             sparse.save_npz(f'{save_path}.npz',cortical_local_geodesic_distances)
             #savemat(f'{save_path}.mat',{'data':smoother})
         return cortical_local_geodesic_distances
 
 if __name__=='__main__':
-    for surface in ['pial']:
-        for fwhm in [3,5]:
-            for sub in ['standard']: #hutils.all_subs[0:10]: #['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823']: 
+    for surface in ['midthickness']:
+        for fwhm in [40]:
+            for sub in ['100610']: #hutils.all_subs[0:10]: #['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823']: #['standard']
                 print([surface,sub,fwhm])  
-                get_gdistances(sub,surface,fwhm,mesh_template='fsaverage5')
+                x=get_gdistances(sub,surface,fwhm,mesh_template='fsLR32k',load_from_cache=False,save_to_cache=True,epsilon=0.5)
+                print(f'{c.time()}: Done')
 

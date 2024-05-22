@@ -791,14 +791,19 @@ def addfit(x,y,ax,linewidth=1,color='black'):
     ax.plot(x,m*x+b,color=color,linewidth=linewidth)
 """
 
+def reduce_mesh(mesh,mask):
+    #Given a mesh as [vertices,faces], remove vertices not in mask
+    verts,faces=mesh[0],mesh[1]
+    verts_masked = verts[mask] #vertices in the single parcel
+    faces_masked = triangles_removenongray(faces,mask)
+    return verts_masked, faces_masked
+
 def get_geodesic_distances_within_masked_mesh(mesh,mask):
     """
     Compute all pairwise geodesic distances within a masked region of a mesh
     """
     import gdist
-    verts,faces=mesh[0],mesh[1]
-    verts_singleparc = verts[mask] #vertices in the single parcel
-    faces_singleparc = triangles_removenongray(faces,mask)
+    verts_singleparc, faces_singleparc = reduce_mesh(mesh,mask)
     r_sparse=gdist.local_gdist_matrix(verts_singleparc.astype(np.float64),faces_singleparc)
     r = r_sparse.astype(np.float32).toarray()
     return r

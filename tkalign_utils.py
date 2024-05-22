@@ -700,7 +700,7 @@ def full(x_ranks):
     w3[w3==0]=np.nan #convert any new zeros (formerly nans on diagonal) back to nans   
     return w3    
 
-def ident_plot(X,xlabel,Y,ylabel,reg=True,normed = True, figsize=None,title=None):
+def ident_plot(X,xlabel,Y,ylabel,reg=True,normed = True, figsize=None,title=None,make_plot=True):
     """
     X and Y are lists of vectors. Calculate the correlation between each pair of vectors, and plot the results
     """
@@ -715,18 +715,20 @@ def ident_plot(X,xlabel,Y,ylabel,reg=True,normed = True, figsize=None,title=None
             corrs[i,j] = np.corrcoef(X[j],Y[i])[0,1]
     if reg:
         corrs = regress(corrs)
-    fig,ax=plt.subplots(figsize=figsize)
-    cax=ax.imshow(corrs,cmap='cividis')
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    nsubjects = corrs.shape[0]
-    ax.set_xticks(range(nsubjects))
-    ax.set_yticks(range(nsubjects))
-    ax.set_xticklabels([i+1 for i in range(nsubjects)])
-    ax.set_yticklabels([i+1 for i in range(nsubjects)])
-    ax.set_title(title)
-    fig.colorbar(cax,ax=ax)
-    fig.tight_layout()
+
+    if make_plot:
+        fig,ax=plt.subplots(figsize=figsize)
+        cax=ax.imshow(corrs,cmap='cividis')
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        nsubjects = corrs.shape[0]
+        ax.set_xticks(range(nsubjects))
+        ax.set_yticks(range(nsubjects))
+        ax.set_xticklabels([i+1 for i in range(nsubjects)])
+        ax.set_yticklabels([i+1 for i in range(nsubjects)])
+        ax.set_title(title)
+        fig.colorbar(cax,ax=ax)
+        fig.tight_layout()
     return corrs
 
 def get_max_within_parcel_corrs(mov,align_labels,nparcs):

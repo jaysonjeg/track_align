@@ -1,5 +1,58 @@
+#Test eigenstrapping
+
+"""
+from eigenstrapping.datasets import load_surface_examples
+surf_lh, surf_rh, data_lh, data_rh, emodes_lh, emodes_rh, evals_lh, evals_rh = load_surface_examples(with_surface=True)
+#Issue 1: FileNotFoundError: No such file or no access: 'C:/Users/Jayson/miniconda3/envs/eigen/lib/site-packages/eigenstrapping/datasets/brainmaps/fsaverage5_lh.gii'
+#No 'brainmaps' folder
+
+from eigenstrapping import datasets
+z = datasets.load_distmat('fsaverage',den='10k',hemi='lh',data_dir = data_dir) 
+#Question: What other meshes are available?
+
+#Issue 2: "import eigenstrapping" does something rather weird to my interactive python console. After doing that, printing anything to the python console doesnt work anymore. Some other actions on "strings" dont work anymore either. Is this a windows problem.
+"""
+
+import hcpalign_utils as hutils
+from hcpalign_utils import ospath
+project_path = "D:\\FORSTORAGE\\Data\\Project_GyralBias"
+biasfmri_intermediates_path = ospath(f'{project_path}/intermediates')
+data_dir = ospath(f'{biasfmri_intermediates_path}/temp')
+
+sub='100610'
+hemi="L"
+mesh_path = surf_file=ospath(f"{hutils.hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.{hemi}.{'sphere'}.32k_fs_LR.surf.gii")
+import nibabel as nib
+mesh_gifti = nib.load(mesh_path)
+verts = mesh_gifti.darrays[0].data
+faces = mesh_gifti.darrays[1].data
+
+import numpy as np
+data = np.random.random((verts.shape[0]))
+data2 = np.random.random((verts.shape[0]))
+
+
+from eigenstrapping import SurfaceEigenstrapping, datasets, stats
+
+eigen = SurfaceEigenstrapping(surface=mesh_path,data=data,num_modes=20)
+surrs = eigen(n=10)
+eigen.emodes
+eigen.evals
+
+corr,pval = stats.compare_maps(data,data2,surrs=surrs)
+print(f'r = {corr:.3f}, p = {pval:.3f}')
+
+resultsfilepath=ospath(f'{data_dir}/r0.txt')
+with open(resultsfilepath,'w') as resultsfile:
+    t=hutils.cprint(resultsfile) 
+    t.print('hello')
+
+assert(0)
+
+
 #######################
 #Visualize a small part of a mesh
+"""
 import trimesh
 import hcpalign_utils as hutils
 from hcpalign_utils import ospath
@@ -7,10 +60,10 @@ import hcp_utils as hcp
 import numpy as np
 import getmesh_utils
 import biasfmri_utils as butils
-
+"""
 
 #Code to run windows command line commands
-
+"""
 import subprocess
 import os
 import sys
@@ -28,11 +81,11 @@ onavg_folder = f"{project_path}\\intermediates\\tpl-onavg-main"
 onavg_hemi_10k_file = f"tpl-onavg_hemi-{hemi}_den-10k_sphere.surf.gii"
 onavg_hemi_10k_path = f"{onavg_folder}\\{onavg_hemi_10k_file}"
 
-
 command = f"wb_command -surface-affine-regression {pt_hemi_32k_mesh_path} {onavg_hemi_10k_path} {f'{temp_path}/affine'}"
 print(command)
 os.system(command)
 assert(0)
+"""
 
 """
       <source> - the surface to warp
