@@ -63,9 +63,9 @@ def get_gdistances(sub,surface,fwhm,epsilon=0.01,hcp_folder="/mnt/d/FORSTORAGE/D
 
 if __name__=='__main__':
     for surface in ['midthickness']:
-        for fwhm in [40]:
+        for fwhm in [2]:
             for sub in ['100610']: #hutils.all_subs[0:10]: #['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823']: #['standard']
                 print([surface,sub,fwhm])  
-                x=get_gdistances(sub,surface,fwhm,mesh_template='fsLR32k',load_from_cache=False,save_to_cache=True,epsilon=0.5)
+                x=get_gdistances(sub,surface,fwhm,mesh_template='fsLR32k',load_from_cache=False,save_to_cache=True,epsilon=0.001)
                 print(f'{c.time()}: Done')
 

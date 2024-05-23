@@ -32,14 +32,15 @@ if __name__=='__main__':
     sub_slice = slice(0,1)
     real_or_noise = 'real' # 'real' or 'noise
     this_parc = 1 #which parcel for within-parcel analysis
-    parc_string='S300'
     surface = 'midthickness' #which surface for calculating distances, e.g. 'white','inflated','pial','midthickness'
     which_subject_visual = '100610' #which subject for visualization. '100610', '102311', 'standard'
     surface_visual = 'white'
     MSMAll = False
+    parc_string='S300'
+
 
     ### PARAMETERS FOR TESTS OF CORRELATIONS BETWEEN TWO MAPS
-    to_subtract_parcelmean = True #subtract parcel means from data like sulcal depth, local correlations, etc, before doing correlations
+    to_normalize = False #subtract parcel means from data like sulcal depth, local correlations, etc, before doing correlations
     null_method = 'no_null' #no_null, spin_test, eigenstrapping
     n_perm = 100 #number of surrogates for spin test or eigenstrapping
 
@@ -383,44 +384,15 @@ if __name__=='__main__':
             parc_means = butils.parcel_mean(np.reshape(ims_adjcorr[0],(1,-1)),parc_matrix)
             #p.plot(parc_means @ parc_matrix) #Plot parcel-means of local correlations for subject 0
 
-            if to_subtract_parcelmean:
+            if to_normalize:
+                #im = ims_adjcorr[0]
+                smoother = hutils.get_searchlight_smoother(15,sub='102311',surface='midthickness')
+                normalize = lambda x: x - smoother(x)
+                #normalize = lambda x: butils.subtract_parcelmean(x,parc_matrix)
+                ims_adjcorr = [normalize(i) for i in ims_adjcorr]
+                all_neighbour_distances_mean = [normalize(i) for i in all_neighbour_distances_mean]
+                sulcs = [normalize(i) for i in sulcs]
 
-                im = ims_adjcorr[0]
-
-                from Connectome_Spatial_Smoothing import CSS as css
-                fwhm = 40
-                epsilon=0.5
-                sigma=css._fwhm2sigma(fwhm)
-                from get_gdistances import get_gdistances
-                gdists=get_gdistances('100610','midthickness',fwhm,mesh_template='fsLR32k',load_from_cache=True,save_to_cache=False,epsilon=epsilon)
-                skernel = css._local_distances_to_smoothing_coefficients(gdists,sigma)
-                smoother = lambda x: skernel.dot(x.T).T
-                subtract_smoothed = lambda x: x - smoother(x)
-
-                x = np.zeros(59412)
-                for i in np.linspace(0,59000,100): x[int(i)]=1
-                x2 = smoother(x)
-                x3 = subtract_smoothed(x2)
-                p.plot(x)
-                p.plot(x2)
-                p.plot(x3)
-
-                #searchlights = hutils.searchlights(15, sub='100610',surface='midthickness')
-                #assert(0)
-
-                #smoother = hutils.make_smoother_100610(10)
-                ims_adjcorr = [subtract_smoothed(i) for i in ims_adjcorr]
-                all_neighbour_distances_mean = [subtract_smoothed(i) for i in all_neighbour_distances_mean]
-                sulcs = [subtract_smoothed(i) for i in sulcs]
-
-                """
-                ims_adjcorr = [butils.subtract_parcelmean(i,parc_matrix) for i in ims_adjcorr]
-                all_neighbour_distances_mean = [butils.subtract_parcelmean(i,parc_matrix) for i in all_neighbour_distances_mean]       
-                sulcs = [butils.subtract_parcelmean(i,parc_matrix) for i in sulcs]  
-                """
-
-                p.plot(im)
-                p.plot(ims_adjcorr[0])
 
             compare_to_ReHoPaperFig4 = False
             if compare_to_ReHoPaperFig4:
@@ -477,9 +449,11 @@ if __name__=='__main__':
                 assert(0)
 
             for i in [0]:
-                p.plot(ims_adjcorr[i],cmap='inferno')
-                p.plot(all_neighbour_distances_mean[i],cmap='inferno')
                 p.plot(sulcs[i])
+                p.plot(all_neighbour_distances_mean[i],cmap='inferno')
+                p.plot(ims_adjcorr[i],cmap='inferno')
+                if nsubjects>1:
+                    p.plot(ims_adjcorr[(i+1)%nsubjects],cmap='inferno')
                 fig,axs=plt.subplots(2,2,figsize=(7,7))
                 ax=axs[0,0]
                 ax.scatter(all_neighbour_distances_mean[i],ims_adjcorr[i],1,alpha=0.05,color='k')

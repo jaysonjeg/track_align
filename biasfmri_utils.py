@@ -478,7 +478,7 @@ def parcel_mean(img,parc_matrix,vertex_area=None):
     """
     if vertex_area is not None:
         print('Normalizing values by vertex areas')
-        img = img / vertex_area
+        img = img * vertex_area
 
     parcel_sums = img @ parc_matrix.T #sum of all vertices in each parcel
     nvertices_sums=parc_matrix.sum(axis=1) #no. of vertices in each parcel

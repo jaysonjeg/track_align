@@ -32,6 +32,8 @@ rests=['REST1_LR','REST1_RL','REST2_LR','REST2_RL']
 subject = '100610' #100610, 102311
 runs = [0]
 
+
+
 #directions = ['LR','RL']
 #runs = ['1']
 #corrs_filename = f"corrs_{subject}_{''.join(directions)+''.join(runs)}"
@@ -119,24 +121,28 @@ if use_corrs_vol2surf:
 
     im[im==0] = np.nan #Set zeros values (only medial parahippocampal area) to nans
     valid = ~np.isnan(im) #The other nan values are those without a close-enough volume voxel
+    sulc = butils.get_sulc(subject)[mask]
+
+    to_normalize = True
+    if to_normalize:
+        smoother = hutils.get_searchlight_smoother(15,sub='102311',surface='midthickness')
+        normalize = lambda x: x - smoother(x)
+        im[np.isnan(im)] = np.nanmean(im)
+        im=normalize(im)
+        sulc = normalize(sulc)
 
     ### PLOTTING
     from scipy.stats import pearsonr
-    sulc = butils.get_sulc(subject)
+
     fig,ax=plt.subplots(figsize=(4,4))
-    ax.scatter(sulc[mask][valid],im[valid],1,alpha=0.1,color='k')
+    ax.scatter(sulc[valid],im[valid],1,alpha=0.1,color='k')
     ax.set_xlabel('Sulcal depth')
     ax.set_ylabel('Correlation with neighbours')
 
 
-    corr,pval=butils.corr_with_nulls(sulc[mask],im,mask,method='spin_test',n_perm=100)
+    corr,pval=butils.corr_with_nulls(sulc,im,mask,method='spin_test',n_perm=100)
     ax.set_title(f'Correlation is {corr:.3f}, p-value is {pval:.3f}')
-
-    #statistics = pearsonr(sulc[valid],im[valid])
-    #ax.set_title(f'Correlation is {statistics.statistic:.3f}, p-value is {statistics.pvalue:.3f}')
     fig.tight_layout()
-
-    #print(f'With parcel-mean subtracted, correlation is {np.corrcoef(butils.subtract_parcelmean(sulc[valid],parc_matrix[:,valid]),butils.subtract_parcelmean(im[valid],parc_matrix[:,valid]))[0,1]:.3f}')
 
     im[np.isnan(im)] = np.nanmean(im) #for surface plot, replace nans with mean value
     p.plot(im,cmap='bwr')

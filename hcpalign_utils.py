@@ -1396,6 +1396,7 @@ def kmeans_matrix(nparcs):
 def searchlights(radius, sub='100610',surface='midthickness'):
     """
     Return a saved list of searchlights, one centred at each vertex, with given radius
+    script make_gdistances_full.py generates these searchlights
     """
     save_path=ospath(f'{intermediates_path}/searchlightparcellation/parc_{sub}_{surface}_{radius}mm.p')
     parcels = pickle.load(open(ospath(save_path), "rb" ))
@@ -1436,6 +1437,38 @@ def parcellation_string_to_parcmatrix(parcellation_string):
     nonempty_parcels = np.array((matrix.sum(axis=1)!=0)).squeeze()
     assert(len(nonempty_parcels)==matrix.shape[0]) #no empty parcels
     return matrix
+
+def get_searchlight_smoother(radius,sub='102311',surface='midthickness'):
+    """
+    Return a function that smooths a brain map using searchlights of a given radius.
+    Make a smoothing matrix 'array' whose rows sum to 1
+    Parameters:
+    -----------
+    radius: int
+        Radius of searchlight in mm
+    sub: str
+        Subject ID
+    surface: str
+        Surface name
+    Returns:
+    --------
+    smoother: function
+        Function that smooths a brain map (59412,)
+    """
+    from scipy import sparse
+    data = searchlights(radius, sub=sub,surface=surface)
+    num_rows = len(data)
+    num_cols = len(data)
+    row_indices = []
+    col_indices = []
+    data_values = []
+    for row_idx, sublist in enumerate(data):
+        row_indices.extend([row_idx] * len(sublist))
+        col_indices.extend(sublist)
+        data_values.extend([1/len(sublist)] * len(sublist))
+    array = sparse.csr_matrix((data_values, (row_indices, col_indices)), shape=(num_rows, num_cols))
+    smoother = lambda x: array @ x
+    return smoother
 
 '''
 def get_parcellation(parcellation,nparcs,return_nonempty=True):

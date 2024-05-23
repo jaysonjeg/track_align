@@ -11,15 +11,15 @@ from scipy import sparse
 import hcpalign_utils as hutils
 import pickle
 
-def make_and_save_searchlights(sub='100610',surface='midthickness'):
+def make_and_save_searchlights(sub='102311',surface='midthickness'):
     """
     Make a list of searchlights, one centred at each vertex. Each searchlight is a list of vertices within radius_mm of the centre vertex. Save this list of searchlights as a pickle objcet
     """
     gdists = get_saved_gdistances_full(sub,surface)
-    for radius_mm in [5,10,15,20,25,30]: #only look at vertices within this many mm of the source vertex
+    for radius_mm in [40]: #only look at vertices within this many mm of the source vertex
         print(radius_mm)
         gdists_bool = gdists < radius_mm
-        parcels = [np.where(gdists_bool[i,:])[0].astype('int16') for i in range(gdists.shape[0])]
+        parcels = [np.where(gdists_bool[i,:])[0].astype('int32') for i in range(gdists.shape[0])]
         del gdists_bool
         save_path=hutils.ospath(f'{hutils.intermediates_path}/searchlightparcellation/parc_{sub}_{surface}_{radius_mm}mm.p')
         pickle.dump(parcels,open(save_path,"wb"))
@@ -61,6 +61,9 @@ def process_i(i,nvertices_target,vertices,triangles):
 
 if __name__=='__main__':
    
+    make_and_save_searchlights(sub='102311',surface='midthickness')
+    assert(0)
+
     #To generate geodesic distances only between vertices within the same parcel. Returns a list (nparcels) of arrays (nvertices,nvertices)
     
     import pickle
