@@ -48,7 +48,7 @@ if __name__=='__main__':
 
     which_neighbours = 'local' #'local','distant'
     distance_range=(1,10) #Only relevant if which_neighbours=='distant'. Geodesic distance range in mm, e.g. (0,4), (2,4), (3,5), (4,6). (1,10) is default.
-    load_neighbours = True
+    load_neighbours = False
     save_neighbours = False
 
     ### PARAMETERS FOR NOISE OR REAL DATA
@@ -85,16 +85,19 @@ if __name__=='__main__':
 
     try_different_meshes = False
     if try_different_meshes:
-        folder='MNINonLinear'
-        version='native'
+        folder='MNINonLinear' #MNINonLinear
+        version='native' #native (corr about 0.26), fsaverage_LR32k (corr about 0.47)
         mesh = getmesh_utils.get_verts_and_triangles(subjects[0],surface,MSMAll,folder=folder,version=version)
         mesh_visual = getmesh_utils.get_verts_and_triangles(subjects[0],'very_inflated',MSMAll,folder=folder,version=version)
         neighbour_vertices,neighbour_distances = butils._get_all_neighbour_vertices(mesh,None)   
         neighbour_distances_mean = np.array([np.mean(i) for i in neighbour_distances])
         p2 = hutils.surfplot('',mesh=mesh_visual,plot_type='open_in_browser')
-        p2.plot(np.log10(neighbour_distances_mean))
+        #data=np.log10(neighbour_distances_mean)
+        data = neighbour_distances_mean
+        print(f"{data.min():.3f} to {data.max():.3f}")
+        p2.plot(data)
         sulc = butils.get_sulc(subjects[0],version=version)
-        corr = stats.pearsonr(sulc,neighbour_distances_mean)
+        corr = stats.pearsonr(sulc,neighbour_distances_mean) #non-gray-matter not masked out
         print(f'Correlation between sulcal depth and mean neighbour distance is {corr[0]:.3f}, p={corr[1]:.3f}')
         assert(0)
 
@@ -447,6 +450,15 @@ if __name__=='__main__':
                 fig.tight_layout()
                 plt.show(block=False)
                 assert(0)
+
+            """
+            p.plot(ims_adjcorr[0])
+            for num_modes in [10000]:
+                print(num_modes)
+                nulls = butils.eigenstrap_bilateral(ims_adjcorr[0],num_modes=num_modes,num_nulls=2)
+                p.plot(nulls[0,:])
+            assert(0)
+            """
 
             for i in [0]:
                 p.plot(sulcs[i])

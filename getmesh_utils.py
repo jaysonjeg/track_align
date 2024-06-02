@@ -29,8 +29,9 @@ def get_surface(surface_gifti_file):
     triangles=surface.darrays[1].data #array (ntriangles,3)
     return vertices,triangles
 
-def get_verts_and_triangles_hemi(sub,hemi,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k'):
+def get_surface_filepath_hemi(sub,hemi,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k'):
     """
+    Returns filepath for a subject-specific single hemisphere surface file
     folder: 'MNINonLinear' (default) or 'T1w'
     version: 'native', 'fsaverage_LR32k' (default) or '164k'
     """
@@ -55,31 +56,37 @@ def get_verts_and_triangles_hemi(sub,hemi,surface_type,MSMAll=False,folder='MNIN
             surf_file=ospath(f"{hcp_folder}/{sub}/T1w/Native/{sub}.{hemi}.{surface_type}.native.surf.gii")
         else:
             assert(0)
+    return surf_file
 
-    vertices,triangles=get_surface(surf_file) #triangles are numbered 0 to 32491
-    return vertices,triangles
+def get_verts_and_triangles_from_surf_file(surface_filepath_left,surface_filepath_right):
+    Lvertices,Ltriangles=get_surface(surface_filepath_left)
+    Rvertices,Rtriangles=get_surface(surface_filepath_right)
+    Rtriangles_new=Rtriangles+Lvertices.shape[0] #R triangles now numbered 32492 to 64983
+    all_vertices=np.vstack((Lvertices,Rvertices)) #array (64984,3)
+    all_triangles=np.vstack((Ltriangles,Rtriangles_new))
+    return all_vertices,all_triangles
 
 def get_verts_and_triangles(sub,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k'):
     """
+    Returns vertices and triangles for a subject-specific surface mesh
     folder: 'MNINonLinear' (default) or 'T1w'
     version: 'native', 'fsaverage_LR32k' (default) or '164k'
     """
-    Lvertices,Ltriangles = get_verts_and_triangles_hemi(sub,'L',surface_type,MSMAll,folder,version)
-    Rvertices,Rtriangles = get_verts_and_triangles_hemi(sub,'R',surface_type,MSMAll,folder,version)
-    Rtriangles_new=Rtriangles+Lvertices.shape[0] #R triangles now numbered 32492 to 64983
-    all_vertices_64k=np.vstack((Lvertices,Rvertices)) #array (64984,3)
-    all_triangles_64k=np.vstack((Ltriangles,Rtriangles_new))
+    surface_filepath_left = get_surface_filepath_hemi(sub,'L',surface_type,MSMAll,folder,version)
+    surface_filepath_right = get_surface_filepath_hemi(sub,'R',surface_type,MSMAll,folder,version)
+    all_vertices_64k,all_triangles_64k=get_verts_and_triangles_from_surf_file(surface_filepath_left,surface_filepath_right)
     return all_vertices_64k,all_triangles_64k
 
-def get_verts_and_triangles_59k(sub,surface_type):
-    all_vertices_64k,all_triangles_64k=get_verts_and_triangles(sub,surface_type)
+def get_verts_and_triangles_59k(sub,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k'):
+    all_vertices_64k,all_triangles_64k=get_verts_and_triangles(sub,surface_type,MSMAll=MSMAll,folder=folder,version=version)
+    import biasfmri_utils as butils
+    mask = hutils.get_fsLR32k_mask(hemi='both')
+    all_vertices_59k,all_triangles_59k = butils.reduce_mesh((all_vertices_64k,all_triangles_64k),mask)
+    """
     all_vertices_59k=hcpalign_utils.cortex_64kto59k(all_vertices_64k) #array (59412,3)
     all_triangles_59k=hcpalign_utils.cortex_64kto59k_for_triangles(all_triangles_64k)
-
-    vertices=all_vertices_59k
-    faces=all_triangles_59k
-    
-    return vertices,faces
+    """
+    return all_vertices_59k,all_triangles_59k
 
 def filter_allowed_columns(csc_array,columns_to_include):
     """

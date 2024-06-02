@@ -22,44 +22,22 @@ data_dir = ospath(f'{biasfmri_intermediates_path}/temp')
 sub='100610'
 hemi="L"
 #mesh_path = surf_file=ospath(f"{hutils.hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.{hemi}.{'midthickness'}.32k_fs_LR.surf.gii")
-mesh_path="C:\\Users\\Jayson\\neuromaps-data\\atlases\\fsLR\\tpl-fsLR_den-32k_hemi-L_midthickness.surf.gii"
-import nibabel as nib
-mesh_gifti = nib.load(mesh_path)
-verts = mesh_gifti.darrays[0].data
-faces = mesh_gifti.darrays[1].data
+mesh_path_left="C:\\Users\\Jayson\\neuromaps-data\\atlases\\fsLR\\tpl-fsLR_den-32k_hemi-L_midthickness.surf.gii"
+mesh_path_right="C:\\Users\\Jayson\\neuromaps-data\\atlases\\fsLR\\tpl-fsLR_den-32k_hemi-R_midthickness.surf.gii"
 
 import numpy as np
-data = np.random.random((verts.shape[0]))
-data2 = np.random.random((verts.shape[0]))
-
 data = np.random.random((59412))
 
-def eigenstrap_bilateral(mesh_path_left,mesh_path_right,data,num_modes=200,num_nulls=10):
-    from eigenstrapping import SurfaceEigenstrapping, datasets, stats
-    import nibabel as nib
-    mesh_gifti = nib.load(mesh_path)
-    verts = mesh_gifti.darrays[0].data
-    faces = mesh_gifti.darrays[1].data
-
-    eigen_left = SurfaceEigenstrapping(surface=mesh_path_left,data=data_left,num_modes=num_modes)
-    eigen_right = SurfaceEigenstrapping(surface=mesh_path_right,data=data_right,num_modes=num_modes)
-    nulls_left = eigen_left(n=num_nulls)
-    nulls_right = eigen_right(n=num_nulls)
-    return nulls_left,nulls_right
-
-from eigenstrapping import SurfaceEigenstrapping, datasets, stats
-
-eigen = SurfaceEigenstrapping(surface=mesh_path,data=data,num_modes=200)
-nulls = eigen(n=10)
-eigen.emodes
-eigen.evals
-
-corr,pval = stats.compare_maps(data,data2,nulls=nulls)
-print(f'r = {corr:.3f}, p = {pval:.3f}')
-
-p=hutils.surfplot('',mesh=(verts,faces),plot_type='open_in_browser')
+import biasfmri_utils as butils
+nulls=butils.eigenstrap_bilateral(mesh_path_left,mesh_path_right,data,num_modes=1000,num_nulls=10)
+p=hutils.surfplot('',plot_type='open_in_browser')
 p.plot(data)
 p.plot(nulls[0,:])
+assert(0)
+
+from eigenstrapping import stats
+corr,pval = stats.compare_maps(data,data2,nulls=nulls)
+print(f'r = {corr:.3f}, p = {pval:.3f}')
 
 assert(0)
 
