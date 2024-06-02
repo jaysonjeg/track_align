@@ -9,24 +9,25 @@ Can use either real HCP fMRI data or noise data
 import numpy as np, pandas as pd, matplotlib.pyplot as plt
 import os
 import hcpalign_utils as hutils
-from hcpalign_utils import ospath
 from joblib import Parallel, delayed
 import biasfmri_utils as butils
+import brainmesh_utils as bmutils
 import nilearn.plotting as plotting
 import nibabel as nib
 import pickle
 import hcp_utils as hcp
 from scipy import stats
+import generic_utils
 
 if __name__=='__main__':
 
-    c = hutils.clock()
+    c = gutils.clock()
     #Set paths
     hcp_folder=hutils.hcp_folder
     intermediates_path=hutils.intermediates_path
     results_path=hutils.results_path
     project_path = "D:\\FORSTORAGE\\Data\\Project_GyralBias"
-    biasfmri_intermediates_path = ospath(f'{project_path}/intermediates')
+    biasfmri_intermediates_path = gutils.ospath(f'{project_path}/intermediates')
 
     ### GENERAL PARAMETERS
     sub_slice = slice(0,1)
@@ -68,11 +69,10 @@ if __name__=='__main__':
 
 
     ### GET DATA
-    import getmesh_utils
     if which_subject_visual =='standard':
         p=hutils.surfplot('',mesh = hcp.mesh[surface_visual], plot_type='open_in_browser')
     else:
-        vertices_visual,faces_visual = getmesh_utils.get_verts_and_triangles(which_subject_visual,surface_visual,MSMAll)
+        vertices_visual,faces_visual = bmutils.hcp_get_mesh(which_subject_visual,surface_visual,MSMAll)
         p = hutils.surfplot('',mesh=(vertices_visual,faces_visual),plot_type = 'open_in_browser')
     mask = hutils.get_fsLR32k_mask() #boolean mask of gray matter vertices. Excludes medial wall
     parc_labels = hutils.parcellation_string_to_parcellation(parc_string)
@@ -81,14 +81,14 @@ if __name__=='__main__':
 
 
     print(f'{c.time()}: Get meshes')
-    import getmesh_utils
+
 
     try_different_meshes = False
     if try_different_meshes:
         folder='MNINonLinear' #MNINonLinear
         version='native' #native (corr about 0.26), fsaverage_LR32k (corr about 0.47)
-        mesh = getmesh_utils.get_verts_and_triangles(subjects[0],surface,MSMAll,folder=folder,version=version)
-        mesh_visual = getmesh_utils.get_verts_and_triangles(subjects[0],'very_inflated',MSMAll,folder=folder,version=version)
+        mesh = bmutils.hcp_get_mesh(subjects[0],surface,MSMAll,folder=folder,version=version)
+        mesh_visual = bmutils.hcp_get_mesh(subjects[0],'very_inflated',MSMAll,folder=folder,version=version)
         neighbour_vertices,neighbour_distances = butils._get_all_neighbour_vertices(mesh,None)   
         neighbour_distances_mean = np.array([np.mean(i) for i in neighbour_distances])
         p2 = hutils.surfplot('',mesh=mesh_visual,plot_type='open_in_browser')
@@ -96,15 +96,15 @@ if __name__=='__main__':
         data = neighbour_distances_mean
         print(f"{data.min():.3f} to {data.max():.3f}")
         p2.plot(data)
-        sulc = butils.get_sulc(subjects[0],version=version)
+        sulc = butils.hcp_get_sulc(subjects[0],version=version)
         corr = stats.pearsonr(sulc,neighbour_distances_mean) #non-gray-matter not masked out
         print(f'Correlation between sulcal depth and mean neighbour distance is {corr[0]:.3f}, p={corr[1]:.3f}')
         assert(0)
 
-    meshes = [getmesh_utils.get_verts_and_triangles(subject,surface,MSMAll,folder='MNINonLinear',version='fsaverage_LR32k') for subject in subjects]
+    meshes = [bmutils.hcp_get_mesh(subject,surface,MSMAll,folder='MNINonLinear',version='fsaverage_LR32k') for subject in subjects]
     meshes = [(hutils.cortex_64kto59k(vertices),hutils.cortex_64kto59k_for_triangles(faces)) for vertices,faces in meshes] #downsample from 64k to 59k
     all_vertices, all_faces = zip(*meshes)
-    sulcs = [butils.get_sulc(i)[mask] for i in subjects] #list (subjects) of sulcal depth maps
+    sulcs = [butils.hcp_get_sulc(i)[mask] for i in subjects] #list (subjects) of sulcal depth maps
 
 
 
@@ -114,7 +114,7 @@ if __name__=='__main__':
             #Get noise data in volume space which has been projected to surface
             def get_vol2surf_noisedata(which_subject):
                 noise_data_prefix = f'{which_subject}.32k_fs_LR.func'
-                noise_data_path = ospath(f'{project_path}/{noise_data_prefix}.npy')
+                noise_data_path = gutils.ospath(f'{project_path}/{noise_data_prefix}.npy')
                 noise = np.load(noise_data_path).astype(np.float32) #noise data in volume space projected to surface (vol 2 surf)
                 if noise.shape[1] > 59412:
                     print("Removing non-gray vertices from noise fMRI data")
@@ -162,8 +162,8 @@ if __name__=='__main__':
                 labels = np.expand_dims(labels,1) #change from (nvertices,) to (nvertices,1). 
                 if nsubjects==1: #use HCP standard sulc values
                     sulc = -hcp.mesh.sulc[mask] #because standard sulc values are flipped
-                faces = butils.triangles_removenongray(hcp.mesh.midthickness_left[1],mask)
-                _,edges = butils.faces2connectivity(faces)
+                faces = bmutils.triangles_removenongray(hcp.mesh.midthickness_left[1],mask)
+                _,edges = bmutils.triangles2edges(faces)
             else:
                 #Use clustering to generate your own functional parcellation
                 n_clusters = 50 #how many functional clusters
@@ -171,7 +171,7 @@ if __name__=='__main__':
                 imgt = ims[nsubject].T
                 faces = meshes[nsubject][1]
                 print(f'{c.time()}: Faces to structural adjacency matrix')
-                connectivity,edges = butils.faces2connectivity(faces)
+                connectivity,edges = butils.triangles2edges(faces)
                 imgt = imgt[0:ngrayl,:]
                 connectivity = connectivity[:,0:ngrayl][0:ngrayl,:]    
                 print(f'{c.time()}: Agglomerative clustering')
@@ -189,8 +189,7 @@ if __name__=='__main__':
 
             #Get border vertices
             print(f'{c.time()}: Find border vertices start')
-            border = butils.get_border_vertices(ngrayl,edges_left,labels)
-            border = np.sum(border,axis=1)
+            border = bmutils.get_border_vertices(edges_left,labels)
             border_bool = border>0
             labels = labels[:,0] #relevant if n_repeats_per_subject>1
 
@@ -272,7 +271,7 @@ if __name__=='__main__':
     get_vertex_areas = False
     if get_vertex_areas:
         print(f'{c.time()}: Get vertex areas start')
-        vertex_areas = Parallel(n_jobs=-1,prefer='threads')(delayed(hutils.get_vertex_areas)(mesh) for mesh in meshes)
+        vertex_areas = Parallel(n_jobs=-1,prefer='threads')(delayed(butils.get_vertex_areas_59k)(mesh) for mesh in meshes)
         print(f'{c.time()}: Get vertex areas end')
 
         plot_vertex_areas = False
@@ -553,7 +552,7 @@ if __name__=='__main__':
         for n_parc_labels, parc_label in enumerate(all_parc_labels):
             print(f'{c.time()}: Identifiability: single parcel #{parc_label}')
             mask_singleparc = (parc_labels==parc_label)
-            gdists = [butils.get_geodesic_distances_within_masked_mesh(mesh,mask_singleparc) for mesh in meshes] #get geodesic distances within the single parcel
+            gdists = [bmutils.get_geodesic_distances_within_masked_mesh(mesh,mask_singleparc) for mesh in meshes] #get geodesic distances within the single parcel
             gdists = [i.ravel() for i in gdists]
             gdists_use = np.mean(np.stack(gdists),axis=0)
 

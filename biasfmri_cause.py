@@ -18,6 +18,7 @@ import biasfmri_utils as butils
 import nilearn.plotting as plotting
 import nibabel as nib
 import pickle
+import brainmesh_utils as bmutils
 
 c = hutils.clock()
 
@@ -69,9 +70,8 @@ if which_subject == 'standard':
         noise_data_prefix = 'fsLR32k_timeseries_00'
 elif which_subject != 'standard':
     if mesh_template == 'fsLR32k':
-        import getmesh_utils
-        vertices,faces = getmesh_utils.get_verts_and_triangles(which_subject,surface,folder=folder,version=version)
-        vertices_visual,faces_visual = getmesh_utils.get_verts_and_triangles(which_subject_visual,surface_visual,folder=folder,version=version)
+        vertices,faces = bmutils.hcp_get_mesh(which_subject,surface,folder=folder,version=version)
+        vertices_visual,faces_visual = bmutils.hcp_get_mesh(which_subject_visual,surface_visual,folder=folder,version=version)
         if not(folder=='MNINonLinear' and version=='fsaverage_LR32k'):
             print('Setting mask to all 1s')
             mask = np.zeros(vertices.shape[0],dtype=bool)
@@ -165,7 +165,7 @@ for which_subject_visual in ['standard','100610']:
         vertices_visual,faces_visual = hcp.mesh[surface_visual]
     else:
         import getmesh_utils
-        vertices_visual,faces_visual = getmesh_utils.get_verts_and_triangles(which_subject_visual,surface_visual)
+        vertices_visual,faces_visual = bmutils.hcp_get_mesh(which_subject_visual,surface_visual)
     p.mesh = (vertices_visual,faces_visual)
     p.plot(neighbour_distances_full)
     p.plot(sulc)
@@ -285,9 +285,8 @@ print(f'Single-parcel FC: test-retest identifiability is {tutils.identifiability
 
 ### GET SPATIAL MAPS ###
 
-import getmesh_utils
 import tkalign_utils as tutils
-meshes = [getmesh_utils.get_verts_and_triangles(subject,'white') for subject in subjects]
+meshes = [bmutils.hcp_get_mesh(subject,'white') for subject in subjects]
 sulcs = [butils.get_sulc(i)[mask] for i in subjects] #list (subjects) of sulcal depth maps
 
 print(f'{c.time()}: Get maxcorr maps', end=", ")

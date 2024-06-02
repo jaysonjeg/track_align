@@ -1,6 +1,7 @@
 import numpy as np
 import hcpalign_utils as hutils
-from hcpalign_utils import ospath
+import brainmesh_utils as bmutils
+from generic_utils import ospath
 
 hcp_folder=hutils.hcp_folder
 project_path = "D:\\FORSTORAGE\\Data\\Project_GyralBias"
@@ -82,43 +83,10 @@ def get_fsaverage_mesh(string,meshname='fsaverage5'):
 
 #Functions for dealing with surface meshes
 
-def fillnongray(arr,mask,fillvalue=0):
-    """
-    Takes a 1D array of fMRI grayordinates and returns the values on the vertices of the left cortex mesh which is neccessary for surface visualization. 
-    The unused vertices are filled with a constant (zero by default).
-    E.g. stepping up from 18k to 20k vertices 
-    Like hcp_utils.cortex_data()
-    """
-    out = np.zeros(len(mask))
-    out[:]=fillvalue
-    out[mask] = arr
-    return out
 
-def removenongray(mask):
+def hcp_get_sulc(subject_id,version='fsaverage_LR32k'):
     """
-    List of 20k cortex mesh vertices, with their mapping onto 18k vertices in fsaverage5. Vertices not present in 59k version are given value 0
-    """   
-    fsaverage5_gray = np.where(mask==1)[0] #list (18k gray matter vertices) of indices (in full mesh)
-    temp = np.zeros(len(mask),dtype=int)
-    for index,value in enumerate(fsaverage5_gray):
-        temp[value]=index
-    return temp
-
-def triangles_removenongray(triangles,mask):
-    """
-    Given a list of triangles in a 64984-vertex mesh, return a list of triangles in a 64984-vertex mesh with only gray matter vertices. First remove the rows containing non-gray vertices, then renumber the vertices so they are 0 to nGrayVertices
-    triangles: array (n,3) list of triangles in a 64984-vertex mesh
-    mask: boolean array (64984,) indicating which vertices are gray matter
-    """
-    gray = np.where(mask)[0]
-    temp=np.isin(triangles,gray)
-    temp2=np.all(temp,axis=1)
-    triangles_v2 = triangles[temp2,:]
-    triangles_v3 = removenongray(mask)[triangles_v2] #renumbering
-    return triangles_v3
-
-def get_sulc(subject_id,version='fsaverage_LR32k'):
-    """
+    Old name: get_sulc
     version: 'native', 'fsaverage_LR32k' (default) or '164k'
     """
     if version=='fsaverage_LR32k':
@@ -161,7 +129,9 @@ def _get_all_neighbour_vertices(mesh,mask):
     mesh: tuple (vertices,triangles)
         vertices: array (nvertices,3)
         triangles: array (ntriangles,3)
-    mask: boolean array (nvertices,) or None
+    mask: np.ndarray
+        boolean array (nvertices,) signifying which vertices to include, or None
+
     Returns:
     --------
     neighbour_vertices: list of lists
@@ -173,7 +143,6 @@ def _get_all_neighbour_vertices(mesh,mask):
     vertices=mesh[0]
     faces=mesh[1]
     neighbour_vertices=[[] for i in range(len(vertices))]
-    #neighbour_distances_sum=np.zeros((len(vertices),2),dtype=np.float32)
     neighbour_distances = [[] for i in range(len(vertices))]
     i=0
     for face in faces:
@@ -191,36 +160,14 @@ def _get_all_neighbour_vertices(mesh,mask):
                 neighbour_distances[vertex2].append(distance)
 
     if mask is not None:
-        map_mesh_to_graymesh = removenongray(mask)
-
+        map_mesh_to_graymesh = bmutils.renumbering(mask)
         neighbour_vertices = np.array(neighbour_vertices,dtype=object)
         neighbour_vertices = [map_mesh_to_graymesh[i] for i in neighbour_vertices] 
         neighbour_vertices = np.array(neighbour_vertices,dtype=object)
         neighbour_vertices  = neighbour_vertices[mask]
-
         neighbour_distances = np.array(neighbour_distances,dtype=object)
         neighbour_distances = neighbour_distances[mask]
     return neighbour_vertices,neighbour_distances 
-
-'''
-def get_neighbour_vertices(c, mesh, which_neighbours, distance_range=None,MSMAll=False):
-    if which_neighbours == 'distant':
-        from get_gdistances import get_gdistances
-        print(f'{c.time()}: Get geodesic distances start')
-        d = get_gdistances(which_subject,surface,10,MSMAll=MSMAll) #d is a sparse matrix in compressed sparse row format
-        print(f'{c.time()}: Get vertices at distance range start')
-        neighbour_vertices, neighbour_distances = get_vertices_in_distance_range(distance_range,d)
-        nVerticesWithZeroNeighbours = np.sum(np.array([len(i) for i in distant_vertices])==0)
-        print(f'{nVerticesWithZeroNeighbours} vertices with 0 neighbours in distance range {distance_range}')
-        assert(nVerticesWithZeroNeighbours==0)
-    elif which_neighbours == 'local':
-        print(f'{c.time()}: Get neighbour vertices start')
-        neighbour_vertices,neighbour_distances = _get_all_neighbour_vertices(mesh,None)       
-        #nearest_neighbour_distances = np.array([np.min(i) for i in all_neighbour_distances])
-        #nearest_neighbour_indices = np.array([np.argmin(i) for i in all_neighbour_distances])
-        #nearest_neighbour_vertices = [i[j] for i,j in zip(all_neighbour_vertices,nearest_neighbour_indices)]
-    return neighbour_vertices, neighbour_distances
-'''
 
 import pickle
 def get_subjects_neighbour_vertices(c, subject,surface,mesh, biasfmri_intermediates_path, which_neighbours, distance_range, load_neighbours, save_neighbours,MSMAll=False):
@@ -511,25 +458,6 @@ def get_smoothing_kernel(subject,surface,fwhm_for_gdist,smooth_noise_fwhm,MSMAll
 def smooth(x,skernel):
     return skernel.dot(x.T).T
 
-def faces2connectivity(faces):
-    """
-    Given a list of faces, return a sparse connectivity matrix. First convert the list of faces to a list of edges, then convert this list of edges to a sparse connectivity matrix
-    Parameters:
-    ----------
-    faces: np.array (nfaces,3)
-        List of faces
-    Returns:
-    -------
-    result: sparse matrix (nvertices,nvertices)
-    """
-    edges = np.concatenate([faces[:,[0,1]],faces[:,[1,2]],faces[:,[2,0]],faces[:,[1,0]],faces[:,[2,1]],faces[:,[0,2]]],axis=0)
-    edges = np.sort(edges,axis=1)
-    edges = np.unique(edges,axis=0)
-    from scipy import sparse
-    coo_matrix = sparse.coo_matrix((np.ones(edges.shape[0]),(edges[:,0],edges[:,1])),shape=(edges.max()+1,edges.max()+1))
-    result = coo_matrix.tocsr()
-    return result,edges
-
 def find_edges_left(edges, ngrayl):
     edges_left_bool = np.zeros(edges.shape[0]).astype(bool)
     for i in range(edges.shape[0]):
@@ -540,36 +468,6 @@ def find_edges_left(edges, ngrayl):
     edges_left = edges[edges_left_bool,:]
     return edges_left
 
-def get_border_vertices(ngrayl,edges_left,labels):
-        
-    #Get border points on left hemisphere (points straddling a parcel boundary)
-    n_repeats = labels.shape[1]
-    border = np.zeros((ngrayl,n_repeats))
-    for j in range(n_repeats):
-        for i in range(edges_left.shape[0]):
-            first_vert = edges_left[i,0]
-            second_vert = edges_left[i,1]
-            if (labels[first_vert,j]!=labels[second_vert,j]):
-                border[first_vert,j]=1
-                border[second_vert,j]=1
-    """
-    #Make a map of 'distance' from the border, for each vertex. Initialize by setting vertices adjacent to the border (n=1) as the reference points. In each iteration, for any vertices which are adjacent to any reference points and still at value 0, set their value to (n+1). Iterate for n = 1,2,3,4
-    n=0
-    n_max = 0
-    while np.any(border==0) and n<n_max:
-        n+=1
-        print(f"n={n}, {np.sum(border==0)}/{len(border)} vertices left")
-        for i in range(edges_left.shape[0]): #iterate through each vertex
-            first_vert = edges_left[i,0]
-            second_vert = edges_left[i,1]
-            if border[first_vert] == n and border[second_vert] == 0:
-                border[second_vert] = n+1
-            elif border[second_vert] == n and border[first_vert] == 0:
-                border[first_vert] = n+1
-    border_bool = border>0 
-    border[border==0] = n_max+2
-    """
-    return border
 
 def get_cohen_d(x,y):
     #correct if the population S.D. is expected to be equal for the two groups
@@ -789,23 +687,12 @@ def addfit(x,y,ax,linewidth=1,color='black'):
     ax.plot(x,m*x+b,color=color,linewidth=linewidth)
 """
 
-def reduce_mesh(mesh,mask):
-    #Given a mesh as [vertices,faces], remove vertices not in mask
-    verts,faces=mesh[0],mesh[1]
-    verts_masked = verts[mask] #vertices in the single parcel
-    faces_masked = triangles_removenongray(faces,mask)
-    return verts_masked, faces_masked
-
-def get_geodesic_distances_within_masked_mesh(mesh,mask):
-    """
-    Compute all pairwise geodesic distances within a masked region of a mesh
-    """
-    import gdist
-    verts_singleparc, faces_singleparc = reduce_mesh(mesh,mask)
-    r_sparse=gdist.local_gdist_matrix(verts_singleparc.astype(np.float64),faces_singleparc)
-    r = r_sparse.astype(np.float32).toarray()
-    return r
-
+def get_vertex_areas_59k(mesh):
+    mean_vertex_areas = hutils.get_vertex_areas(mesh)
+    if len(mean_vertex_areas) > 59412:
+        return hutils.cortex_64kto59k(mean_vertex_areas)
+    else:
+        return mean_vertex_areas
 
 def eigenstrap_hemi(mesh_path,data,num_modes,num_nulls,hemi='left'):
     """

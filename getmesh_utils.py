@@ -23,71 +23,6 @@ from curvpack.curvpack import CurvatureCwF,CurvatureWpF,CurvatureCubic,Curvature
 
 c=hcpalign_utils.clock()
 
-def get_surface(surface_gifti_file):
-    surface=nib.load(surface_gifti_file)
-    vertices=surface.darrays[0].data #array (nvertices,3)
-    triangles=surface.darrays[1].data #array (ntriangles,3)
-    return vertices,triangles
-
-def get_surface_filepath_hemi(sub,hemi,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k'):
-    """
-    Returns filepath for a subject-specific single hemisphere surface file
-    folder: 'MNINonLinear' (default) or 'T1w'
-    version: 'native', 'fsaverage_LR32k' (default) or '164k'
-    """
-    hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"
-
-    if MSMAll:
-        MSMstring = '_MSMAll'
-    else:
-        MSMstring = ''
-
-    if folder=='MNINonLinear':
-        if version=='fsaverage_LR32k':
-            surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.{hemi}.{surface_type}{MSMstring}.32k_fs_LR.surf.gii")
-        elif version=='native':
-            surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/Native/{sub}.{hemi}.{surface_type}.native.surf.gii")
-        elif version=='164k':
-            surf_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/{sub}.{hemi}.{surface_type}{MSMstring}.164k_fs_LR.surf.gii")
-        else: 
-            assert(0)
-    elif folder=='T1w':
-        if version=='native':
-            surf_file=ospath(f"{hcp_folder}/{sub}/T1w/Native/{sub}.{hemi}.{surface_type}.native.surf.gii")
-        else:
-            assert(0)
-    return surf_file
-
-def get_verts_and_triangles_from_surf_file(surface_filepath_left,surface_filepath_right):
-    Lvertices,Ltriangles=get_surface(surface_filepath_left)
-    Rvertices,Rtriangles=get_surface(surface_filepath_right)
-    Rtriangles_new=Rtriangles+Lvertices.shape[0] #R triangles now numbered 32492 to 64983
-    all_vertices=np.vstack((Lvertices,Rvertices)) #array (64984,3)
-    all_triangles=np.vstack((Ltriangles,Rtriangles_new))
-    return all_vertices,all_triangles
-
-def get_verts_and_triangles(sub,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k'):
-    """
-    Returns vertices and triangles for a subject-specific surface mesh
-    folder: 'MNINonLinear' (default) or 'T1w'
-    version: 'native', 'fsaverage_LR32k' (default) or '164k'
-    """
-    surface_filepath_left = get_surface_filepath_hemi(sub,'L',surface_type,MSMAll,folder,version)
-    surface_filepath_right = get_surface_filepath_hemi(sub,'R',surface_type,MSMAll,folder,version)
-    all_vertices_64k,all_triangles_64k=get_verts_and_triangles_from_surf_file(surface_filepath_left,surface_filepath_right)
-    return all_vertices_64k,all_triangles_64k
-
-def get_verts_and_triangles_59k(sub,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k'):
-    all_vertices_64k,all_triangles_64k=get_verts_and_triangles(sub,surface_type,MSMAll=MSMAll,folder=folder,version=version)
-    import biasfmri_utils as butils
-    mask = hutils.get_fsLR32k_mask(hemi='both')
-    all_vertices_59k,all_triangles_59k = butils.reduce_mesh((all_vertices_64k,all_triangles_64k),mask)
-    """
-    all_vertices_59k=hcpalign_utils.cortex_64kto59k(all_vertices_64k) #array (59412,3)
-    all_triangles_59k=hcpalign_utils.cortex_64kto59k_for_triangles(all_triangles_64k)
-    """
-    return all_vertices_59k,all_triangles_59k
-
 def filter_allowed_columns(csc_array,columns_to_include):
     """
     columns_to_include is an array of logicals (True,False) which says which columns of csc_array to include
@@ -195,7 +130,7 @@ if __name__=='__main__':
             
             save_path=ospath(f'/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/intermediates/SFM/SFM_{surface_type}_sub{sub}')
             
-            vertices,faces=get_verts_and_triangles_59k(sub,surface_type)
+            vertices,faces=get_verts_and_triangles_59k(sub,surface_type) #this needs to be replaced by brainmesh_utils.hcp_get_mesh(sub,surface_type), followed by reduce_mesh
 
             VertexSFM,VertNormals,up,vp=CurvatureWpF.CalcCurvature(vertices,faces) 
             with open(f'{save_path}.pickle', 'wb') as f:

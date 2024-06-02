@@ -100,11 +100,11 @@ if use_corrs_vol2surf:
     surface_visual = 'white'
 
     ### SETUP
-    import getmesh_utils
+    import brainmesh_utils as bmutils
     if which_subject_visual =='standard':
         p=hutils.surfplot('',mesh = hcp.mesh[surface_visual], plot_type='open_in_browser')
     else:
-        vertices_visual,faces_visual = getmesh_utils.get_verts_and_triangles(subject,surface_visual)
+        vertices_visual,faces_visual = bmutils.hcp_get_mesh(subject,surface_visual)
         p = hutils.surfplot('',mesh=(vertices_visual,faces_visual),plot_type = 'open_in_browser')
     parc_string = 'S300'
     parc_labels = hutils.parcellation_string_to_parcellation(parc_string)
@@ -151,7 +151,7 @@ if use_corrs_vol2surf:
     """
     ngrayl = len(hcp.vertex_info.grayl) #left hemisphere only
     im_left = im[0:ngrayl]
-    verts,faces = getmesh_utils.get_verts_and_triangles_hemi(subject,'L',surface_visual)
+    verts,faces = bmutils.hcp_get_mesh_hemi(subject,'L',surface_visual)
     mask_left = hutils.get_fsLR32k_mask(hemi='L')
     verts_left = verts[mask_left,:]
     faces_left = butils.triangles_removenongray(faces,mask_left)

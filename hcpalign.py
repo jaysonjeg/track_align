@@ -7,7 +7,6 @@ if __name__=='__main__':
     from sklearn.svm import LinearSVC
     
     import hcpalign_utils as hutils
-    from hcpalign_utils import ospath
     from Connectome_Spatial_Smoothing import CSS as css
     from joblib import Parallel, delayed
     from sklearn.model_selection import KFold
@@ -16,6 +15,8 @@ if __name__=='__main__':
 
     from fmralign.template_alignment import TemplateAlignment
     from fmralign.surf_pairwise_alignment import SurfacePairwiseAlignment
+
+    import generic_utils as gutils
 
     hcp_folder=hutils.hcp_folder
     intermediates_path=hutils.intermediates_path
@@ -101,11 +102,11 @@ if __name__=='__main__':
         else:
             import pickle      
         hutils.mkdir(f'{intermediates_path}/alignpickles')
-        save_pickle_filename=ospath(f'{intermediates_path}/alignpickles/{save_string}.p')                          
+        save_pickle_filename=gutils.ospath(f'{intermediates_path}/alignpickles/{save_string}.p')                          
         if plot_impulse_response or plot_contrast_maps or plot_scales or plot_isc:
             plot_dir=f'{results_path}/figures/hcpalign/{save_string}'
             p=hutils.surfplot(plot_dir,plot_type=plot_type)
-        if load_pickle: assert(os.path.exists(ospath(save_pickle_filename)))
+        if load_pickle: assert(os.path.exists(gutils.ospath(save_pickle_filename)))
 
         #Get parcellation and classifier
         if parcellation_string[0]=='I': assert(MSMAll==True)
@@ -120,7 +121,7 @@ if __name__=='__main__':
             vprint(hutils.memused())    
             if load_pickle:
                 vprint('loading aligners')
-                aligners = pickle.load(open(ospath(save_pickle_filename), "rb" ))
+                aligners = pickle.load(open(gutils.ospath(save_pickle_filename), "rb" ))
             else:      
                 vprint(f'{c.time()}: Calculate aligners')   
                 aligners = hutils.get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_bags,n_jobs,alignment_kwargs,per_parcel_kwargs,gamma,absValueOfAligner)
@@ -160,7 +161,7 @@ if __name__=='__main__':
         ###TEMPLATE ALIGNMENT###          
             if load_pickle:
                 vprint('loading aligner')
-                aligners = pickle.load(open(ospath(save_pickle_filename), "rb" ))
+                aligners = pickle.load(open(gutils.ospath(save_pickle_filename), "rb" ))
             else:                
                 aligners=TemplateAlignment(alignment_method,clustering=clustering,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs)
                 if lowdim_template:
@@ -283,10 +284,10 @@ if __name__=='__main__':
 
 ###########################################################
     filename = hutils.datetime_for_filename()
-    resultsfilepath=ospath(f'{results_path}/r{filename}.txt')
+    resultsfilepath=gutils.ospath(f'{results_path}/r{filename}.txt')
     with open(resultsfilepath,'w') as resultsfile:
-        t=hutils.cprint(resultsfile) 
-        c=hutils.clock()     
+        t=gutils.cprint(resultsfile) 
+        c=gutils.clock()     
 
 
         if True: #True for Home PC and functional alignment alone, False for IQ prediction
@@ -294,7 +295,7 @@ if __name__=='__main__':
             print("USING HTUILS.ALL_SUBS (NEEDED FOR TKALIGN, HCPALIGN)")
         else: 
             print("USING HTUILS.ALL_SUBS (NEEDED FOR PREDICTING IQ)")
-            df=pd.read_csv(hutils.ospath(f'{hutils.intermediates_path}/BehavioralData.csv'))
+            df=pd.read_csv(hutils.gutils.ospath(f'{hutils.intermediates_path}/BehavioralData.csv'))
             df.loc[df['Subject']==179548,'3T_Full_Task_fMRI']  = False #does not have MSMAll data for WM task
             cognitive_measures = ['Flanker_AgeAdj', 'CardSort_AgeAdj', 'PicSeq_AgeAdj', 'ListSort_AgeAdj', 'ProcSpeed_AgeAdj','PicVocab_AgeAdj', 'ReadEng_AgeAdj','PMAT24_A_CR','IWRD_TOT','VSPLOT_TC'] 
             rows_with_3T_taskfMRI = (df['3T_Full_Task_fMRI']==True)
@@ -385,7 +386,7 @@ if __name__=='__main__':
                 print(hutils.memused())  
 
                 #gammas_folder = 'gammasAmovf0123t0_D7tasksf&ms_S300_Tmovf0123t0sub20to40_L_TempRidg_gam1alphas[1000]_sub0to20_0'
-                #gammas_parcel = np.load(ospath(f'{results_path}/figures/hcpalign/{gammas_folder}/best_gamma.npy'))
+                #gammas_parcel = np.load(gutils.ospath(f'{results_path}/figures/hcpalign/{gammas_folder}/best_gamma.npy'))
 
                 gammas = [0]
 
@@ -394,7 +395,7 @@ if __name__=='__main__':
                 #Preparation for ProMises model
                 """
                 nparcs=parcellation_string[1:]
-                gdists_path=hutils.ospath(f'{hutils.intermediates_path}/geodesic_distances/gdist_full_100610.midthickness.32k_fs_LR.S{nparcs}.p') #Get saved geodesic distances between vertices (for vertices in each parcel separately)
+                gdists_path=hutils.gutils.ospath(f'{hutils.intermediates_path}/geodesic_distances/gdist_full_100610.midthickness.32k_fs_LR.S{nparcs}.p') #Get saved geodesic distances between vertices (for vertices in each parcel separately)
                 import pickle
                 with open(gdists_path,'rb') as file:
                     gdists = pickle.load(file)
@@ -431,7 +432,7 @@ if __name__=='__main__':
                         hutils.mkdir(f'{intermediates_path}/alignpickles3')
                         hutils.mkdir(f'{intermediates_path}/alignpickles3/{save_string3}')
                         import pickle
-                        prefix = ospath(f'{intermediates_path}/alignpickles3/{save_string3}')
+                        prefix = gutils.ospath(f'{intermediates_path}/alignpickles3/{save_string3}')
                         save_sub_aligner = lambda estimator,sub: pickle.dump(estimator,open(f'{prefix}/{sub}.p',"wb"))
                         _=Parallel(n_jobs=-1,prefer='threads')(delayed(save_sub_aligner)(estimator,sub) for estimator,sub in zip(aligners.estimators,subs))
                         #load_sub_aligner = lambda sub: pickle.load(open(f'{prefix}/{sub}.p',"rb"))
@@ -442,8 +443,8 @@ if __name__=='__main__':
                         save_string2 = f"A{align_string}_D{decode_string}_{parcellation_string}{template_string}_{method_string}_{post_decode_fwhm}"
                         hutils.mkdir(f'{intermediates_path}/alignpickles2')
                         hutils.mkdir(f'{intermediates_path}/alignpickles2/{save_string2}')
-                        _=Parallel(n_jobs=-1,prefer='threads')(delayed(np.save)(ospath(f'{intermediates_path}/alignpickles2/{save_string2}/{sub}.npy'),img) for sub,img in zip(subs,imgs_decode_aligned))
-                        #_ = Parallel(n_jobs=-1,prefer='threads')(delayed(np.load)(ospath(f'{intermediates_path}/alignpickles2/{save_string2}/{sub}.npy')) for sub in subs)
+                        _=Parallel(n_jobs=-1,prefer='threads')(delayed(np.save)(gutils.ospath(f'{intermediates_path}/alignpickles2/{save_string2}/{sub}.npy'),img) for sub,img in zip(subs,imgs_decode_aligned))
+                        #_ = Parallel(n_jobs=-1,prefer='threads')(delayed(np.load)(gutils.ospath(f'{intermediates_path}/alignpickles2/{save_string2}/{sub}.npy')) for sub in subs)
 
                 print(hutils.memused())
 
@@ -456,10 +457,10 @@ if __name__=='__main__':
                 p=hutils.surfplot(plot_dir,plot_type='save_as_html')
                 p.plot(best_gamma @ parc_matrix,savename='gammas')
 
-                np.save(ospath(f'{plot_dir}/best_gamma.npy'),best_gamma)
-                np.save(ospath(f'{plot_dir}/corrs.npy'),corrs)
-                np.save(ospath(f'{plot_dir}/gammas.npy'),np.array(gammas))
-                z = np.load(ospath(f'{plot_dir}/corrs.npy'))
+                np.save(gutils.ospath(f'{plot_dir}/best_gamma.npy'),best_gamma)
+                np.save(gutils.ospath(f'{plot_dir}/corrs.npy'),corrs)
+                np.save(gutils.ospath(f'{plot_dir}/gammas.npy'),np.array(gammas))
+                z = np.load(gutils.ospath(f'{plot_dir}/corrs.npy'))
                 """
 
 
@@ -471,9 +472,9 @@ if __name__=='__main__':
         #Plot ISC averaged across subjects 
         plot_isc = False
         if plot_isc:
-            plot_dir=ospath(f'{results_path}/figures/hcpalign/{filename}')
+            plot_dir=gutils.ospath(f'{results_path}/figures/hcpalign/{filename}')
             os.mkdir(plot_dir)
-            np.save(ospath(f'{plot_dir}/ISCs_vertexmeans.npy'),ISCs.mean(axis=1))
+            np.save(gutils.ospath(f'{plot_dir}/ISCs_vertexmeans.npy'),ISCs.mean(axis=1))
             #p=hutils.surfplot(plot_dir,plot_type='save_as_html')
             #p.plot(ISCs.mean(axis=1),'ISCs_vertexmeans',vmax=1)
 

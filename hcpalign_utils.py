@@ -9,11 +9,13 @@ import nibabel as nib
 nib.imageglobals.logger.level = 40  #suppress pixdim error msg
 from nilearn import signal
 from pathlib import Path
-from datetime import datetime
+
 from scipy import sparse, stats
 import warnings
 from concurrent.futures import ThreadPoolExecutor as TPE 
 from joblib import Parallel,delayed
+from generic_utils import ospath, mkdir, cprint
+import brainmesh_utils as bmutils
 
 
 ###
@@ -57,41 +59,7 @@ allowed_labels_dict_visual={'MOTOR':range(0),'WM':range(4,8),'EMOTION':range(2),
 allowed_labels_dict_motor={'MOTOR':range(1,5),'WM':range(0),'EMOTION':range(0),'GAMBLING':range(0),'LANGUAGE':range(0),'RELATIONAL':range(0),'SOCIAL':range(0),}
 allowed_labels_dict = allowed_labels_dict_all
 
-def ospath(x):
-    """
-    If file path doesn't match operating system, change it e.g.
-    "D:\\FORSTORAGE\\Data\\HCP_S1200"
-    to Ubuntu path
-    '/mnt/d/FORSTORAGE/Data/HCP_S1200'
-    """
-    if hostname=='DESKTOP-EGSQF3A':
-        if os.name=='nt' and x[0]=='/':
-            return '{}:\\{}'.format(x[5].upper(),x[7:].replace('/','\\'))
-        elif os.name=='posix' and x[0]!='/':
-            return '/mnt/{}/{}'.format(x[0].lower(),x[3:].replace('\\','/'))
-        else:
-            return x
-    else: #Service Workbench, posix
-        return x.replace('\\','/')
 
-def mkdir(folderpath):
-    #make the folder if it doesn't exist
-    folderpath=ospath(folderpath)
-    if not(os.path.isdir(folderpath)):
-        os.mkdir(folderpath)
-
-class cprint():
-    """
-    Class to write 'print' outputs to console and to a given textfile
-    """
-    def __init__(self,resultsfile):
-        self.resultsfile = resultsfile
-    def print(self,*args,**kwargs):    
-        temp=sys.stdout 
-        print(*args,**kwargs)
-        sys.stdout=self.resultsfile #assign console output to a text file
-        print(*args,**kwargs)
-        sys.stdout=temp #set stdout back to console output
 
 def getvalue(df,subject,column):
     """
@@ -1038,52 +1006,6 @@ def temporal_autocorr(array,lag = 1):
     return df.apply(lambda x: x.autocorr(lag=lag),axis=0).values
 
 
-def get_triangle_areas(mesh):
-    """
-    Given a mesh, return the list of areas corresponding to each triangle 
-    """
-    from scipy.spatial import distance
-    vertices=mesh[0]
-    faces=mesh[1]
-    vertices_of_faces = [vertices[faces[i],:] for i in range(len(faces))] #list(nfaces) of arrays (3,3). In the array, each row is a face, each column is a vertex coordinate
-    def get_triangle_area(coords):
-        a=distance.euclidean(coords[0],coords[1])
-        b=distance.euclidean(coords[1],coords[2])
-        c=distance.euclidean(coords[2],coords[0])
-        s=(a+b+c)/2
-        return np.sqrt(s*(s-a)*(s-b)*(s-c))
-    areas = np.array([get_triangle_area(coords) for coords in vertices_of_faces])
-    return areas
-
-def get_vertex_areas(mesh):
-    """
-    Given a surface mesh containing 64984 vertices, and 129960 triangles/faces, in 3D space. 'mesh' is a list containing two arrays, ['vertices','faces']. The mesh is described by a numpy array called 'vertices' which has shape (64984,3), and an array 'faces' which has shape (129960,3). Each row of 'vertices' describes the x, y and z coordinates of a single vertex. Each row of 'faces' corresponds to a triangle/face, and lists the vertex indices of the three vertices making up that triangle/face. Calculate the area corresponding to each vertex. For each face, give 1/3 of its area to each of its 3 vertices
-    """
-    vertices=mesh[0]
-    faces=mesh[1]
-    triangle_areas = get_triangle_areas(mesh)
-    # Initialize an array to store the sum of areas for each vertex
-    vertex_areas = np.zeros(len(vertices))
-    # Sum the areas of triangles for each vertex
-    for i, face in enumerate(faces):
-        for vertex in face:
-            vertex_areas[vertex] += triangle_areas[i]/3
-
-    """
-    # Count the number of triangles each vertex is part of
-    vertex_counts = np.zeros(len(vertices))
-    for face in faces:
-        for vertex in face:
-            vertex_counts[vertex] += 1
-    # Calculate the mean area for each vertex
-    mean_vertex_areas = vertex_areas / vertex_counts
-    """
-    mean_vertex_areas = vertex_areas
-    if len(mean_vertex_areas) > 59412:
-        return cortex_64kto59k(mean_vertex_areas)
-    else:
-        return mean_vertex_areas
-
 def diag0(X):
     X = np.copy(X)
     np.fill_diagonal(X,0)
@@ -1157,22 +1079,8 @@ def cortex_64kto59k_for_triangles(triangles,hemi='both'):
     triangles: array (n,3) list of triangles in a 64984-vertex mesh
     Returns an abridged version of 'triangles' within 59412-vertex mesh
     """
-
-    """
-    gray=vertexmap_59kto64k(hemi=hemi)
-    temp=np.isin(triangles,gray)
-    temp2=np.all(temp,axis=1)
-    triangles_v2 = triangles[temp2,:]
-    triangles_v3 = vertexmap_64kto59k(hemi=hemi)[triangles_v2] #renumbering
-    return triangles_v3
-    """
-
-    import biasfmri_utils as butils
     mask = get_fsLR32k_mask(hemi=hemi)
-    return butils.triangles_removenongray(triangles,mask)
-
-
-
+    return bmutils.triangles_removenongray(triangles,mask)
 
 def vertex_59kto64k(vertices):
     """Given a list of vertices in 59k, convert each index to the corresponding index in 64k cortex mesh
@@ -1667,76 +1575,10 @@ def do_plot_impulse_responses(p,plot_prefix,aligner,radius=1,vertices=None):
     ratio_within_roi = np.linalg.norm(t[s!=0]) / np.linalg.norm(t) #what proportion of the spatial map's 'norm' is within the original ROI? High value means the aligner is highly spatially regularized
     return ratio_within_roi
 
-
-
-def timer(start_time):
-    end_time=datetime.now()
-    runtime=end_time-start_time
-    return runtime.total_seconds()
-
-class clock():
-    """
-    How to use
-    c=hcpalign_utils.clock()
-    print(c.time())
-    """
-    def __init__(self):
-        self.start_time=datetime.now()       
-    def time(self):
-        end_time=datetime.now()
-        runtime=end_time-self.start_time
-        value='{:.1f}s'.format(runtime.total_seconds())
-        return value
-
-def now():
-    now=datetime.now()
-    return now.strftime("%H:%M:%S")
-
 def datetime_for_filename():
     now=datetime.now()
     return now.strftime("%Y%m%d_%H%M%S")
 
-
-def sizeof_fmt(num, suffix='B'):
-    #called by sizeof
-    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
-        if abs(num) < 1024.0:
-            return "%3.1f %s%s" % (num, unit, suffix)
-        num /= 1024.0
-    return "%.1f %s%s" % (num, 'Yi', suffix)
-
-import sys
-import gc
-
-def _sizeof(input_obj):
-    #called by sizeof
-    memory_size = 0
-    ids = set()
-    objects = [input_obj]
-    while objects:
-        new = []
-        for obj in objects:
-            if id(obj) not in ids:
-                ids.add(id(obj))
-                memory_size += sys.getsizeof(obj)
-                new.append(obj)
-        objects = gc.get_referents(*new)
-    return memory_size
-
-def sizeof(input_obj):
-    if type(input_obj)==list:
-        return sizeof_fmt(sum([_sizeof(i) for i in input_obj]))
-    else:
-        return sizeof_fmt(_sizeof(input_obj))
-
-def getloadavg():
-    import psutil
-    print([x / psutil.cpu_count() for x in psutil.getloadavg()])
-
-def memused(): #By Python
-    import os, psutil
-    process = psutil.Process(os.getpid())
-    return f'Python mem: {process.memory_info().rss/1e9:.2f} GB, PC mem: {psutil.virtual_memory()[3]/1e9:.2f}/{psutil.virtual_memory()[0]/1e9:.0f} GB'
 
 from scipy.stats import spearmanr as sp
 def corr2(a,b,corr_type='pearson'):
