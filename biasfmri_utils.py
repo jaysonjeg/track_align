@@ -514,6 +514,7 @@ def sum_each_quantile(x,y,n):
 
 def do_spin_test(x,mask,n_perm):
     from neuromaps import stats, nulls
+    from brainmesh_utils import fillnongray
     print(f"Do spin test")
     x2=fillnongray(x,mask)
     x2_nulls = nulls.alexander_bloch(x2,atlas='fsLR',density='32k',n_perm=n_perm,seed=0)
@@ -687,12 +688,14 @@ def addfit(x,y,ax,linewidth=1,color='black'):
     ax.plot(x,m*x+b,color=color,linewidth=linewidth)
 """
 
+"""
 def get_vertex_areas_59k(mesh):
     mean_vertex_areas = hutils.get_vertex_areas(mesh)
     if len(mean_vertex_areas) > 59412:
         return hutils.cortex_64kto59k(mean_vertex_areas)
     else:
         return mean_vertex_areas
+"""
 
 def eigenstrap_hemi(mesh_path,data,num_modes,num_nulls,hemi='left'):
     """

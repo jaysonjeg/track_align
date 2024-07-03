@@ -6,7 +6,8 @@ from scipy.io import savemat
 from Connectome_Spatial_Smoothing import CSS as css
 from scipy import sparse
 
-c=hutils.clock()
+import generic_utils as gutils
+c=gutils.clock()
 
 def get_gdistances(sub,surface,fwhm,epsilon=0.01,hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200",intermediates_path='/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/AWS_studies/files0/intermediates',load_from_cache=True,save_to_cache=True,MSMAll=False,mesh_template='fsLR32k'):
     """

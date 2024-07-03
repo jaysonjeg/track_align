@@ -249,6 +249,26 @@ def get_vertex_areas(mesh):
             vertex_areas[vertex] += triangle_areas[i]/3
     return vertex_areas
 
+def get_parcel_areas(vertex_areas,parc_labels):
+    """
+    Calculate surface area corresponding to each parcel
+    Parameters:
+    ----------
+    vertex_areas: np.array, shape (nvertices,)
+    parc_labels: np.array, shape (nvertices,)
+        Parcel labels
+    Returns:
+    ----------
+    parcel_areas: np.array, shape (nparcels,)
+    """
+    unique_labels = np.unique(parc_labels)
+    nparcs = len(unique_labels)
+    parcel_areas = np.zeros(nparcs)
+    for i,parcel_index in enumerate(unique_labels):
+        mask = (parc_labels==parcel_index)
+        parcel_areas[i] = np.sum(vertex_areas[mask])
+    return parcel_areas
+
 
 def triangles2edges(triangles):
     """
@@ -313,7 +333,26 @@ def reduce_mesh(mesh,mask):
     return verts_masked, faces_masked
 
 
-def get_geodesic_distances_within_masked_mesh(mesh,mask):
+def get_gdists(vertices,faces):
+    """
+    Get geodesic distances between all vertex pairs in a mesh
+    Parameters:
+    ----------
+    vertices: np.array, shape (nvertices,3)
+        Vertex coordinates
+    faces: np.array, shape (nfaces,3)
+        Faces of the mesh
+    Returns:
+    ----------
+    r: np.array, shape (nvertices,nvertices)
+        Geodesic distance matrix
+    """
+    r_sparse=gdist.local_gdist_matrix(vertices.astype(np.float64),faces)
+    r = r_sparse.astype(np.float32).toarray()
+    return r
+
+
+def get_gdists_within_masked_mesh(mesh,mask):
     """
     Compute all pairwise geodesic distances between vertices within a masked region of a mesh
     Parameters:
@@ -329,6 +368,21 @@ def get_geodesic_distances_within_masked_mesh(mesh,mask):
         Geodesic distance matrix
     """
     verts_singleparc, faces_singleparc = reduce_mesh(mesh,mask)
-    r_sparse=gdist.local_gdist_matrix(verts_singleparc.astype(np.float64),faces_singleparc)
-    r = r_sparse.astype(np.float32).toarray()
-    return r
+    return get_gdists(verts_singleparc,faces_singleparc)
+
+def get_gdists_singleparc(mesh,parc_labels,parc_index):
+    """
+    Compute all pairwise geodesic distances between vertices within a single parcel
+    Parameters:
+    ----------
+    mesh: tuple (verts,faces)
+        verts: np.array, shape (nvertices,3)
+        faces: np.array, shape (nfaces,3)
+    parc_labels: np.array, shape (nvertices,)
+        Parcel labels
+    parc_index: int
+        Target parcel index
+    """
+    mask = (parc_labels==parc_index)
+    gdists = get_gdists_within_masked_mesh(mesh,mask)
+    return gdists

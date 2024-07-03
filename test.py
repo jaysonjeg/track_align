@@ -13,6 +13,7 @@ z = datasets.load_distmat('fsaverage',den='10k',hemi='lh',data_dir = data_dir)
 #Issue 2: "import eigenstrapping" does something rather weird to my interactive python console. After doing that, printing anything to the python console doesnt work anymore. Some other actions on "strings" dont work anymore either. Is this a windows problem.
 """
 
+"""
 import hcpalign_utils as hutils
 from hcpalign_utils import ospath
 project_path = "D:\\FORSTORAGE\\Data\\Project_GyralBias"
@@ -40,19 +41,20 @@ corr,pval = stats.compare_maps(data,data2,nulls=nulls)
 print(f'r = {corr:.3f}, p = {pval:.3f}')
 
 assert(0)
-
+"""
 
 #######################
 #Visualize a small part of a mesh
-"""
+
 import trimesh
 import hcpalign_utils as hutils
 from hcpalign_utils import ospath
 import hcp_utils as hcp
 import numpy as np
-import getmesh_utils
+#import getmesh_utils
 import biasfmri_utils as butils
-"""
+import generic_utils as gutils
+import brainmesh_utils as bmutils
 
 #Code to run windows command line commands
 """
@@ -86,18 +88,27 @@ assert(0)
 """
 
 #Trimesh stuff. Dont need anymore..
-"""
-c=hutils.clock()
+c=gutils.clock()
 which_subject='100610'
 surface_type = 'white'
 MSMAll=False
 hemi="L"
 
 #vertices,faces = getmesh_utils.get_verts_and_triangles(which_subject,surface_type,MSMAll)
-vertices_64k,faces_64k = getmesh_utils.get_verts_and_triangles_hemi(which_subject,hemi,surface_type,MSMAll=MSMAll)
+#vertices_64k,faces_64k = getmesh_utils.get_verts_and_triangles_hemi(which_subject,hemi,surface_type,MSMAll=MSMAll)
+vertices,faces = bmutils.hcp_get_mesh_hemi(which_subject,hemi,surface_type,MSMAll=MSMAll)
 mask = hutils.get_fsLR32k_mask(hemi=hemi)
-vertices = vertices_64k[mask,:]
-faces = hutils.cortex_64kto59k_for_triangles(faces_64k,hemi=hemi)
+
+#Only include vertices within these coordinates
+print(np.min(vertices,axis=0))
+print(np.max(vertices,axis=0))
+coordinate_range = ((-70,-20),(-50,20),(-np.inf,np.inf))
+for dim in range(3):
+    mask = mask & ((vertices[:,dim]>coordinate_range[dim][0]) & (vertices[:,dim]<coordinate_range[dim][1]))
+
+vertices = vertices[mask,:]
+#faces = hutils.cortex_64kto59k_for_triangles(faces_64k,hemi=hemi)
+faces = bmutils.triangles_removenongray(faces,mask)
 
 #mesh = trimesh.Trimesh(vertices=[[0, 0, 0], [0, 0, 1], [0, 1, 0]],faces=[[0, 1, 2]])
 mesh = trimesh.Trimesh(vertices=vertices,faces=faces)
@@ -107,7 +118,7 @@ biasfmri_intermediates_path = ospath(f'{project_path}/intermediates')
 neighbour_vertices, neighbour_distances, neighbour_distances_mean=butils.get_subjects_neighbour_vertices(c, which_subject,'midthickness',None, biasfmri_intermediates_path, 'local', None, True, False,MSMAll=MSMAll)
 color_values = neighbour_distances_mean[0:len(vertices)]
 
-sulc = butils.get_sulc(which_subject,version='fsaverage_LR32k')
+sulc = butils.hcp_get_sulc(which_subject,version='fsaverage_LR32k')
 #color_values = sulc[hutils.get_fsLR32k_mask(hemi='both')][0:len(vertices)]
 
 colors = trimesh.visual.color.interpolate(color_values, color_map='viridis')
@@ -127,7 +138,7 @@ assert(0)
 mesh.visual.vertex_colors = colors
 mesh.show()
 assert(0)
-"""
+
 
 """
 

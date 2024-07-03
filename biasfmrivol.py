@@ -12,8 +12,9 @@ from joblib import Parallel, delayed
 import biasfmri_utils as butils
 import nilearn.plotting as plotting
 import nibabel as nib
+import generic_utils as gutils
 
-c = hutils.clock()
+c = gutils.clock()
 
 #Set paths
 hcp_folder=hutils.hcp_folder
@@ -121,7 +122,7 @@ if use_corrs_vol2surf:
 
     im[im==0] = np.nan #Set zeros values (only medial parahippocampal area) to nans
     valid = ~np.isnan(im) #The other nan values are those without a close-enough volume voxel
-    sulc = butils.get_sulc(subject)[mask]
+    sulc = butils.hcp_get_sulc(subject)[mask]
 
     to_normalize = True
     if to_normalize:
@@ -140,7 +141,7 @@ if use_corrs_vol2surf:
     ax.set_ylabel('Correlation with neighbours')
 
 
-    corr,pval=butils.corr_with_nulls(sulc,im,mask,method='spin_test',n_perm=100)
+    corr,pval=butils.corr_with_nulls(sulc,im,mask,method='spin_test',n_perm=300)
     ax.set_title(f'Correlation is {corr:.3f}, p-value is {pval:.3f}')
     fig.tight_layout()
 

@@ -398,8 +398,6 @@ t,p = stats.ttest_rel(x,y,alternative='greater')
 print(f'PCA Ridge N=20: With parcel-means: {np.mean(x):.3f} Without parcel-means: {np.mean(y):.3f}, T(4)={t:.3f}, p={p:.3f}')
 
 
-assert(0)
-
 #Figure 3. Out-of-sample vs in-sample template
 def plot_figure3(dictionary):
     #plot(dictionary,label_name,dataname)
@@ -534,6 +532,13 @@ def test_normality(title,x):
     statistics = stats.shapiro(x)
     print(f'normality of {title}: p={statistics[1]:.3f}')
 
+def plot_figure6b_msmsulc_only(sulc,sulc_func,title,xlabel=None):
+    dictionary = {'MSMSulc only':sulc,\
+                'MSMSulc & FuncAlign':sulc_func} 
+    label_name=''
+    plot_paired(dictionary,figsize=(7,2.5),x_jitter=0,y_jitter=0.05,xlabel=xlabel,title=title,fontsize=14)
+
+
 def plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gammas,xlabel=None):
 
     #Subs 40-60 and 60-80 with subs 20-40 as template, with gamma optimised for subs 0-20. m&s. Procrustes template
@@ -583,6 +588,8 @@ sulc_comb=[0.88,0.93,0.93,0.86,0.86,]+[0.93,0.90,0.93,0.94,0.96,]+[0.875,0.875,0
 all_comb=[0.889,0.972,0.958,0.903,0.903,]+[0.958,0.931,0.972,0.972,0.972,]+[0.903,0.903,0.903,0.958,0.833,]
 plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gammas) #Figure 6B top
 
+
+
 #Movie: PCA template Ridge
 title='PCA template Ridge'
 lineplot(gammas, [.892, .897, .911, .925, .931, .917, .883],'Parameter','Classification Accuracy',title,ylim,hline=anat_acc,fontsize=14) #Figure 6A bottom
@@ -591,6 +598,8 @@ sulc_func=[0.861,0.917,0.917,0.847,0.875,]+[0.917,0.903,0.917,0.903,0.889,]+[0.8
 sulc_comb=[0.861,0.958,0.944,0.847,0.889,]+[0.944,0.903,0.958,0.931,0.931,]+[0.931,0.944,0.917,0.944,0.819,] 
 all_comb=[0.889,0.958,0.944,0.833,0.903,] + [0.944,0.944,1.000,0.958,0.972,]+[0.931,0.917,0.917,0.958,0.875,]
 plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gammas) #Figure 6B bottom
+
+plot_figure6b_msmsulc_only(sulc,sulc_func,title,xlabel='Classification Accuracy')
 
 
 #rev01fig04=Figure 7: Like Figure 6 but with ISC of movie-viewing
@@ -604,6 +613,11 @@ sulc_func=[0.151, 0.141, 0.078, 0.151, 0.15, 0.13, 0.134, 0.13, 0.16, 0.179, 0.1
 sulc_comb=[0.161, 0.147, 0.083, 0.157, 0.159, 0.136, 0.138, 0.138, 0.167, 0.189, 0.163, 0.133, 0.149, 0.104, 0.142, 0.163, 0.161, 0.154, 0.14, 0.125, 0.062, 0.167, 0.153, 0.129, 0.123, 0.153, 0.144, 0.112, 0.1, 0.147, 0.147, 0.1, 0.13, 0.145, 0.144, 0.129, 0.128, 0.061, 0.112, 0.154, 0.148, 0.128, 0.135, 0.004, 0.146, 0.18, 0.145, 0.107, 0.173, 0.134, 0.177, 0.137, 0.138, 0.125, 0.103, 0.135, 0.137, 0.132, 0.166, 0.1]
 all_comb=[0.174, 0.155, 0.088, 0.169, 0.169, 0.145, 0.147, 0.145, 0.184, 0.205, 0.173, 0.142, 0.16, 0.114, 0.152, 0.173, 0.174, 0.164, 0.155, 0.13, 0.066, 0.181, 0.163, 0.14, 0.134, 0.163, 0.152, 0.121, 0.106, 0.159, 0.155, 0.109, 0.133, 0.156, 0.159, 0.137, 0.138, 0.076, 0.12, 0.164, 0.163, 0.138, 0.143, 0.002, 0.156, 0.198, 0.157, 0.116, 0.186, 0.144, 0.19, 0.143, 0.149, 0.134, 0.132, 0.149, 0.148, 0.141, 0.177, 0.108]
 plot_figure6b(sulc,all,sulc_func,sulc_comb,all_comb,title,best_gammas,xlabel='Inter-subject correlation')
+
+plot_figure6b_msmsulc_only(sulc,sulc_func,title,xlabel='Inter-subject correlation')
+
+
+
 """
 print('ALIGN WITH REST_FC')
 #Rest: GPA template Procrustes
