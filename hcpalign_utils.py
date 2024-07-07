@@ -41,7 +41,7 @@ rests=['REST1_7T_PA','REST2_7T_AP','REST3_7T_PA','REST4_7T_AP']
 rests_3T=['REST1_LR','REST1_RL','REST2_LR','REST2_RL']
 tasks=['WM','GAMBLING','RELATIONAL','MOTOR','EMOTION','LANGUAGE','SOCIAL']
 all_subs=['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823','115017','115825','116726','118225','125525']
-all_subs=list(np.loadtxt('included_subs_minus3.csv',dtype='str')) #made from findpts.py
+all_subs=list(np.loadtxt('included_subs2.csv',dtype='str')) #made from findpts.py
 
 logical2str={True:'t',False:'f'}
 MSMlogical2str={True:'_MSMAll',False:''}
@@ -1301,6 +1301,7 @@ def kmeans_matrix(nparcs):
     save_folder= f'{intermediates_path}\kmeansparcellation'
     save=ospath(f'{save_folder}/kmeansparc_sub100610_sphere_{nparcs}parcs_matrix.p')
     return pickle.load( open( ospath(save), "rb" ) )
+'''
 def searchlights(radius, sub='100610',surface='midthickness'):
     """
     Return a saved list of searchlights, one centred at each vertex, with given radius
@@ -1309,6 +1310,7 @@ def searchlights(radius, sub='100610',surface='midthickness'):
     save_path=ospath(f'{intermediates_path}/searchlightparcellation/parc_{sub}_{surface}_{radius}mm.p')
     parcels = pickle.load(open(ospath(save_path), "rb" ))
     return parcels
+'''
 
 def parcellation_string_to_parcellation(parcellation_string,subjects=None):
     #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'R10' for searchlight radius 10mm, 'M' for HCP multimodal parcellation. 'I300' for individualized from Kong(2022)
@@ -1323,7 +1325,9 @@ def parcellation_string_to_parcellation(parcellation_string,subjects=None):
     elif parcellation_string[0]=='M':
         parcellation = hcp.mmp.map_all[hcp.struct.cortex]
     elif parcellation_string[0]=='R':
-        parcellation = searchlights(nparcs)
+        #parcellation = searchlights(nparcs)
+        from get_gdistances import get_searchlights
+        parcellation = get_searchlights(sub='102311',surface='midthickness',radius_mm=15)
     elif parcellation_string[0]=='I':
         parcellation = get_individualized_parcellation(nparcs,subjects)
     return parcellation
@@ -1346,25 +1350,27 @@ def parcellation_string_to_parcmatrix(parcellation_string):
     assert(len(nonempty_parcels)==matrix.shape[0]) #no empty parcels
     return matrix
 
-def get_searchlight_smoother(radius,sub='102311',surface='midthickness'):
+def get_searchlight_smoother(sub='102311',surface='midthickness',radius_mm=15):
     """
     Return a function that smooths a brain map using searchlights of a given radius.
     Make a smoothing matrix 'array' whose rows sum to 1
     Parameters:
     -----------
-    radius: int
-        Radius of searchlight in mm
     sub: str
         Subject ID
     surface: str
         Surface name
+    radius_mm: float
+        Radius of searchlight in mm
     Returns:
     --------
     smoother: function
         Function that smooths a brain map (59412,)
     """
     from scipy import sparse
-    data = searchlights(radius, sub=sub,surface=surface)
+    #data = searchlights(radius, sub=sub,surface=surface)
+    from get_gdistances import get_searchlights
+    data = get_searchlights(sub=sub,surface=surface,radius_mm=radius_mm)
     num_rows = len(data)
     num_cols = len(data)
     row_indices = []

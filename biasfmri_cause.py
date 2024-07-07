@@ -1,6 +1,7 @@
 """
 Script for investigating gyral bias in fMRI
 Use env py390
+Use this code for fsaverage5 mesh
 Shows the bias using noise data in a single subject
 
 See bottom of tkalign.py for additional code for plotting node strength (no. of streamlines) in diffusion data
@@ -19,8 +20,9 @@ import nilearn.plotting as plotting
 import nibabel as nib
 import pickle
 import brainmesh_utils as bmutils
+import generic_utils as gutils
 
-c = hutils.clock()
+c = gutils.clock()
 
 #Set paths
 hcp_folder=hutils.hcp_folder
@@ -30,16 +32,16 @@ project_path = "D:\\FORSTORAGE\\Data\\Project_GyralBias"
 biasfmri_intermediates_path = ospath(f'{project_path}/intermediates')
 
 ### SETTABLE PARAMETERS ###
-mesh_template = 'fsLR32k' #'fsaverage5','fsLR32k'
-which_subject = '100610' #'100610','standard'
+mesh_template = 'fsaverage5' #'fsLR32k' (default), 'fsaverage5'
+which_subject = 'standard' #'100610' (default),'standard'
 which_subject_visual = which_subject #which_subject or a specific subject eg 102311
-surface = 'midthickness' #which surface for calculating neighbour distances, e.g. 'white','inflated','pial','midthickness'
+surface = 'pial' #which surface for calculating neighbour distances, e.g. 'midthickness' (default),'white','inflated','pial' (default for fsaverage5)
 surface_visual = 'white' #which surface for visualization
 folder='MNINonLinear' #More parameters for getmesh_utils.get_verts_and_triangles. 'MNINonLinear' (default) or 'T1w'
 version='fsaverage_LR32k' #'native', 'fsaverage_LR32k' (default) or '164k'
 
 noise_source = 'surface' #'volume' or 'surface'. 'volume' means noise data in volume space projected to 'surface'. 'surface' means noise data generated in surface space
-smooth_data_fwhm = 0 #mm of surface smoothing. Try 0 or 2
+smooth_data_fwhm = 2 #mm of surface smoothing. Try 0 or 2
 MSMAll=False
 which_neighbours = 'local' #'local','nearest','distant'
 distance_range=(3,5) #Only relevant if which_neighbours=='distant'. Geodesic distance range in mm, e.g. (0,4), (2,4), (3,5), (4,6)
@@ -82,11 +84,11 @@ elif which_subject != 'standard':
 p = hutils.surfplot('',mesh=(vertices_visual,faces_visual),plot_type = 'open_in_browser')
 #mesh = (hutils.cortex_64kto59k(vertices),hutils.cortex_64kto59k_for_triangles(faces)) #downsample from 64k to 59k
 
-mesh = (vertices[mask],butils.triangles_removenongray(faces,mask))
+mesh = (vertices[mask],bmutils.triangles_removenongray(faces,mask))
 
 ### Get neighbour distances ###
 
-neighbour_vertices, neighbour_distances = butils.get_subjects_neighbour_vertices(c, which_subject,surface,mesh, biasfmri_intermediates_path, which_neighbours, distance_range, load_neighbours, save_neighbours,MSMAll)
+neighbour_vertices, neighbour_distances, neighbour_distances_mean = butils.get_subjects_neighbour_vertices(c, which_subject,surface,mesh, biasfmri_intermediates_path, which_neighbours, distance_range, load_neighbours, save_neighbours,MSMAll)
 
 '''
 #See on other meshes other than fsLR32k (e.g. Native, 164k, T1w folder)
@@ -130,7 +132,7 @@ if smooth_data_fwhm>0:
 
 
 print(f'{c.time()}: Get corr with neighbours start')
-noise_adjcorr = butils.get_corr_with_neighbours(neighbour_vertices,noise)
+noise_adjcorr,_ = butils.get_corr_with_neighbours(neighbour_vertices,noise)
 noise_adjcorr[np.isnan(noise_adjcorr)] = 0 #replace NaNs with 0s
 #noise_adjcorr[noise_adjcorr<0] = 0 #set negative correlations to 0
 print(f'{c.time()}: Get corr with neighbours end')
@@ -153,8 +155,8 @@ if subtract_parcelmeans_for_visual:
 ### PLOTTING ###
 
 #p.plot(butils.fillnongray(im[500,:],mask))
-p.plot(butils.fillnongray(noise_adjcorr,mask),cmap='inferno')
-p.plot(butils.fillnongray(neighbour_distances,mask),cmap='inferno')
+p.plot(bmutils.fillnongray(noise_adjcorr,mask),cmap='inferno')
+p.plot(bmutils.fillnongray(neighbour_distances_mean,mask),cmap='inferno')
 
 """
 #Visualize with different subjects' surfaces
@@ -171,23 +173,24 @@ for which_subject_visual in ['standard','100610']:
     p.plot(sulc)
 """
 
-fig,axs=plt.subplots(2,2)
+plt.rcParams.update({'font.size': 15})
+fig,axs=plt.subplots(2,2,figsize=(8,8))
 ax=axs[0,0]
-ax.scatter(neighbour_distances,noise_adjcorr,1,alpha=0.05,color='k')
+ax.scatter(neighbour_distances_mean,noise_adjcorr,1,alpha=0.05,color='k')
 ax.set_xlabel('Inter-vertex distance (mm)')
-ax.set_ylabel('Correlation with neighbours')
-ax.set_title(f'Correlation: {np.corrcoef(neighbour_distances,noise_adjcorr)[0,1]:.3f}')
+ax.set_ylabel('Local correlation')
+ax.set_title(f'Correlation: {np.corrcoef(neighbour_distances_mean,noise_adjcorr)[0,1]:.3f}')
 if mesh_template == 'fsLR32k':
     ax=axs[0,1]
     #p.plot(butils.fillnongray(sulc,mask))
-    ax.scatter(sulc,neighbour_distances,1,alpha=0.05,color='k')
+    ax.scatter(sulc,neighbour_distances_mean,1,alpha=0.05,color='k')
     ax.set_xlabel('Sulcal depth')
     ax.set_ylabel('Inter-vertex distance (mm)')
-    ax.set_title(f'Correlation: {np.corrcoef(sulc,neighbour_distances)[0,1]:.3f}')
+    ax.set_title(f'Correlation: {np.corrcoef(sulc,neighbour_distances_mean)[0,1]:.3f}')
     ax=axs[1,0]
     ax.scatter(sulc,noise_adjcorr,1,alpha=0.05,color='k')
     ax.set_xlabel('Sulcal depth')
-    ax.set_ylabel('Correlation with neighbours')
+    ax.set_ylabel('Local correlation')
     ax.set_title(f'Correlation: {np.corrcoef(sulc,noise_adjcorr)[0,1]:.3f}')
 fig.tight_layout()
 
@@ -205,8 +208,8 @@ if mesh_template =='fsaverage5':
     print(f'area: {np.corrcoef(noise_adjcorr,area[mask])[0,1]:.2f}')
     print(f'thick: {np.corrcoef(noise_adjcorr,thick[mask])[0,1]:.2f}')
     print('Correlations between neighbour_distances and:')
-    print(f'sulc: {np.corrcoef(neighbour_distances,sulc[mask])[0,1]:.2f}')
-    print(f'curv: {np.corrcoef(neighbour_distances,curv[mask])[0,1]:.2f}')
+    print(f'sulc: {np.corrcoef(neighbour_distances_mean,sulc[mask])[0,1]:.2f}')
+    print(f'curv: {np.corrcoef(neighbour_distances_mean,curv[mask])[0,1]:.2f}')
 
 
 plt.show(block=False)

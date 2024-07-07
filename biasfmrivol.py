@@ -126,7 +126,7 @@ if use_corrs_vol2surf:
 
     to_normalize = True
     if to_normalize:
-        smoother = hutils.get_searchlight_smoother(15,sub='102311',surface='midthickness')
+        smoother = hutils.get_searchlight_smoother(sub=subject,surface='midthickness',radius_mm=15) #102311
         normalize = lambda x: x - smoother(x)
         im[np.isnan(im)] = np.nanmean(im)
         im=normalize(im)
@@ -135,14 +135,14 @@ if use_corrs_vol2surf:
     ### PLOTTING
     from scipy.stats import pearsonr
 
+    plt.rcParams.update({'font.size': 15})
     fig,ax=plt.subplots(figsize=(4,4))
     ax.scatter(sulc[valid],im[valid],1,alpha=0.1,color='k')
     ax.set_xlabel('Sulcal depth')
-    ax.set_ylabel('Correlation with neighbours')
-
-
-    corr,pval=butils.corr_with_nulls(sulc,im,mask,method='spin_test',n_perm=300)
+    ax.set_ylabel('Local correlation')
+    corr,pval=butils.corr_with_nulls(sulc,im,mask,method='spin_test',n_perm=1000)
     ax.set_title(f'Correlation is {corr:.3f}, p-value is {pval:.3f}')
+    ax.xaxis.set_major_locator(plt.MultipleLocator(1))
     fig.tight_layout()
 
     im[np.isnan(im)] = np.nanmean(im) #for surface plot, replace nans with mean value

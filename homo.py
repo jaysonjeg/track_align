@@ -229,7 +229,7 @@ for n_atlas in range(len(atlases)):
         sulc_nonborder = sulc_left[~border_bool] #sulcal depth values not at the border of parcels
 
         #Get p-value with spin test
-        """
+        
         sulc_both = np.zeros(59412)
         sulc_both[0:ngrayl] = sulc_left
         import biasfmri_utils as butils
@@ -239,7 +239,7 @@ for n_atlas in range(len(atlases)):
         pvals[n_atlas,nsubject] = p_value
         #print(f"Sulcal depth at parcel borders {np.mean(sulc_border):.3f} vs non-border vertices {np.mean(sulc_nonborder):.3f}: cohens d {cohen_d:.3f}, t(29694)={t_stat:.3f}, spin test p={p_value:.3f}")
         #assert(0)
-        """
+        
 
         sulcs_border[n_atlas,nsubject] = np.mean(sulc_border)
         cohends[n_atlas,nsubject] = butils.get_cohen_d(sulc_border,sulc_nonborder)

@@ -11,20 +11,22 @@ from scipy import sparse
 import hcpalign_utils as hutils
 import pickle
 
+'''
 def make_and_save_searchlights(sub='102311',surface='midthickness'):
     """
     Make a list of searchlights, one centred at each vertex. Each searchlight is a list of vertices within radius_mm of the centre vertex. Save this list of searchlights as a pickle objcet
     """
     gdists = get_saved_gdistances_full(sub,surface)
-    for radius_mm in [40]: #only look at vertices within this many mm of the source vertex
+    for radius_mm in [5,10,15]: #only look at vertices within this many mm of the source vertex
         print(radius_mm)
         gdists_bool = gdists < radius_mm
         parcels = [np.where(gdists_bool[i,:])[0].astype('int32') for i in range(gdists.shape[0])]
         del gdists_bool
         save_path=hutils.ospath(f'{hutils.intermediates_path}/searchlightparcellation/parc_{sub}_{surface}_{radius_mm}mm.p')
         pickle.dump(parcels,open(save_path,"wb"))
-
-c=hcpalign_utils.clock()
+'''
+import generic_utils as gutils
+c=gutils.clock()
 hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"
 
 def get_saved_gdistances_full_hemi(sub,surface,hemi,hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200",intermediates_path='/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/old_intermediates'):
@@ -50,20 +52,18 @@ def get_saved_gdistances_full(sub,surface,hcp_folder="/mnt/d/FORSTORAGE/Data/HCP
     w[cutoff:,cutoff:]=R
     return w
 
-
 def process_i(i,nvertices_target,vertices,triangles):
     source_indices=np.array([i])
     target_indices=np.array(range(i+1 , nvertices_target)).astype('int32') #everything above source_indices. ie computing lower half of the symmetric distance matrix                   
     distances=gdist.compute_gdist(vertices,triangles,source_indices,target_indices=target_indices)
     return distances.astype(np.float16)
 
-
-
 if __name__=='__main__':
    
-    make_and_save_searchlights(sub='102311',surface='midthickness')
+    '''
+    make_and_save_searchlights(sub='100610',surface='midthickness')
     assert(0)
-
+    '''
     #To generate geodesic distances only between vertices within the same parcel. Returns a list (nparcels) of arrays (nvertices,nvertices)
     
     import pickle

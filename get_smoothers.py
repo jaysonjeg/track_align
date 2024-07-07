@@ -32,7 +32,7 @@ def get_smoothers(sub,surface,fwhm,hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"
         print(f"{c.time()} Not in cache: Generating smoothers")
         c=hcpalign_utils.clock()
 
-        gdistances = get_gdistances(sub,surface,10,epsilon=0.01,load_from_cache=True,save_to_cache=True)
+        gdistances = get_gdistances(sub,surface,fwhm=10,epsilon=0.01,load_from_cache=True,save_to_cache=True)
 
         surf_file_L=ospath("{}/{}/MNINonLinear/fsaverage_LR32k/{}.L.{}.32k_fs_LR.surf.gii".format(hcp_folder,sub,sub,surface))
         surf_file_R=ospath("{}/{}/MNINonLinear/fsaverage_LR32k/{}.R.{}.32k_fs_LR.surf.gii".format(hcp_folder,sub,sub,surface))

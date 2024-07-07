@@ -31,17 +31,18 @@ if __name__=='__main__':
     biasfmri_intermediates_path = gutils.ospath(f'{project_path}/intermediates')
 
     ### GENERAL PARAMETERS
-    sub_slice = slice(0,1)
+    sub_slice = slice(0,3)
     real_or_noise = 'real' # 'real' or 'noise
     this_parc = 1 #which parcel for within-parcel analysis
     surface = 'midthickness' #which surface for calculating distances, e.g. 'white','inflated','pial','midthickness'
     which_subject_visual = '100610' #which subject for visualization. '100610', '102311', 'standard'
-    surface_visual = 'white'
+    surface_visual = 'white' #default white
     MSMAll = False
     parc_string='S300'
 
     ### PARAMETERS FOR PLOTTING
     alpha=0.05 #transparency of points in scatter plots
+    figsize=(4,4) #size of figure for scatter plots
 
 
     ### PARAMETERS FOR TESTS OF CORRELATIONS BETWEEN TWO MAPS
@@ -51,7 +52,7 @@ if __name__=='__main__':
 
     ### PARAMETERS FOR SPECIFIC SUB-SECTIONS
 
-    which_neighbours = 'local' #'local','distant'
+    which_neighbours = 'local' #'local' (default),'distant'
     distance_range=(1,10) #Only relevant if which_neighbours=='distant'. Geodesic distance range in mm, e.g. (0,4), (2,4), (3,5), (4,6). (1,10) is default.
     load_neighbours = True
     save_neighbours = False
@@ -63,7 +64,7 @@ if __name__=='__main__':
     if real_or_noise == 'noise':
         noise_source = 'surface' #'volume' or 'surface'. 'volume' means noise data in volume space projected to 'surface'. 'surface' means noise data generated in surface space
         smooth_noise_fwhm = 2 #mm of surface smoothing. Try 0 or 2
-        ntimepoints = 500 #number of timepoints, default 1000
+        ntimepoints = 1000 #number of timepoints, default 1000
         print(f'{c.time()}: Noise data, source: {noise_source}, smooth: {smooth_noise_fwhm}mm, ntimepoints: {ntimepoints}, test first-half, retest second-half')
     elif real_or_noise == 'real':
             img_type = 'rest' #'movie', 'rest', 'rest_3T'
@@ -83,9 +84,7 @@ if __name__=='__main__':
     parc_matrix = hutils.parcellation_string_to_parcmatrix(parc_string)
     nparcs = parc_labels.max()+1
 
-
     print(f'{c.time()}: Get meshes')
-
 
     try_different_meshes = False
     if try_different_meshes:
@@ -109,11 +108,6 @@ if __name__=='__main__':
     meshes = [bmutils.reduce_mesh((vertices,faces),mask) for vertices,faces in meshes] #reduce to only gray matter vertices
     all_vertices, all_faces = zip(*meshes)
     sulcs = [butils.hcp_get_sulc(i)[mask] for i in subjects] #list (subjects) of sulcal depth maps
-
-    if to_normalize:
-        smoother = hutils.get_searchlight_smoother(15,sub='102311',surface='midthickness')
-        normalize = lambda x: x - smoother(x)
-
 
     print(f'{c.time()}: Get fMRI data')   
     if real_or_noise == 'noise':
@@ -279,7 +273,7 @@ if __name__=='__main__':
         print(f"How many components are gyral biased? {np.sum(np.array(corrs_with_sulc)>0)}/{len(corrs_with_sulc)}")
         assert(0)
 
-    get_vertex_areas = True
+    get_vertex_areas = False
     if get_vertex_areas:
         print(f'{c.time()}: Get vertex areas start')
         vertex_areas = Parallel(n_jobs=-1,prefer='threads')(delayed(bmutils.get_vertex_areas)(mesh) for mesh in meshes)
@@ -289,21 +283,20 @@ if __name__=='__main__':
         if plot_vertex_areas:
             nsubject=0
             #p.plot(vertex_areas[nsubject])
-            fig,axs=plt.subplots(figsize=(4,3.8))
-            axs.scatter(sulcs[nsubject],vertex_areas[nsubject],1,alpha=0.05,color='k')
+            fig,axs=plt.subplots(figsize=figsize) #4,3.8
+            axs.scatter(sulcs[nsubject],vertex_areas[nsubject],1,alpha=alpha,color='k')
             axs.set_xlabel('Sulcal depth')
             axs.set_ylabel('Vertex area ($mm^2$)')
             axs.set_title(f'Correlation: {np.corrcoef(sulcs[nsubject],vertex_areas[nsubject])[0,1]:.3f}')
             axs.set_ylim(0,np.quantile(vertex_areas[nsubject],0.999))
-            #set x axis tick intervals to 1
-            axs.xaxis.set_major_locator(plt.MultipleLocator(1))
+            axs.xaxis.set_major_locator(plt.MultipleLocator(1)) #set x axis tick intervals to 1
             fig.tight_layout()
             plt.show(block=False) 
     else:
         vertex_areas = [None]*nsubjects 
 
     ### Parcellate
-    do_parcellate = False
+    do_parcellate = True
     if do_parcellate:
         print(f'{c.time()}: Parcellate')    
         ims_parc = Parallel(n_jobs=1,prefer='threads')(delayed(butils.parcel_mean)(im,parc_matrix,vertex_area) for im, vertex_area in zip(ims,vertex_areas)) #list (nsubjects) of parcellated time series (ntimepoints,nparcels)
@@ -333,7 +326,7 @@ if __name__=='__main__':
                 p.plot(yvals,cmap='inferno')
                 corr,pval = butils.corr_with_nulls(xvals,yvals,mask,null_method,n_perm)
                 print(f'{xname} vs {yname}: R={corr:.3f}, p={pval:.3f}')
-                fig,ax=plt.subplots(figsize=(3.5,3.5))
+                fig,ax=plt.subplots(figsize=(4,4))
                 ax.scatter(xvals,yvals,1,alpha=0.05,color='k')
                 ax.set_xlabel('Sulcal depth')
                 ax.set_ylabel('Correlation with parcel mean')
@@ -383,7 +376,9 @@ if __name__=='__main__':
             interp_dists = np.array(list(range(distance_range[0],distance_range[1]+1)))
             interp_corrs = butils.interpolate_from_expfit_params(expfit_params,interp_dists)
             print(f'{c.time()}: Interpolate exponentials end')  
+            plt.rcParams.update({'font.size': 15})
             fig,axs=butils.corr_dist_plot_samples(all_neighbour_distances[nsubject],ims_adjcorr_full[nsubject],distance_range,interp_dists,interp_corrs)
+            plt.rcParams.update({'font.size': 15})
             fig,axs = butils.corr_dist_plot_exp(c,expfit_params,sulcs[nsubject],mask,null_method,n_perm)
             for i in range(len(expfit_params[1])): p.plot(expfit_params[:,i]) #plot on brain map
         if do_interpolate_corrs_exp or do_interpolate_corrs_linearspline:
@@ -398,10 +393,11 @@ if __name__=='__main__':
                 #ims_adjcorr[i][ims_adjcorr[i]<0] = 0 #set negative correlations to 0
 
             if to_normalize:
+                smoother = hutils.get_searchlight_smoother(sub=subjects[0],surface='midthickness',radius_mm=15)
+                normalize = lambda x: x - smoother(x)
                 ims_adjcorr = [normalize(i) for i in ims_adjcorr]
                 all_neighbour_distances_mean = [normalize(i) for i in all_neighbour_distances_mean]
                 sulcs = [normalize(i) for i in sulcs]
-
 
             compare_to_ReHoPaperFig4 = False
             if compare_to_ReHoPaperFig4:
@@ -432,7 +428,7 @@ if __name__=='__main__':
                 plt.show(block=False)
                 assert(0)
 
-            depth_vs_corrs_stats=False
+            depth_vs_corrs_stats=True
             if depth_vs_corrs_stats:
                 corrs = np.zeros((nsubjects,2)) #stores correlation between sulcal depth and local correlations. First column uses same subjects for both variables, second column uses different subjects (mismatched)
                 for i in range(nsubjects):
@@ -447,6 +443,7 @@ if __name__=='__main__':
                 import seaborn as sns #need env nilearn with package seaborn
                 import pandas as pd
                 #columns = ['Same\nparticipants','Different\nparticipants']
+
                 columns = ['Same','Different']
                 corrs_df = pd.DataFrame(corrs,columns=columns)                   
                 corrs_df = corrs_df.melt(value_vars=columns,var_name='Participants',value_name='Correlation') #convert to single column format
@@ -480,7 +477,11 @@ if __name__=='__main__':
                 ax.scatter(all_neighbour_distances_mean[i],ims_adjcorr[i],1,alpha=alpha,color='k')
                 ax.set_xlabel('Inter-vertex distance (mm)')
                 ax.set_ylabel('Local correlation')
-                ax.set_xlim(0,np.quantile(all_neighbour_distances_mean[i],0.999))
+                if surface=='sphere':
+                    ax.set_xlim(0,4.2)
+                else:
+                    ax.set_xlim(ax.get_xlim()[0],np.quantile(all_neighbour_distances_mean[i],0.999))
+                ax.set_ylim(np.quantile(ims_adjcorr[i],0.001),np.quantile(ims_adjcorr[i],0.999))
                 corr,pval = butils.corr_with_nulls(all_neighbour_distances_mean[i],ims_adjcorr[i],mask,null_method,n_perm)
                 ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
                 ax=axs[0,1]
@@ -488,7 +489,7 @@ if __name__=='__main__':
                 ax.set_xlabel('Sulcal depth')
                 ax.set_ylabel('Inter-vertex distance (mm)')
                 ax.xaxis.set_major_locator(plt.MultipleLocator(1))
-                ax.set_ylim(0,np.quantile(all_neighbour_distances_mean[i],0.999))
+                ax.set_ylim(ax.get_ylim()[0],np.quantile(all_neighbour_distances_mean[i],0.999))
                 corr,pval = butils.corr_with_nulls(sulcs[i],all_neighbour_distances_mean[i],mask,null_method,n_perm)
                 ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
                 ax=axs[1,0]
@@ -497,16 +498,16 @@ if __name__=='__main__':
                 ax.xaxis.set_major_locator(plt.MultipleLocator(1))
                 ax.set_ylabel('Local correlation')
                 corr,pval = butils.corr_with_nulls(sulcs[i],ims_adjcorr[i],mask,null_method,n_perm)
-                ax.set_title('Same participant')
-                #ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
+                #ax.set_title('Same participant')
+                ax.set_title(f'same R={corr:.3f}, p={pval:.3f}')
                 ax=axs[1,1]
                 ax.scatter(sulcs[i],ims_adjcorr[(i+1)%nsubjects],1,alpha=alpha,color='k')
                 ax.set_xlabel('Sulcal depth')
                 ax.xaxis.set_major_locator(plt.MultipleLocator(1))
                 ax.set_ylabel('Local correlation')
                 corr,pval = butils.corr_with_nulls(sulcs[i],ims_adjcorr[(i+1)%nsubjects],mask,null_method,n_perm)
-                ax.set_title('Different participant')
-                #ax.set_title(f'Correlation of this sub\'s sulc with \nlocalcorrs of {subjects[(i+1)%nsubjects]}: R={corr:.3f}, p={pval:.3f}')
+                #ax.set_title('Different participant')
+                ax.set_title(f'diff R={corr:.3f}, p={pval:.3f}')
                 fig.suptitle(f'Subject {subjects[i]}')
                 fig.tight_layout()
                 plt.show(block=False)
@@ -535,7 +536,7 @@ if __name__=='__main__':
             print(corrs_sulc_adjcorr_singleparc)
 
     ### Analyse reliability and identifiability of functional connectivity
-    do_FC = False
+    do_FC = True
     if do_FC:
         print(f'{c.time()}: Calculate FC')   
 
@@ -543,7 +544,7 @@ if __name__=='__main__':
         figsize = (4,4)
         x_axis_label = 'Test scans'
         y_axis_label = 'Retest scans'
-        regress_ident = False #whether to regress out rows/columns in identifiability
+        #regress_ident = False #whether to regress out rows/columns in identifiability
         ntimepoints_per_half = ims[0].shape[0]//2 #number of time points in the test and retest halves of each subject's data
 
 
@@ -557,10 +558,8 @@ if __name__=='__main__':
 
         #Correlation between test and retest scans, across all subject pairs
         print(f'{c.time()}: Get identifiability parcellated')  
-        import tkalign_utils as tutils
-        prefix = f'Parcellated FC (reg={regress_ident})'
-        corrs = tutils.ident_plot(ims_pfcvx,x_axis_label,ims_pfcvy,y_axis_label,reg=regress_ident,normed=False,figsize=figsize,title=prefix) 
-        print(f'{prefix}, test-retest identifiability is {tutils.identifiability(corrs):.2f}%')
+        corrs = butils.ident_plot(ims_pfcvx,x_axis_label,ims_pfcvy,y_axis_label,figsize=figsize,title='Parcel level') 
+        print(f'Parcel level test-retest identifiability is {butils.identifiability(corrs):.2f}%')
 
         ### Identifiability - single parcel level ###
  
@@ -590,24 +589,28 @@ if __name__=='__main__':
 
                 #Correlation between test and retest scans, across all subject pairs
                 #print(f'{c.time()}: Get identifiability single parcel pairs>{min_mm}mm')  
-                import tkalign_utils as tutils
-                prefix = f'Single parcel FC pairs>{min_mm}mm {ratio_admissible:.1f}% (reg={regress_ident})'
-                corrs = tutils.ident_plot(ims_sfcvx,x_axis_label,ims_sfcvy,y_axis_label,reg=regress_ident,normed=False,figsize=figsize,title=prefix,make_plot=False)
-                identifiability = tutils.identifiability(corrs)
+                prefix = f'Single parcel FC pairs>{min_mm}mm {ratio_admissible:.1f}% (reg=False)'
+                corrs = butils.ident_plot(ims_sfcvx,x_axis_label,ims_sfcvy,y_axis_label,figsize=figsize,title='Vertex level',make_plot=(min_mm==0) & False)
+                identifiability = butils.identifiability(corrs)
                 print(f'{prefix}, test-retest ident is {identifiability:.0f}%')
                 results[n_parc_labels,n_min_mm] = identifiability
 
         #Strip-plot of identifiability at each cutoff value
         results_df = pd.DataFrame(results,columns=all_min_mm)                   
         results_dfmelt = results_df.melt(value_vars=all_min_mm,var_name='cutoff',value_name='Identifiability') #convert to single column format
-        fig,ax=plt.subplots(figsize=(3,4))
-        import seaborn as sns
-        sns.lineplot(data=results_dfmelt,x="cutoff",y="Identifiability",color='black',ax=ax)
-        ax.axhline(y=10,color='r')
-        ax.set_ylim(0,100)
-        ax.set_xlabel('Distance threshold (mm)')
-        ax.set_ylabel('Identifiability (%)')
-        fig.tight_layout()
 
-        print(f'{c.time()}: Finished with identifiability')  
-        plt.show(block=False)
+        def func():
+            fig,ax=plt.subplots(figsize=(3.7,3)) #3,4
+            import seaborn as sns
+            sns.lineplot(data=results_dfmelt,x="cutoff",y="Identifiability",color='black',ax=ax)
+            ax.axhline(y=100/len(subjects),color='r')
+            ax.set_ylim(0,105)
+            ax.set_title('Empirical data')
+            ax.set_xlabel('Distance threshold (mm)')
+            ax.set_ylabel('Identifiability (%)')
+            ax.xaxis.set_major_locator(plt.MultipleLocator(5))
+            ax.yaxis.set_major_locator(plt.MultipleLocator(25))
+            fig.tight_layout()
+            print(f'{c.time()}: Finished with identifiability')  
+            plt.show(block=False)
+        func()

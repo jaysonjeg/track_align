@@ -204,7 +204,7 @@ def get_subjects_neighbour_vertices(c, subject,surface,mesh, biasfmri_intermedia
         if which_neighbours == 'distant':
             from get_gdistances import get_gdistances
             print(f'{c.time()}: Get geodesic distances start')
-            d = get_gdistances(subject,surface,10,MSMAll=MSMAll) #d is a sparse matrix in compressed sparse row format
+            d = get_gdistances(subject,surface,fwhm=10,MSMAll=MSMAll) #d is a sparse matrix in compressed sparse row format
             print(f'{c.time()}: Get vertices at distance range start')
             neighbour_vertices, neighbour_distances = get_vertices_in_distance_range(distance_range,d)
             nVerticesWithZeroNeighbours = np.sum(np.array([len(i) for i in neighbour_vertices])==0)
@@ -452,7 +452,7 @@ def subtract_parcelmean(data,parc_matrix):
 def get_smoothing_kernel(subject,surface,fwhm_for_gdist,smooth_noise_fwhm,MSMAll=False,mesh_template='fsLR32k'):
         from get_gdistances import get_gdistances
         from Connectome_Spatial_Smoothing import CSS as css
-        gdistances = get_gdistances(subject,surface,fwhm_for_gdist,epsilon=0.01,load_from_cache=True,save_to_cache=True,MSMAll=MSMAll,mesh_template=mesh_template)
+        gdistances = get_gdistances(subject,surface,fwhm=fwhm_for_gdist,epsilon=0.01,load_from_cache=True,save_to_cache=True,MSMAll=MSMAll,mesh_template=mesh_template)
         skernel = css._local_distances_to_smoothing_coefficients(gdistances, css._fwhm2sigma(smooth_noise_fwhm))
         return skernel
 def smooth(x,skernel):
@@ -625,6 +625,7 @@ def corr_dist_plot_exp(c,expfit_params,sulcs_subject,mask,null_method,n_perm):
     #plot exponential fit parameters as a function of sulcal depth
     from matplotlib import pyplot as plt
     expfit_param_names = ['Amplitude','Decay rate','Bias']
+    plt.rcParams.update({'font.size': 15})
     fig,axs = plt.subplots(3,figsize=(4,9))
     for i in range(3):
         values = expfit_params[:,i]
@@ -634,6 +635,7 @@ def corr_dist_plot_exp(c,expfit_params,sulcs_subject,mask,null_method,n_perm):
         ax.set_ylabel(f'{expfit_param_names[i]}')
         corr,pval = corr_with_nulls(sulcs_subject,values,mask,null_method,n_perm)
         ax.set_title(f'R={corr:.3f}, p={pval:.3f}')
+        ax.xaxis.set_major_locator(plt.MultipleLocator(1))
     fig.tight_layout()
     return fig,axs
 
@@ -641,15 +643,15 @@ def corr_dist_plot_samples(all_neighbour_distances_sub,ims_adjcorr_full_sub,dist
     # Plot correlation vs. distance for some example vertices, and the linear spline fit
     from matplotlib import pyplot as plt
     nvertices=len(all_neighbour_distances_sub)
-    samplevertices = np.linspace(0,nvertices-1,16).astype(int)
+    samplevertices = np.linspace(0,nvertices-1,4).astype(int)
     nrows = int(np.ceil(np.sqrt(len(samplevertices))))
-    fig,axs = plt.subplots(nrows,nrows,figsize=(10,7))
+    fig,axs = plt.subplots(nrows,nrows,figsize=(8,6)) #10,7
     for i,nvertex in enumerate(samplevertices):
         ax=axs.flatten()[i]
         distsx = all_neighbour_distances_sub[nvertex]
         corrsx = ims_adjcorr_full_sub[nvertex]
         interp_corrs_vertex = interp_corrs[nvertex,:]
-        ax.scatter(distsx,corrsx,20,alpha=1,color='k')
+        ax.scatter(distsx,corrsx,20,alpha=1,color='k') #20
         ax.plot(interp_dists, interp_corrs_vertex, '-', color='r')
         ax.set_xlim(distance_range[0],distance_range[1])
         ax.set_ylim(0,1)
@@ -764,3 +766,55 @@ def eigenstrap_bilateral(data,mesh_path_left=None,mesh_path_right=None,num_modes
     mask = hutils.get_fsLR32k_mask(hemi='both')
     nulls = nulls[:,mask]
     return nulls
+
+def ident_plot(X,xlabel,Y,ylabel,figsize=None,title=None,make_plot=True):
+    """
+    X and Y are lists of vectors. Calculate the correlation between each pair of vectors, and plot the results
+    from tkalign_utils.ident_plot
+    """
+    from matplotlib import pyplot as plt
+    corrs = np.zeros((len(Y),len(X)),dtype=np.float32)
+    for i in range(len(Y)):
+        for j in range(len(X)):
+            corrs[i,j] = np.corrcoef(X[j],Y[i])[0,1]
+    if make_plot:
+        fig,ax=plt.subplots(figsize=figsize)
+        cax=ax.imshow(corrs,cmap='cividis')
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        nsubjects = corrs.shape[0]
+        ax.set_xticks(range(nsubjects))
+        ax.set_yticks(range(nsubjects))
+        ax.set_xticklabels([i+1 for i in range(nsubjects)])
+        ax.set_yticklabels([i+1 for i in range(nsubjects)])
+        ax.set_title(title)
+        fig.colorbar(cax,ax=ax)
+        fig.tight_layout()
+    return corrs
+
+def identifiability(mat):
+    """
+    If input is 2-dim array, returns percentage of dim0 for which the diagonal element (dim1==dim0) was the largest. If input is 3-dim, returns the percentage of dim0*dim2 for which the diagonal element (dim1==dim0) was the largest.
+    
+    Input is array(nyD,nyR) or array(nyD,nyR,nblocks) of ranks. For pairwise, do full(minter_ranks).mean(axis=0) to get appropriate input
+    Returns percentage of Diffusion (nyD) for whom the matching Functional (nyR) was identifiable
+    For a given nyD, we know how each nyR ranks in improving correlations with nxD*nxR (averaged across nxDs). The 'identified' nyR has the highest mean rank.              
+    So, the 'chosen' Functional nyR is the one that tends to have the highest correlation with other subjects when paired with diffusion array nyD
+    From tkalign_utils.ident_plot
+    """
+    ndim=mat.ndim
+    
+    matsort=np.argsort(mat,axis=1) #sort along axis 1, smallest to biggest
+    if ndim==2:
+        identified_F = matsort[:,-1] #For each given dim0/nyD, list the best dim1/nyR
+    elif ndim==3:
+        identified_F = matsort[:,-1,:]
+    n_subs = identified_F.shape[0]        
+    if ndim==2:
+        func = lambda d: 100*np.sum([d[i]==i for i in range(n_subs)])/n_subs
+        identifiability_F = func(identified_F)
+    elif ndim==3:
+        ideal_case = np.tile(np.arange(0,n_subs).reshape(n_subs,1),(1,identified_F.shape[1]))
+        correct_id = ideal_case==identified_F
+        identifiability_F = 100*np.sum(correct_id,axis=0) / correct_id.shape[0]
+    return identifiability_F
