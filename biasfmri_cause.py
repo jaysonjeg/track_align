@@ -1,13 +1,8 @@
 """
 Script for investigating gyral bias in fMRI
 Use env py390
-Use this code for fsaverage5 mesh
+Use this code for fsaverage5 mesh results only
 Shows the bias using noise data in a single subject
-
-See bottom of tkalign.py for additional code for plotting node strength (no. of streamlines) in diffusion data
-Visualization might be best with surface_visual==inflated or white, subtract_parcelmeans_for_visual=True
-
-
 """
 
 import numpy as np, pandas as pd, matplotlib.pyplot as plt

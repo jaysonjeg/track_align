@@ -1,6 +1,6 @@
 """
-env py390
 Test for gyral bias in neighbourhood correlations in fMRI, in volume space
+Use env py390
 """
 
 
