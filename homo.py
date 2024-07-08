@@ -1,49 +1,23 @@
 """
-Script to test different measures of fMRI parcel homogeneity
-
-TO DO:
-Test expfit to make sure it works okay
-Use more runs, more subjects
-
-RESULTS:
-Run 0:
------
-S300
-mean_FC: 0.170
-mean_FC_min_distance cutoff 10mm: 0.122
-expfit_decay: 0.202
-
-S1000:
-mean_FC: 0.254
-
-MMP
-mean_FC: 0.176
-mean_FC_min_distance cutoff 10mm: 0.118
-
-K100:
-expfit_decay: 0.189
-----
-
-Runs 0,1,2,3:
-Results given as (subject 1, subject 2, etc)
------
-S300. 
-mean_FC:                            .209, .233, .214, .236, .229
-mean_FC_min_distance cutoff 10mm:   .157, .180, .166, .181, .181
-expfit_decay:                       .179, .176, .197, .172, .184
-
-MMP:
-mean_FC:                            .209, .235, .210, .241, .229
-mean_FC_min_distance cutoff 10mm:   .127, .170, .151, .177, .171
------
+Script to test different parcellations, and measures of fMRI parcel homogeneity
+env py390 
 """
 
 import numpy as np
-
 import generic_utils as gutils
 import brainmesh_utils as bmutils
 import homo_utils
 
+
+def add(x,y):
+    """
+    Add x and y
+    """
+
+
+    
+
+    
 
 c = gutils.clock()
 
@@ -58,7 +32,6 @@ parcs_dir = gutils.ospath(f"{project_path}/intermediates/parcellations")
 
 ### GENERAL PARAMETERS
 sub_slice = slice(0,2)
-this_parc = 1 #which parcel for within-parcel analysis
 surface = 'midthickness' #which surface for calculating distances, e.g. 'white','inflated','pial','midthickness'
 
 which_subject_visual = '100610' #which subject for visualization. '100610', '102311', 'standard'
@@ -72,6 +45,7 @@ print(f'{c.time()}: Real HCP data, img_type: {img_type}, MSMAll: {MSMAll}, runs 
 
 # Parameters for homogeneity calculation
 single_parcel = False #whether to calculate homogeneity for a single parcel or all parcels
+this_parc = 1 #which parcel for within-parcel analysis
 function = homo_utils.homo_meanFC #which function in homo_utils to use, e.g. 'homo_meanFC', 'homo_mean_FC_min_distance','homo_expfit_decay'
 args = []
 kwargs = {}
@@ -93,6 +67,23 @@ parc_labels = hutils.parcellation_string_to_parcellation(parc_string)
 
 atlas_names = []
 atlases = []
+
+pan_parcellation_names = ['AAL82','Aicha344']
+
+def get_parcellation_pan(parcellation_name):
+    """
+    Get parcellation of fsLR 32k surface from pan
+    Parameters:
+    """
+    filename_left = f"{parcs_dir}/pan/fsLR_32k_{parcellation_name}-lh.txt"
+
+
+
+for parcellation_name in pan_parcellation_names:
+    get_parcellation_pan(parcellation_name)
+
+
+
 
 #Atlases saved on my PC
 atlas_names.append('Kong2022_17n_300')
@@ -117,12 +108,12 @@ atlases.append(homo_utils.dlabel_filepath_to_array(atlas_path,mask))
 """
 
 #Volume deterministic atlases from nilearn (https://nilearn.github.io/dev/modules/datasets.html), projected to surface
+"""
 import nilearn
 
 atlas_names.append('schaefer2018_vol_7n_300')
 atlas_path = nilearn.datasets.fetch_atlas_schaefer_2018(n_rois=300, yeo_networks=7, resolution_mm=1, data_dir=parcs_dir, verbose=1)['maps']
 atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
-
 
 atlas_names.append('basc_vol_325')
 atlas_path = nilearn.datasets.fetch_atlas_basc_multiscale_2015(data_dir=parcs_dir, resolution=325, version='sym')['map']
@@ -139,8 +130,7 @@ atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
 atlas_names.append('juelich_vol_thr0_1mm')
 atlas_path = nilearn.datasets.fetch_atlas_juelich("maxprob-thr0-1mm", data_dir=parcs_dir, symmetric_split=False)['maps']
 atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
-
-
+"""
 
 """
 atlas_names.append('talairach_vol_tissue')
@@ -200,11 +190,10 @@ print(f'{c.time()}: Get vertex areas')
 from joblib import Parallel,delayed
 vertex_areas = Parallel(n_jobs=-1,prefer='processes')(delayed(bmutils.get_vertex_areas)(mesh) for mesh in meshes)
 
-print(f'{c.time()}: Get parcel areas')
-parc_areas = [[np.median(bmutils.get_parcel_areas(vertex_area,parc_labels)) for vertex_area in vertex_areas] for parc_labels in atlases] #get parcel areas (median across parcels)
+print(f'{c.time()}: Get parcel areas') #get parcel areas (median across parcels)
+parc_areas = [[np.median(bmutils.get_parcel_areas(vertex_area,parc_labels)) for vertex_area in vertex_areas] for parc_labels in atlases] 
 parc_areas = [np.array(parc_areas) for parc_areas in parc_areas] #convert to numpy array
 parc_areas = np.stack(parc_areas) #shape (atlases, subjects)
-
 
 print(f"{c.time()}: Get gyral bias in parcel boundaries")
 import hcp_utils as hcp
@@ -229,7 +218,6 @@ for n_atlas in range(len(atlases)):
         sulc_nonborder = sulc_left[~border_bool] #sulcal depth values not at the border of parcels
 
         #Get p-value with spin test
-        
         sulc_both = np.zeros(59412)
         sulc_both[0:ngrayl] = sulc_left
         import biasfmri_utils as butils
@@ -239,13 +227,10 @@ for n_atlas in range(len(atlases)):
         pvals[n_atlas,nsubject] = p_value
         #print(f"Sulcal depth at parcel borders {np.mean(sulc_border):.3f} vs non-border vertices {np.mean(sulc_nonborder):.3f}: cohens d {cohen_d:.3f}, t(29694)={t_stat:.3f}, spin test p={p_value:.3f}")
         #assert(0)
-        
-
         sulcs_border[n_atlas,nsubject] = np.mean(sulc_border)
         cohends[n_atlas,nsubject] = butils.get_cohen_d(sulc_border,sulc_nonborder)
         tstats[n_atlas,nsubject] = stats.ttest_ind(sulc_border,sulc_nonborder)[0]
 
-assert(0)
 
 print(f'{c.time()}: Get parcel homogeneity loop start')
 homos=np.zeros((len(atlases),nsubjects),dtype=np.float32) #saves fMRI homogeneity for each parcellation and each subject (median across parcels)
@@ -309,7 +294,7 @@ for i in range(len(atlases)):
 
 import matplotlib.pyplot as plt
 fig,ax=plt.subplots()
-ax.scatter(parc_areas_mean_across_subs,homos_mean_across_subjs)
+ax.scatter(parc_areas_mean_across_subs,homos_mean_across_subs)
 ax.set_xlabel('median parcel surface area')
 ax.set_ylabel('median parcel homogeneity')
 plt.show(block=False)

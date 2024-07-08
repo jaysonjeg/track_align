@@ -4,6 +4,7 @@ Contains utility functions that do not require any other specific dependencies
 
 import os
 from datetime import datetime
+import sys
 
 def mkdir(folderpath):
     #make the folder if it doesn't exist
