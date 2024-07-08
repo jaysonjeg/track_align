@@ -8,17 +8,6 @@ import generic_utils as gutils
 import brainmesh_utils as bmutils
 import homo_utils
 
-
-def add(x,y):
-    """
-    Add x and y
-    """
-
-
-    
-
-    
-
 c = gutils.clock()
 
 #SET PATHS
@@ -65,6 +54,7 @@ parc_labels = hutils.parcellation_string_to_parcellation(parc_string)
 
 ### GET PARCELLATIONS 
 
+
 atlas_names = []
 atlases = []
 
@@ -76,6 +66,11 @@ def get_parcellation_pan(parcellation_name):
     Parameters:
     """
     filename_left = f"{parcs_dir}/pan/fsLR_32k_{parcellation_name}-lh.txt"
+    array_left = np.loadtxt(filename_left).astype(int)
+    filename_right = f"{parcs_dir}/pan/fsLR_32k_{parcellation_name}-rh.txt"
+    array_right = np.loadtxt(filename_left).astype(int)
+
+    assert(0)
 
 
 
