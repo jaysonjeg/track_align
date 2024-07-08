@@ -3,21 +3,26 @@ Script to test different parcellations, and measures of fMRI parcel homogeneity
 env py390 
 """
 
+
 import numpy as np
 import generic_utils as gutils
+import cortex_utils as cutils
 import brainmesh_utils as bmutils
-import homo_utils
+import hcpalign_utils as hutils
+import parcs_utils
 
 c = gutils.clock()
 
 #SET PATHS
-import hcpalign_utils as hutils
-hcp_folder=hutils.hcp_folder
-intermediates_path=hutils.intermediates_path
-results_path=hutils.results_path
+
+hcp_folder='/mnt/d/FORSTORAGE/Data/HCP_S1200'
+intermediates_path='/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/AWS_studies/files0/intermediates'
+results_path='/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/AWS_studies/files0/results'
 project_path = "D:\\FORSTORAGE\\Data\\Project_GyralBias"
 biasfmri_intermediates_path = gutils.ospath(f'{project_path}/intermediates')
 parcs_dir = gutils.ospath(f"{project_path}/intermediates/parcellations")
+all_subs=['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823','115017','115825','116726','118225','125525']
+
 
 ### GENERAL PARAMETERS
 sub_slice = slice(0,2)
@@ -35,25 +40,24 @@ print(f'{c.time()}: Real HCP data, img_type: {img_type}, MSMAll: {MSMAll}, runs 
 # Parameters for homogeneity calculation
 single_parcel = False #whether to calculate homogeneity for a single parcel or all parcels
 this_parc = 1 #which parcel for within-parcel analysis
-function = homo_utils.homo_meanFC #which function in homo_utils to use, e.g. 'homo_meanFC', 'homo_mean_FC_min_distance','homo_expfit_decay'
+function = parcs_utils.homogeneity_meanFC #which function in parcs_utils to use, e.g. 'homogeneity_meanFC', 'homogeneity_mean_FC_min_distance','homogeneity_expfit_decay'
 args = []
 kwargs = {}
-if function==homo_utils.homo_meanFC_min_distance:
+if function==parcs_utils.homogeneity_meanFC_min_distance:
     kwargs = {'min_distance': 10}
 
 
 ### GET MESHES AND DATA
-subjects=hutils.all_subs[sub_slice]
+subjects=all_subs[sub_slice]
 nsubjects = len(subjects)
 
 vertices_visual,faces_visual = bmutils.hcp_get_mesh(which_subject_visual,surface_visual,MSMAll)
-p = hutils.surfplot('',mesh=(vertices_visual,faces_visual),plot_type = 'open_in_browser')
-mask = hutils.get_fsLR32k_mask() #boolean mask of gray matter vertices. Excludes medial wall
-parc_labels = hutils.parcellation_string_to_parcellation(parc_string)
+p = cutils.surfplot('',mesh=(vertices_visual,faces_visual),plot_type = 'open_in_browser')
+mask = cutils.get_fsLR32k_mask() #boolean mask of gray matter vertices. Excludes medial wall
+parc_labels = cutils.parcellation_string_to_parcellation(parc_string)
 #nparcs = parc_labels.max()+1-parc_labels.min()
 
 ### GET PARCELLATIONS 
-
 
 atlas_names = []
 atlases = []
@@ -69,24 +73,19 @@ def get_parcellation_pan(parcellation_name):
     array_left = np.loadtxt(filename_left).astype(int)
     filename_right = f"{parcs_dir}/pan/fsLR_32k_{parcellation_name}-rh.txt"
     array_right = np.loadtxt(filename_left).astype(int)
-
-    assert(0)
-
+    return array_right
 
 
 for parcellation_name in pan_parcellation_names:
     get_parcellation_pan(parcellation_name)
 
-
-
-
 #Atlases saved on my PC
 atlas_names.append('Kong2022_17n_300')
-atlases.append(hutils.parcellation_string_to_parcellation('S300'))
+atlases.append(cutils.parcellation_string_to_parcellation('S300'))
 atlas_names.append('MMP')
-atlases.append(hutils.parcellation_string_to_parcellation('M'))
+atlases.append(cutils.parcellation_string_to_parcellation('M'))
 atlas_names.append('kmeans_300')
-atlases.append(hutils.parcellation_string_to_parcellation('K300'))
+atlases.append(cutils.parcellation_string_to_parcellation('K300'))
 
 
 #Surface atlases from netneurotools
@@ -94,12 +93,12 @@ atlases.append(hutils.parcellation_string_to_parcellation('K300'))
 from netneurotools import datasets as nntdata
 atlas_names.append('schaefer2018_fslr32k_7n_300')
 atlas_path=nntdata.fetch_schaefer2018('fslr32k',data_dir=parcs_dir)['300Parcels7Networks']
-#atlas = homo_utils.dlabel_filepath_to_array(atlas_path,mask)
-atlases.append(homo_utils.dlabel_filepath_to_array(atlas_path,mask))
+#atlas = parcs_utils.dlabel_filepath_to_array(atlas_path,mask)
+atlases.append(parcs_utils.dlabel_filepath_to_array(atlas_path,mask))
 
 atlas_names.append('cammoun_fslr32k_250')
 atlas_path=nntdata.fetch_cammoun2012('fslr32k',data_dir=parcs_dir)['scale250']
-atlases.append(homo_utils.dlabel_filepath_to_array(atlas_path,mask))
+atlases.append(parcs_utils.dlabel_filepath_to_array(atlas_path,mask))
 """
 
 #Volume deterministic atlases from nilearn (https://nilearn.github.io/dev/modules/datasets.html), projected to surface
@@ -108,46 +107,48 @@ import nilearn
 
 atlas_names.append('schaefer2018_vol_7n_300')
 atlas_path = nilearn.datasets.fetch_atlas_schaefer_2018(n_rois=300, yeo_networks=7, resolution_mm=1, data_dir=parcs_dir, verbose=1)['maps']
-atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
+atlases.append(parcs_utils.atlas_vol2surf(atlas_path,mask))
 
 atlas_names.append('basc_vol_325')
 atlas_path = nilearn.datasets.fetch_atlas_basc_multiscale_2015(data_dir=parcs_dir, resolution=325, version='sym')['map']
-atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
+atlases.append(parcs_utils.atlas_vol2surf(atlas_path,mask))
 
 atlas_names.append('destrieux_vol')
 atlas_path = nilearn.datasets.fetch_atlas_destrieux_2009(lateralized=True, data_dir=parcs_dir, legacy_format=True)['maps']
-atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
+atlases.append(parcs_utils.atlas_vol2surf(atlas_path,mask))
 
 atlas_names.append('harvard_vol_thr0_1mm')
 atlas_path = nilearn.datasets.fetch_atlas_harvard_oxford("cort-maxprob-thr0-1mm", data_dir=parcs_dir, symmetric_split=False)['maps']
-atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
+atlases.append(parcs_utils.atlas_vol2surf(atlas_path,mask))
 
 atlas_names.append('juelich_vol_thr0_1mm')
 atlas_path = nilearn.datasets.fetch_atlas_juelich("maxprob-thr0-1mm", data_dir=parcs_dir, symmetric_split=False)['maps']
-atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
+atlases.append(parcs_utils.atlas_vol2surf(atlas_path,mask))
 """
 
 """
 atlas_names.append('talairach_vol_tissue')
 atlas_path = nilearn.datasets.fetch_atlas_talairach('tissue')['maps']
-atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
+atlases.append(parcs_utils.atlas_vol2surf(atlas_path,mask))
 
 atlas_names.append('talairach_vol_brodmann')
 atlas_path = nilearn.datasets.fetch_atlas_talairach('ba')['maps']
-atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
+atlases.append(parcs_utils.atlas_vol2surf(atlas_path,mask))
 
 atlas_names.append('dosenbach2010_vol')
 atlas_path = nilearn.datasets.fetch_coords_dosenbach_2010()
-atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
+atlases.append(parcs_utils.atlas_vol2surf(atlas_path,mask))
 
 atlas_names.append('power2011_vol')
 atlas_path = nilearn.datasets.fetch_coords_power_2011()
-atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
+atlases.append(parcs_utils.atlas_vol2surf(atlas_path,mask))
 
 atlas_names.append('seitzman2018_vol')
 atlas_path = nilearn.datasets.fetch_coords_seitzman_2018()
-atlases.append(homo_utils.atlas_vol2surf(atlas_path,mask))
+atlases.append(parcs_utils.atlas_vol2surf(atlas_path,mask))
 """
+
+
 
 #Print information about each atlas
 atlas_verts_per_parcel = [[np.sum(atlas==value) for value in np.unique(atlas)] for atlas in atlases]
@@ -228,7 +229,7 @@ for n_atlas in range(len(atlases)):
 
 
 print(f'{c.time()}: Get parcel homogeneity loop start')
-homos=np.zeros((len(atlases),nsubjects),dtype=np.float32) #saves fMRI homogeneity for each parcellation and each subject (median across parcels)
+homogeneities=np.zeros((len(atlases),nsubjects),dtype=np.float32) #saves fMRI homogeneity for each parcellation and each subject (median across parcels)
 
 for n_atlas in range(len(atlases)):
     parc_labels = atlases[n_atlas]
@@ -242,54 +243,54 @@ for n_atlas in range(len(atlases)):
 
         if single_parcel:
             data_singleparc = data[:,parc_labels==this_parc]#fMRI data for the single parcel (timepoints x vertices)
-            if function != homo_utils.homo_meanFC: #get geodesic distances
+            if function != parcs_utils.homo_meanFC: #get geodesic distances
                 gdists = bmutils.get_gdists_singleparc(mesh,parc_labels,this_parc)
                 kwargs['gdists'] = gdists
-            homo = function(data_singleparc,*args,**kwargs)
-            print(f"Homogeneity in this parcel is {homo:.3f}")
+            homogeneity = function(data_singleparc,*args,**kwargs)
+            print(f"Homogeneity in this parcel is {homogeneity:.3f}")
         else:
-            if function != homo_utils.homo_meanFC: #get geodesic distances
+            if function != parcs_utils.homogeneity_meanFC: #get geodesic distances
                 parcel_masks = [(parc_labels==parc_index) for parc_index in np.unique(parc_labels)] #get mask for each parcel
                 parcel_meshes = [bmutils.reduce_mesh(mesh,parcel_mask) for parcel_mask in parcel_masks] #get separate mesh for each parcel
                 from joblib import Parallel, delayed
                 gdists = Parallel(n_jobs=-1,prefer='processes')(delayed(bmutils.get_gdists)(*parcel_mesh) for parcel_mesh in parcel_meshes[:]) #10 sec on a 12 core 64 GB RAM machine, for Schaefer 300
                 kwargs['gdists'] = gdists   
-            homos_allparcs = homo_utils.allparcs(data,parc_labels,function,*args,**kwargs)
-            homos_median = np.median(homos_allparcs)
+            homogeneities_allparcs = parcs_utils.allparcs(data,parc_labels,function,*args,**kwargs)
+            homogeneities_median = np.median(homogeneities_allparcs)
             #print(f"Median homogeneity across all parcels is {homos_median:.3f}")
-            homos[n_atlas,nsubject] = homos_median
+            homogeneities[n_atlas,nsubject] = homogeneities_median
 
         #print(f'{c.time()}: Get parcel homogeneity end')
 
 print(f'{c.time()}: Finished')
 
-homos_mean_across_subs = homos.mean(axis=1)
+homogeneities_mean_across_subs = homogeneities.mean(axis=1)
 tstats_mean_across_subs = tstats.mean(axis=1)
 pvals_mean_across_subs = pvals.mean(axis=1)
 parc_areas_mean_across_subs = parc_areas.mean(axis=1)
 
 
-print(f"homos_mean_across_subs\n\t{homos_mean_across_subs}")
+print(f"homogeneities_mean_across_subs\n\t{homogeneities_mean_across_subs}")
 print(f"tstats_mean_across_sub\n\t{tstats_mean_across_subs}")
 print(f"pvals_mean_across_subs\n\t{pvals_mean_across_subs}")
 print(f"parc_areas_mean_across_sub\n\t{parc_areas_mean_across_subs}")
 
-result = stats.spearmanr(tstats_mean_across_subs,homos_mean_across_subs)
+result = stats.spearmanr(tstats_mean_across_subs,homogeneities_mean_across_subs)
 print(f"Sp corr (each dot a parcellation) between mean (across subs) tstat and mean (across subs) homogeneity:\n\tstat={result.statistic:.3f}, p={result.pvalue:.3f}")
 
 print('')
 for i in range(nsubjects):
-    result = stats.spearmanr(tstats[:,i],homos[:,i])
+    result = stats.spearmanr(tstats[:,i],homogeneities[:,i])
     print(f"Sp corr (each dot a parcellation) between tstat and homogeneity in subject {i}:\n\tstat={result.statistic:.3f}, p={result.pvalue:.3f}")
 
 print('')
 for i in range(len(atlases)):
-    result = stats.spearmanr(tstats[i,:],homos[i,:])
+    result = stats.spearmanr(tstats[i,:],homogeneities[i,:])
     print(f"Sp corr (each dot a subject) between tstat and homogeneity in parcellation {i}:\n\tstat={result.statistic:.3f}, p={result.pvalue:.3f}")
 
 import matplotlib.pyplot as plt
 fig,ax=plt.subplots()
-ax.scatter(parc_areas_mean_across_subs,homos_mean_across_subs)
+ax.scatter(parc_areas_mean_across_subs,homogeneities_mean_across_subs)
 ax.set_xlabel('median parcel surface area')
 ax.set_ylabel('median parcel homogeneity')
 plt.show(block=False)

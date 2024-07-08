@@ -1,5 +1,6 @@
 """
 Contains utility functions that do not require any other specific dependencies
+Functions do not have to do with brain data
 """
 
 import os
@@ -136,3 +137,18 @@ def ospath(x,windows_machine_name='DESKTOP-EGSQF3A'):
             return x
     else: #Linux based system
         return x.replace('\\','/')
+
+def from_cache(func_filepath,func,*args,load=True,save=True,**kwargs):
+    """
+    Generate filepath using func_filepath(*args,**kwargs). Check if filepath already exists. If it doesn't exist, generate required value or array using func(*args,**kwargs) and save this in filepath. 
+    Optional arguments load and save can be provided after **kwargs
+    """
+    import pickle
+    filepath=func_filepath(*args,**kwargs)   
+    if load and os.path.exists(ospath(filepath)):
+        values = pickle.load(open(ospath(filepath), "rb" ))
+    else:
+        values = func(*args,**kwargs)
+        if save:
+            pickle.dump(values,open(ospath(filepath),"wb"))
+    return values

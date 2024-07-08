@@ -1,10 +1,10 @@
 """
-Utility functions for homo.py
+Utility functions for parcs.py
 """
 
 import numpy as np
 
-def homo_meanFC(data):
+def homogeneity_meanFC(data):
     """
     Given fMRI data for vertices in a single parcel, compute parcel homogeneity using mean FC among all vertex pairs
     Parameters:
@@ -23,7 +23,7 @@ def homo_meanFC(data):
         np.fill_diagonal(correlations,0)
         return correlations.mean()
 
-def homo_meanFC_min_distance(data, min_distance=0, gdists=None):
+def homogeneity_meanFC_min_distance(data, min_distance=0, gdists=None):
     """
     Compute parcel homogeneity using mean FC among vertex pairs, for all vertex pairs separated by a minimum geodesic distance
     Parameters:
@@ -44,9 +44,9 @@ def homo_meanFC_min_distance(data, min_distance=0, gdists=None):
     valid = (gdists > min_distance)
     return correlations[valid].mean()
 
-def homo_meanFC_interp(data,gdists=None):
+def homogeneity_meanFC_interp(data,gdists=None):
     """
-    INCOMPLETE
+    TO DO
     """
     correlations = np.corrcoef(data.T)
     np.fill_diagonal(correlations,0)
@@ -64,27 +64,26 @@ def homo_meanFC_interp(data,gdists=None):
     plt.show(block=False)
     assert(0)
 
-def homo_expfit_decay(data,gdists=None):
+def exp_func(x, a, b, c):
+    return a * np.exp(-b * x) + c
+
+def expfit(x,y):
+    """
+    Fit an exponential curve. Return expfit parameters.
+    Ignore OptimizeWarning
+    """
+    from scipy.optimize import curve_fit
+    expfit_params, _ = curve_fit(exp_func, x, y,p0=[1.5,0.5,0.1],bounds=((0.5,0.001,-0.1),(2.5,1.0,0.5)))
+    return expfit_params
+
+def homogeneity_expfit_decay(data,gdists=None):
     """
     Compute parcel homogeneity by fitting exponential to the plot of correlation against distance, and obtaining the decay rate
     """
-    def exp_func(x, a, b, c):
-        return a * np.exp(-b * x) + c
-
-    def expfit(x,y):
-        """
-        Fit an exponential curve. Return expfit parameters.
-        Ignore OptimizeWarning
-        """
-        from scipy.optimize import curve_fit
-        expfit_params, _ = curve_fit(exp_func, x, y,p0=[1.5,0.5,0.1],bounds=((0.5,0.001,-0.1),(2.5,1.0,0.5)))
-        return expfit_params
-
     correlations = np.corrcoef(data.T)
     np.fill_diagonal(correlations,0)
     expfit_params = expfit(gdists.ravel(),correlations.ravel())
     return expfit_params[1] #decay rate
-
 
 def allparcs(data, parc_labels, parcel_function, *args, **kwargs):
     """
@@ -121,7 +120,6 @@ def dlabel_filepath_to_array(filepath,mask):
     Given a filepath to cifti dlabel.nii, return a numpy array of the data contained within
     """
     import nibabel as nib
-
     if type(filepath)==nib.nifti1.NiftiImage:
         x=filepath
     else:

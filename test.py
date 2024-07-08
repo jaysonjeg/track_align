@@ -1,5 +1,13 @@
-#Test eigenstrapping
 
+
+
+
+
+
+
+
+
+#Test eigenstrapping
 """
 from eigenstrapping.datasets import load_surface_examples
 surf_lh, surf_rh, data_lh, data_rh, emodes_lh, emodes_rh, evals_lh, evals_rh = load_surface_examples(with_surface=True)

@@ -14,8 +14,11 @@ from scipy import sparse, stats
 import warnings
 from concurrent.futures import ThreadPoolExecutor as TPE 
 from joblib import Parallel,delayed
+
+import generic_utils as gutils
 from generic_utils import ospath, mkdir, cprint
 import brainmesh_utils as bmutils
+import cortex_utils as cutils
 
 
 ###
@@ -58,8 +61,6 @@ allowed_labels_dict_all={'MOTOR':range(1,5),'WM':range(4),'EMOTION':range(2),'GA
 allowed_labels_dict_visual={'MOTOR':range(0),'WM':range(4,8),'EMOTION':range(2),'GAMBLING':range(0),'LANGUAGE':range(0),'RELATIONAL':range(0),'SOCIAL':range(0),}
 allowed_labels_dict_motor={'MOTOR':range(1,5),'WM':range(0),'EMOTION':range(0),'GAMBLING':range(0),'LANGUAGE':range(0),'RELATIONAL':range(0),'SOCIAL':range(0),}
 allowed_labels_dict = allowed_labels_dict_all
-
-
 
 def getvalue(df,subject,column):
     """
@@ -133,7 +134,7 @@ def getfilepath(filename,ts_type,sub,MSMAll=False,cleaned=True):
 
 def get_timeseries(sub,ts_type,filename,MSMAll,dtype,vertices=slice(0,59412)):
     filepath=getfilepath(filename,ts_type,sub,MSMAll)
-    return get(filepath)[:,vertices].astype(dtype)
+    return cutils.get(filepath)[:,vertices].astype(dtype)
 
 def get_timeseries_cachepath(sub,ts_type,filename,MSMAll,dtype):
     MSMString=MSMlogical2str[MSMAll]
@@ -152,7 +153,7 @@ def get_all_timeseries_sub(sub,ts_type,filenames,MSMAll,ts_preproc):
     """    
     dtype=np.float16 #np.float32 or np.float32
     mkdir(f'{intermediates_path}/hcp_timeseries')
-    imgs_align_sub=[from_cache(get_timeseries_cachepath,get_timeseries,sub,ts_type,filename,MSMAll,dtype,load=True,save=True) for filename in filenames]   
+    imgs_align_sub=[gutils.from_cache(get_timeseries_cachepath,get_timeseries,sub,ts_type,filename,MSMAll,dtype,load=True,save=True) for filename in filenames]   
     if ts_type=='movie':   
         movieVidVols = [movieVolumeSelect(v,10,10) for v in movieVidTimes] #get list of all movie volumes to be included  
         movie_index = lambda string: np.where([string==i for i in movies])[0][0] 
@@ -223,7 +224,7 @@ def gettasks(tasks,sub,vertices=slice(0,59412),MSMAll=False):
     #Get 3T task analysis contrast map data
     MSMString=MSMlogical2str[MSMAll]
     task_files=[ospath(f'{hcp_folder}/{sub}/MNINonLinear/Results/tfMRI_{task}/tfMRI_{task}_hp200_s2_level2{MSMString}.feat/{sub}_tfMRI_{task}_level2_hp200_s2{MSMString}.dscalar.nii') for task in tasks]   
-    task_data=[get(task_files[i])[allowed_labels_dict[tasks[i]],vertices] for i in range(len(tasks))]
+    task_data=[cutils.get(task_files[i])[allowed_labels_dict[tasks[i]],vertices] for i in range(len(tasks))]
     return np.vstack(task_data).astype(np.float32)
 
 def gettaskcontrastfiles(tasks,subs):
@@ -246,10 +247,10 @@ def gettasklabels(tasks,sub):
 def get_task_data(subs,tasks,MSMAll=False):
     #Given a list of subjects and some tasks, return a list (nsubjects) of task data arrays (ncontrasts,nvertices), and a description string
     decode_string = f'{len(tasks)}tasks{logical2str[MSMAll]}'
-    func = lambda sub: from_cache(get_tasks_cachepath,gettasks,tasks,sub,MSMAll=MSMAll)
+    func = lambda sub: gutils.from_cache(get_tasks_cachepath,gettasks,tasks,sub,MSMAll=MSMAll)
     imgs_decode=Parallel(n_jobs=-1,prefer="threads")(delayed(func)(sub) for sub in subs)
-    #imgs_decode=[from_cache(get_tasks_cachepath,gettasks,tasks,sub,MSMAll=MSMAll) for sub in subs]  
-    #labels=[from_cache(get_tasklabels_cachepath,gettasklabels,tasks,sub) for sub in subs] #list (nsubjects) of labels (ncontrasts,)
+    #imgs_decode=[gutils.from_cache(get_tasks_cachepath,gettasks,tasks,sub,MSMAll=MSMAll) for sub in subs]  
+    #labels=[gutils.from_cache(get_tasklabels_cachepath,gettasklabels,tasks,sub) for sub in subs] #list (nsubjects) of labels (ncontrasts,)
     labels = [np.array(range(i.shape[0])) for i in imgs_decode] #since the exact label names are not important, just use the contrast number as the label     
     return imgs_decode, decode_string  
 
@@ -323,7 +324,7 @@ def get_decode_data(c,subs,decode_with,align_fwhm,align_clean,MSMAll,decode_ncom
         decode_string = f'{decode_string}{string}'
 
     if use_parcelmeanstds: 
-        clustering = parcellation_string_to_parcellation(parcellation_string)
+        clustering = cutils.parcellation_string_to_parcellation(parcellation_string)
         imgs_decode_meanstds = [get_parcelwise_mean_and_std(img,clustering) for img in imgs_decode]
         decode_string = f'{decode_string}&ms'
     else: 
@@ -336,8 +337,8 @@ def get_decode_data(c,subs,decode_with,align_fwhm,align_clean,MSMAll,decode_ncom
         else:
             imgs_decode = [i - np.mean(i, axis=1, keepdims=True) for i in imgs_decode]
     elif standardize == 'parcel':
-        clustering = parcellation_string_to_parcellation(parcellation_string)
-        parc_matrix = parcellation_string_to_parcmatrix(parcellation_string)
+        clustering = cutils.parcellation_string_to_parcellation(parcellation_string)
+        parc_matrix = cutils.parcellation_string_to_parcmatrix(parcellation_string)
         imgs_decode = [standardize_image_parcelwise(img,clustering,parc_matrix,demean=demean,unit_variance=unit_variance) for img in imgs_decode]
     if standardize is not None:
         decode_string = f'{decode_string}{standardize[0].capitalize()}{logical2str[demean]}{logical2str[unit_variance]}'
@@ -437,9 +438,9 @@ def get_all_pairwise_aligners(subs,imgs_align,alignment_method,clustering,n_bags
     subs_indices = np.arange(len(subs))
     def init_and_fit_aligner(source_align, target_align, absValueOfAligner):
         aligner=SurfacePairwiseAlignment(alignment_method=alignment_method, clustering=clustering,n_bags=n_bags,n_jobs=n_jobs,alignment_kwargs=alignment_kwargs,per_parcel_kwargs=per_parcel_kwargs,gamma=gamma)
-        print(memused())
+        print(gutils.memused())
         aligner.fit(source_align, target_align)
-        print(memused())
+        print(gutils.memused())
         if absValueOfAligner: aligner_absvalue(aligner)
         return aligner
     temp=Parallel(n_jobs=-1,prefer='processes')(delayed(init_and_fit_aligner)(imgs_align[source],imgs_align[target], absValueOfAligner) for source,target in itertools.permutations(subs_indices,2))
@@ -515,19 +516,7 @@ def transform_all_decode_data(subs,imgs_decode,aligners,post_decode_smooth,imgs_
     return all_aligned_sources_decode
 
 
-def from_cache(func_filepath,func,*args,load=True,save=True,**kwargs):
-    """
-    Generate filepath using func_filepath(*args,**kwargs). Check if filepath already exists. If it doesn't exist, generate required value or array using func(*args,**kwargs) and save this in filepath. 
-    Optional arguments load and save can be provided after **kwargs
-    """
-    filepath=func_filepath(*args,**kwargs)   
-    if load and os.path.exists(ospath(filepath)):
-        values = pickle.load(open(ospath(filepath), "rb" ))
-    else:
-        values = func(*args,**kwargs)
-        if save:
-            pickle.dump(values,open(ospath(filepath),"wb"))
-    return values
+
 
 def get_func_type(string):
     if 'movie' in string: return 'movie'
@@ -563,7 +552,7 @@ def get_FC(
     FC_type is 'pxn' or pxp'
     """
     #_,parc_matrix=get_parcellation(targets_parcellation,targets_nparcs)
-    parc_matrix = parcellation_string_to_parcmatrix(parcellation_string)
+    parc_matrix = cutils.parcellation_string_to_parcmatrix(parcellation_string)
 
     standardize,detrend,low_pass,high_pass,t_r='zscore_sample',True,None,None,1.0 #These parameters only apply to 'movie' and 'decode' data depending on whether movie_clean=True or decode_clean=True
     align_preproc = make_preproc(align_fwhm,align_clean,standardize,detrend,low_pass,high_pass,t_r)
@@ -584,7 +573,7 @@ def get_all_FC(subs,args,normalize):
     normalize: bool
         if True, normalize columns of FC arrays, so that each vertex's distribution of connectivities (to targets) is 0-centred 
     """
-    imgs_align = Parallel(n_jobs=-1,prefer='threads')(delayed(from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
+    imgs_align = Parallel(n_jobs=-1,prefer='threads')(delayed(gutils.from_cache)(get_FC_filepath, get_FC, *(sub, *args), load=True, save=True) for sub in subs)
 
     if normalize:
         from sklearn.preprocessing import StandardScaler
@@ -647,14 +636,16 @@ def get_thickness(sub):
     filepath=ospath(f'{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{filename}')
     return nib.load(filepath).get_fdata().squeeze()
 
-
-def get (filename,vertices=slice(0,None)):
+'''
+def get(filename,vertices=slice(0,None)):
     """
+    Now in cortex_utils
     filename corresponds to cifti-2 image
     Returns surface data as numpy array
     Default all vertices
     """
     return nib.load(filename).get_fdata()[:,vertices]
+'''
 
 def aligner_absvalue(aligner):
     #Given a SurfacePairwiseAlignment object, change the elements in alignment matrices to absolute values
@@ -922,7 +913,7 @@ def get_highres_connectomes(
         tckfile='volumetric_probabilistic_track_endpoints_5M.tck'   
     elif 'end' in tckfile: #my ec2 connectomes
         tract_path=f'{intermediates_path}/diff2'
-    func = lambda sub: from_cache(get_hrc_filepath,get_hrc,sub,tckfile,hcp_folder,tract_path,sift2,threshold,MSMAll,load=cache_loadhrc,save=cache_savehrc)
+    func = lambda sub: gutils.from_cache(get_hrc_filepath,get_hrc,sub,tckfile,hcp_folder,tract_path,sift2,threshold,MSMAll,load=cache_loadhrc,save=cache_savehrc)
     if n_jobs==1:
         return [func(sub) for sub in subs]
     else:
@@ -936,7 +927,7 @@ def get_aligndata_highres_connectomes(c,subs,MSMAll,tckfile='tracks_5M_sift1M.tc
         imgs_align = smooth_highres_connectomes_mm(imgs_align,fwhm)
         imgs_align = [i.astype(np.float32) for i in imgs_align]
     if targets_nparcs: #connectivity from each vertex, to each targetparcel
-        align_parc_matrix=Schaefer_matrix(targets_nparcs) 
+        align_parc_matrix=cutils.Schaefer_matrix(targets_nparcs) 
         imgs_align=[align_parc_matrix.dot(i) for i in imgs_align]
     else:
         these_vertices=np.linspace(0,imgs_align[0].shape[0]-1,targets_nvertices).astype(int) #default 16000   
@@ -1011,10 +1002,12 @@ def diag0(X):
     np.fill_diagonal(X,0)
     return X
 
+'''
 def vertexmap_59kto64k(hemi='both'):
     """
     List of 59k cortical vertices in fsLR32k, with their mapping onto 64k cortex mesh
     hemi='both','L','R'
+    Now in cortex_utils
     """
     import hcp_utils as hcp
     grayl=hcp.vertex_info.grayl
@@ -1025,14 +1018,15 @@ def vertexmap_59kto64k(hemi='both'):
     if hemi=='both': return grayboth
     elif hemi=='L': return grayl
     elif hemi=='R': return grayr
-
+'''
+    
 def vertexmap_64kto59k(hemi='both'):
     """
     List of 64k cortex mesh vertices, with their mapping onto 59k vertices in fsLR32k. Vertices not present in 59k version are given value 0
     hemi='both','L','R'
     """
     import hcp_utils as hcp
-    gray=vertexmap_59kto64k(hemi=hemi)
+    gray=cutils.vertexmap_59kto64k(hemi=hemi)
     if hemi=='both':
         num_mesh_64k = hcp.vertex_info.num_meshl+hcp.vertex_info.num_meshr
     elif hemi=='L':
@@ -1044,10 +1038,12 @@ def vertexmap_64kto59k(hemi='both'):
         temp[value]=index
     return temp
 
+'''
 def get_fsLR32k_mask(hemi='both'):
     """
     Returns a boolean array indicating, for each vertex in fsaverage5 surface, whether it is gray matter (1) or medial wall (0)
     hemi='both','L','R'
+    Now in cortex_utils
     """
     import hcp_utils as hcp
     gray = vertexmap_59kto64k(hemi=hemi)
@@ -1064,28 +1060,31 @@ def get_fsLR32k_mask(hemi='both'):
     for index,value in enumerate(gray):
         temp[value]=True
     return temp
+'''
 
-
+'''
 def cortex_64kto59k(arr):
     """
+    Same as arr[mask] where mask is the output of get_fsLR32k_mask()
     Opposite of hcp_utils.cortex_data
     Map functional/scalar/parcellation data on 64984-vertex cortex mesh onto 59412-vertex cortex mesh 
     """
     gray=vertexmap_59kto64k()
     return arr[gray]
+'''
 
 def cortex_64kto59k_for_triangles(triangles,hemi='both'):
     """
     triangles: array (n,3) list of triangles in a 64984-vertex mesh
     Returns an abridged version of 'triangles' within 59412-vertex mesh
     """
-    mask = get_fsLR32k_mask(hemi=hemi)
+    mask = cutils.get_fsLR32k_mask(hemi=hemi)
     return bmutils.triangles_removenongray(triangles,mask)
 
 def vertex_59kto64k(vertices):
     """Given a list of vertices in 59k, convert each index to the corresponding index in 64k cortex mesh
     """
-    gray=vertexmap_59kto64k()
+    gray=cutils.vertexmap_59kto64k()
     return gray[vertices]
 
 def set_axes_equal(ax):
@@ -1130,7 +1129,9 @@ def surfgeodistances(source_vertices_59k, surf=None):
         surf = hcp.mesh.midthickness
     source_vertices_64k=vertex_59kto64k(source_vertices_59k).astype('int32')
     distances_64k=gdist.compute_gdist(surf[0].astype('float64'),surf[1],source_vertices_64k)
-    distances_59k=cortex_64kto59k(distances_64k)
+    mask = cutils.get_fsLR32k_mask()
+    distances_59k = distances_64k[mask]
+    #distances_59k=cortex_64kto59k(distances_64k)
     return distances_59k
 
 def surfgeoroi(source_vertices_59k,limit=0,surf=None):
@@ -1278,6 +1279,8 @@ def makesurfmap(voxels,totalvoxels=59412):
             output[voxel]=1
     return output
 
+'''
+#Now in cortex_utils
 def Schaefer_original(nparcels):
     #get Schaefer Kong surface parcellation
     filename=ospath('/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/SchaeferParcellations/HCP/fslr32k/cifti/Schaefer2018_{}Parcels_Kong2022_17Networks_order.dlabel.nii'.format(nparcels))
@@ -1301,18 +1304,9 @@ def kmeans_matrix(nparcs):
     save_folder= f'{intermediates_path}\kmeansparcellation'
     save=ospath(f'{save_folder}/kmeansparc_sub100610_sphere_{nparcs}parcs_matrix.p')
     return pickle.load( open( ospath(save), "rb" ) )
-'''
-def searchlights(radius, sub='100610',surface='midthickness'):
-    """
-    Return a saved list of searchlights, one centred at each vertex, with given radius
-    script make_gdistances_full.py generates these searchlights
-    """
-    save_path=ospath(f'{intermediates_path}/searchlightparcellation/parc_{sub}_{surface}_{radius}mm.p')
-    parcels = pickle.load(open(ospath(save_path), "rb" ))
-    return parcels
-'''
 
-def parcellation_string_to_parcellation(parcellation_string,subjects=None):
+
+def cutils.parcellation_string_to_parcellation(parcellation_string,subjects=None):
     #Inputs: parcellation_string: 'S300' for Schaefer 300, 'K400' for kmeans 400, 'R10' for searchlight radius 10mm, 'M' for HCP multimodal parcellation. 'I300' for individualized from Kong(2022)
     #Returns an array of size (59412,) with parcel labels for each vertex in fs32k cortex
     import hcp_utils as hcp
@@ -1325,7 +1319,6 @@ def parcellation_string_to_parcellation(parcellation_string,subjects=None):
     elif parcellation_string[0]=='M':
         parcellation = hcp.mmp.map_all[hcp.struct.cortex]
     elif parcellation_string[0]=='R':
-        #parcellation = searchlights(nparcs)
         from get_gdistances import get_searchlights
         parcellation = get_searchlights(sub='102311',surface='midthickness',radius_mm=15)
     elif parcellation_string[0]=='I':
@@ -1349,7 +1342,7 @@ def parcellation_string_to_parcmatrix(parcellation_string):
     nonempty_parcels = np.array((matrix.sum(axis=1)!=0)).squeeze()
     assert(len(nonempty_parcels)==matrix.shape[0]) #no empty parcels
     return matrix
-
+'''
 def get_searchlight_smoother(sub='102311',surface='midthickness',radius_mm=15):
     """
     Return a function that smooths a brain map using searchlights of a given radius.
@@ -1405,10 +1398,12 @@ def get_parcellation(parcellation,nparcs,return_nonempty=True):
     return labels, parc_matrix
 '''
     
+'''
 def parc_char_matrix(parc):
     """
     Similar to connectome-spatial-smoothing.parcellation_characteristic_matrix
     parc is parcellation e.g. Schaefer(300)
+    Now in cortex_utils
     """
     
     parcellation_matrix=np.zeros((max(parc)+1,59412))
@@ -1416,6 +1411,8 @@ def parc_char_matrix(parc):
         value=parc[i]
         parcellation_matrix[value,i]=1
     return list(set(parc)),sparse.csr_matrix(parcellation_matrix).astype(np.float32)            
+'''
+
 
 def reverse_parc_char_matrix(matrix):
     result = np.zeros(matrix.shape[1],dtype=int)
@@ -1481,12 +1478,13 @@ def aligner_downsample(estimator,dtype='float32'):
         
     return estimator
 
-
+'''
 class surfplot():
     """
     Plot surface functional activations. Data is array(59412,).
     p=surfplot('/mnt/d/Users/Jayson/Figures')
     p.plot(data,'Figure1')
+    Now in cortex_utils
     """
     from pathlib import Path
     def __init__(self, figpath,mesh=None,vmin=None,vmax=None,cmap='inferno',symmetric_cmap=True,plot_type='open_in_browser'):
@@ -1541,7 +1539,7 @@ class surfplot():
             view.open_in_browser()
         self.vmin=None
         self.vmax=None
-
+'''
 
 def plot_parc(p,align_parc_matrix,data,savename=None):
     """
@@ -1582,6 +1580,7 @@ def do_plot_impulse_responses(p,plot_prefix,aligner,radius=1,vertices=None):
     return ratio_within_roi
 
 def datetime_for_filename():
+    from datetime import datetime
     now=datetime.now()
     return now.strftime("%Y%m%d_%H%M%S")
 
@@ -1695,8 +1694,10 @@ def movieVolumeSelect(time_list,start=0, end=0):
     temp=[list(range(x+start,y+end)) for x,y in time_list]
     return [item for sublist in temp for item in sublist]
 
+'''
 def get_individualized_parcellation(nparcs,subjects):
     """
+    Now in cortex_utils
     Get individualized parcellations, saved from https://github.com/ThomasYeoLab/Kong2022_ArealMSHBM/
     Get the list of subjects from HCP_subject_list.txt. Then find indices of desired subjects from that list. Load the parcellation file (nvertices,1029 subjects). Remove gray matter vertices, and select the desired subjects. Finaly, check that each subject has the correct number of parcels.
     Parameters:
@@ -1727,3 +1728,4 @@ def get_individualized_parcellation(nparcs,subjects):
     num_unique_labels = [len(np.unique(labels[i,:])) for i in range(len(subjects))]
     assert(all([num_unique_labels[i]==nparcs for i in range(len(subjects))])) 
     return labels #,colors
+'''
