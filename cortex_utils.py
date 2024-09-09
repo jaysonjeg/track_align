@@ -130,6 +130,13 @@ def parc_char_matrix(parc):
         parcellation_matrix[value,i]=1
     return list(set(parc)),sparse.csr_matrix(parcellation_matrix).astype(np.float32)         
 
+def reverse_parc_char_matrix(matrix):
+    result = np.zeros(matrix.shape[1],dtype=int)
+    matrix=matrix.astype(bool).toarray()
+    for i in range(matrix.shape[1]):
+        result[i]=np.argmax(matrix[:,i])
+    return result
+
 def Schaefer_original(nparcels):
     #get Schaefer Kong surface parcellation
     filename=ospath('/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/SchaeferParcellations/HCP/fslr32k/cifti/Schaefer2018_{}Parcels_Kong2022_17Networks_order.dlabel.nii'.format(nparcels))
@@ -144,11 +151,14 @@ def Schaefer_matrix(nparcels):
     save_folder=f'{intermediates_path}\schaeferparcellation'
     save=ospath(f'{save_folder}/schaefer_{nparcels}parcs_matrix.p')
     return pickle.load( open( ospath(save), "rb" ) )  
-def kmeans(nparcels):
+def kmeans(nparcels,i=None):
     #get my random kmeans surface parcellation
     save_folder=f'{intermediates_path}\kmeansparcellation'
-    #save=ospath(f'{save_folder}/funckmeansparc_3subs_4movies_pca100_{nparcels}.p')
-    save=ospath(f'{save_folder}/kmeansparc_sub100610_sphere_{nparcels}parcs.p')
+    if i is None:
+        #save=ospath(f'{save_folder}/funckmeansparc_3subs_4movies_pca100_{nparcels}.p')
+        save=ospath(f'{save_folder}/kmeansparc_sub100610_sphere_{nparcels}parcs.p')
+    else:
+        save=ospath(f'{save_folder}/kmeansparc_sub100610_sphere_{nparcels}parcs_{i}.p')
     return pickle.load( open( ospath(save), "rb" ) ) 
 def kmeans_matrix(nparcs):
     #get parc_matrix for kmeans parcellation

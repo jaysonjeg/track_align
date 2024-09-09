@@ -2,8 +2,9 @@ import hcpalign_utils
 from hcpalign_utils import ospath
 import os
 import numpy as np, pandas as pd
+import generic_utils as gutils
 
-c=hcpalign_utils.clock()
+c=gutils.clock()
 
 hcp_folder=hcpalign_utils.hcp_folder
 intermediates_path=hcpalign_utils.intermediates_path
@@ -70,8 +71,12 @@ for subname in subnames:
 print(f'Get dfa finish at {c.time()}')
 for subname in subnames:
     df.loc[subname,'include'] = dfa.loc[subname,modalities].all()
-    
-included_subs = subnames[df.values.squeeze()]
-np.savetxt('included_subs.csv',included_subs,fmt='%s')
 
-#x=np.loadtxt('included_subs.csv',dtype='str')
+exclude_these_names = ['131217'] #131217 no rest 7T
+for name in exclude_these_names:
+    df.loc[name,'include']=False
+
+included_subs = subnames[df.values.squeeze().astype(bool)]
+#np.savetxt('included_subs3.csv',included_subs,fmt='%s')
+
+#x=np.loadtxt('included_subs3.csv',dtype='str')

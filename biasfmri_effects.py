@@ -17,6 +17,7 @@ import pickle
 import hcp_utils as hcp
 from scipy import stats
 import generic_utils as gutils
+import cortex_utils as cutils
 
 plt.rcParams.update({'font.size': 15})
 
@@ -24,15 +25,15 @@ if __name__=='__main__':
 
     c = gutils.clock()
     #Set paths
-    hcp_folder=hutils.hcp_folder
-    intermediates_path=hutils.intermediates_path
-    results_path=hutils.results_path
+    hcp_folder=cutils.hcp_folder
+    intermediates_path=cutils.intermediates_path
+    results_path=cutils.results_path
     project_path = "D:\\FORSTORAGE\\Data\\Project_GyralBias"
     biasfmri_intermediates_path = gutils.ospath(f'{project_path}/intermediates')
 
     ### GENERAL PARAMETERS
-    sub_slice = slice(0,3)
-    real_or_noise = 'real' # 'real' or 'noise
+    sub_slice = slice(0,1)
+    real_or_noise = 'noise' # 'real' or 'noise
     this_parc = 1 #which parcel for within-parcel analysis
     surface = 'midthickness' #which surface for calculating distances, e.g. 'white','inflated','pial','midthickness'
     which_subject_visual = '100610' #which subject for visualization. '100610', '102311', 'standard'
@@ -40,10 +41,9 @@ if __name__=='__main__':
     MSMAll = False
     parc_string='S300'
 
-    ### PARAMETERS FOR PLOTTING
+    ### PARAMETERS FOR PLOTTINGf
     alpha=0.05 #transparency of points in scatter plots
     figsize=(4,4) #size of figure for scatter plots
-
 
     ### PARAMETERS FOR TESTS OF CORRELATIONS BETWEEN TWO MAPS
     to_normalize = False #subtract parcel means from data like sulcal depth, local correlations, etc, before doing correlations
@@ -54,6 +54,7 @@ if __name__=='__main__':
 
     which_neighbours = 'local' #'local' (default),'distant'
     distance_range=(1,10) #Only relevant if which_neighbours=='distant'. Geodesic distance range in mm, e.g. (0,4), (2,4), (3,5), (4,6). (1,10) is default.
+    nearest_neighbour = False #True to use correlation/distance to nearest neighbouring vertex. False to use mean correlation/distance to all neighbours
     load_neighbours = True
     save_neighbours = False
 
@@ -64,7 +65,7 @@ if __name__=='__main__':
     if real_or_noise == 'noise':
         noise_source = 'surface' #'volume' or 'surface'. 'volume' means noise data in volume space projected to 'surface'. 'surface' means noise data generated in surface space
         smooth_noise_fwhm = 2 #mm of surface smoothing. Try 0 or 2
-        ntimepoints = 1000 #number of timepoints, default 1000
+        ntimepoints = 500 #number of timepoints, default 1000
         print(f'{c.time()}: Noise data, source: {noise_source}, smooth: {smooth_noise_fwhm}mm, ntimepoints: {ntimepoints}, test first-half, retest second-half')
     elif real_or_noise == 'real':
             img_type = 'rest' #'movie', 'rest', 'rest_3T'
@@ -75,13 +76,14 @@ if __name__=='__main__':
 
     ### GET DATA
     if which_subject_visual =='standard':
-        p=hutils.surfplot('',mesh = hcp.mesh[surface_visual], plot_type='open_in_browser')
+        p=cutils.surfplot('',mesh = hcp.mesh[surface_visual], plot_type='open_in_browser')
     else:
         vertices_visual,faces_visual = bmutils.hcp_get_mesh(which_subject_visual,surface_visual,MSMAll)
-        p = hutils.surfplot('',mesh=(vertices_visual,faces_visual),plot_type = 'open_in_browser')
-    mask = hutils.get_fsLR32k_mask() #boolean mask of gray matter vertices. Excludes medial wall
-    parc_labels = hutils.parcellation_string_to_parcellation(parc_string)
-    parc_matrix = hutils.parcellation_string_to_parcmatrix(parc_string)
+        p = cutils.surfplot('',mesh=(vertices_visual,faces_visual),plot_type = 'open_in_browser')
+    mask = cutils.get_fsLR32k_mask() #boolean mask of gray matter vertices. Excludes medial wall
+    ngrayl = len(hcp.vertex_info.grayl) #left hemisphere only
+    parc_labels = cutils.parcellation_string_to_parcellation(parc_string)
+    parc_matrix = cutils.parcellation_string_to_parcmatrix(parc_string)
     nparcs = parc_labels.max()+1
 
     print(f'{c.time()}: Get meshes')
@@ -92,9 +94,9 @@ if __name__=='__main__':
         version='native' #native (corr about 0.26), fsaverage_LR32k (corr about 0.47)
         mesh = bmutils.hcp_get_mesh(subjects[0],surface,MSMAll,folder=folder,version=version)
         mesh_visual = bmutils.hcp_get_mesh(subjects[0],'very_inflated',MSMAll,folder=folder,version=version)
-        neighbour_vertices,neighbour_distances = butils._get_all_neighbour_vertices(mesh,None)   
+        neighbour_vertices,neighbour_distances = butils._get_all_neighbour_vertices(mesh,None)
         neighbour_distances_mean = np.array([np.mean(i) for i in neighbour_distances])
-        p2 = hutils.surfplot('',mesh=mesh_visual,plot_type='open_in_browser')
+        p2 = cutils.surfplot('',mesh=mesh_visual,plot_type='open_in_browser')
         #data=np.log10(neighbour_distances_mean)
         data = neighbour_distances_mean
         print(f"{data.min():.3f} to {data.max():.3f}")
@@ -105,9 +107,27 @@ if __name__=='__main__':
         assert(0)
 
     meshes = [bmutils.hcp_get_mesh(subject,surface,MSMAll,folder='MNINonLinear',version='fsaverage_LR32k') for subject in subjects]
+    #meshes = [hcp.mesh[surface]] #use standard surface
     meshes = [bmutils.reduce_mesh((vertices,faces),mask) for vertices,faces in meshes] #reduce to only gray matter vertices
-    all_vertices, all_faces = zip(*meshes)
     sulcs = [butils.hcp_get_sulc(i)[mask] for i in subjects] #list (subjects) of sulcal depth maps
+
+
+    ### Transform data to onavg template
+    to_onavg=False
+    if to_onavg:
+        target_space = 'onavg-ico48' #onavg-ico48 has 43510 verts, onavg-ico64 has 77326 verts
+        from scipy import sparse
+        import neuroboros as nb
+        assert((real_or_noise=='noise') and (noise_source=='surface'))
+        mask,ngrayl = butils.get_onavg_mask(target_space)
+        onavg_std_mesh = butils.get_onavg_mesh_std(surface,target_space)
+        meshes = [onavg_std_mesh]*nsubjects 
+        p.mesh = onavg_std_mesh
+
+        map2onavg_hemi = [butils.mapping_legacy_mask(lr,'fslr-ico57',target_space,keep_sum=False) for lr in 'lr'] #mapper for each hemisphere
+        map2onavg = sparse.block_diag([map2onavg_hemi[0],map2onavg_hemi[1]],format='csc') #mapper for whole cortex
+        #ims = [im@map2onavg for im in ims] #transform functional data
+        sulcs = [sulc@map2onavg for sulc in sulcs] #transform sulcal depth maps
 
     print(f'{c.time()}: Get fMRI data')   
     if real_or_noise == 'noise':
@@ -125,8 +145,8 @@ if __name__=='__main__':
         elif noise_source=='surface':
             #Generate noise data in surface space
             #ims = [np.random.randn(ntimepoints,59412).astype(np.float32) for i in range(nsubjects)]
-            rng=np.random.default_rng(seed=3)
-            ims = [rng.standard_normal(size=(ntimepoints,59412)).astype(np.float32) for i in range(nsubjects)]
+            rng=np.random.default_rng(seed=3) #3
+            ims = [rng.standard_normal(size=(ntimepoints,len(meshes[0][0]))).astype(np.float32) for i in range(nsubjects)]
         if smooth_noise_fwhm>0: #smooth the noise data using geodesic distances from subject-specific meshes
             fwhm_values_for_gdist = np.array([3,5,10]) #fwhm values for which geodesic distances have been pre-calculated
             fwhm_for_gdist = fwhm_values_for_gdist[np.where(fwhm_values_for_gdist>=smooth_noise_fwhm)[0][0]] #find smallest value greater than fwhm in the above list
@@ -140,17 +160,18 @@ if __name__=='__main__':
         ims,ims_string = hutils.get_movie_or_rest_data(subjects,img_type,runs=runs,fwhm=0,clean=True,MSMAll=MSMAll)
     print(f'{c.time()}: Each subject data shape is {ims[0].shape}')
 
+    nvertices = len(meshes[0][0]) #number of vertices in the mesh
+
     ### Bias in fMRI-based parcellation (do left hemisphere alone)
     do_bias_parcellation = False
     if do_bias_parcellation:
         use_precomputed_parcellation=False
         if use_precomputed_parcellation:
-            parcellation_string = 'S100'
+            parcellation_string = 'S300' #'S100', 'clust_w100F8mm_r01' for volume clustering
             print(f"Using pre-computed parcellation labels from {parcellation_string}")
             if nsubjects==1: #use HCP standard sulc values
                 print("Using HCP standard sulcal depth values")
-
-        ngrayl = len(hcp.vertex_info.grayl) #left hemisphere only
+           
         tstats_all_subjects = []
         cohend_all_subjects = []
         for nsubject in range(nsubjects): #range(nsubjects)
@@ -160,9 +181,15 @@ if __name__=='__main__':
 
             if use_precomputed_parcellation:
                 #Use pre-computed parcellation labels
-                labels = hutils.parcellation_string_to_parcellation(parcellation_string,[subjects[nsubject]])
+                if len(parcellation_string)>5:
+                    clust_folder = gutils.ospath(f'{project_path}/intermediates/clustering_volume')
+                    clust_filename = f"{parcellation_string}_{subjects[nsubject]}"
+                    clust_path = gutils.ospath(f'{clust_folder}\\{clust_filename}.nii.gz')
+                    labels = butils.mni_to_fslr(clust_path,mask,method='nearest')
+                else:
+                    labels = cutils.parcellation_string_to_parcellation(parcellation_string,[subjects[nsubject]])
                 if labels.ndim==2: labels=np.squeeze(labels)
-                labels = labels[0:ngrayl]
+                labels = labels[0:ngrayl] #(29696,)
                 labels = np.expand_dims(labels,1) #change from (nvertices,) to (nvertices,1). 
                 if nsubjects==1: #use HCP standard sulc values
                     sulc = -hcp.mesh.sulc[mask] #because standard sulc values are flipped
@@ -170,14 +197,14 @@ if __name__=='__main__':
                 _,edges = bmutils.triangles2edges(faces)
             else:
                 #Use clustering to generate your own functional parcellation
-                n_clusters = 50 #how many functional clusters
+                n_clusters = 50 #how many functional clusters (for left hemisphere)
                 n_repeats_per_subject = 1 #how many different random parcellations to find per subject
-                imgt = ims[nsubject].T
-                faces = meshes[nsubject][1]
+                imgt = ims[nsubject].T #(29696,ntimepoints)
+                faces = meshes[nsubject][1] #(nfaces,3)
                 print(f'{c.time()}: Faces to structural adjacency matrix')
                 connectivity,edges = bmutils.triangles2edges(faces)
                 imgt = imgt[0:ngrayl,:]
-                connectivity = connectivity[:,0:ngrayl][0:ngrayl,:]    
+                connectivity = connectivity[:,0:ngrayl][0:ngrayl,:] #sparse matrix (29696,29696)
                 print(f'{c.time()}: Agglomerative clustering')
                 def do_agglomerative_clustering():
                     from sklearn.cluster import AgglomerativeClustering
@@ -185,7 +212,6 @@ if __name__=='__main__':
                     return clustering.labels_
                 labels = Parallel(n_jobs=1,prefer='threads')(delayed(do_agglomerative_clustering)() for i in range(n_repeats_per_subject))
                 labels = np.vstack(labels).T
-
 
             #Remove edges which are outside the left hemisphere
             sulc_left = sulc[0:ngrayl] #left-sided sulcal depth map 
@@ -198,9 +224,9 @@ if __name__=='__main__':
             labels = labels[:,0] #relevant if n_repeats_per_subject>1
 
             #Convert L hemisphere data to bihemispheric brain data (with zeros in the R hemi)
-            border_full = np.zeros(59412)
+            border_full = np.zeros(nvertices)
             border_full[0:ngrayl] = border
-            parcels_full = np.zeros(59412)
+            parcels_full = np.zeros(nvertices)
             parcels_full[0:ngrayl] = labels
             sulc_border = sulc_left[border_bool] #sulcal depth values at the border of parcels
             sulc_nonborder = sulc_left[~border_bool] #sulcal depth values not at the border of parcels
@@ -221,17 +247,28 @@ if __name__=='__main__':
                 ax.set_xlabel('Vertex location')
                 fig.tight_layout()
                 plt.show(block=False)
-                sulc_both = np.zeros(59412)
+                sulc_both = np.zeros(nvertices)
                 sulc_both[0:ngrayl] = sulc_left
-                print(f'{c.time()}: Do spin test start')
-                sulc_both_nulls = butils.do_spin_test(sulc_both,mask,n_perm)
-                print(f'{c.time()}: Do spin test done')
-                sulc_left_nulls = sulc_both_nulls[0:ngrayl]
-                cohen_d, t_stat, p_value = butils.ttest_ind_with_nulldata_given(border,sulc_left,sulc_left_nulls)
+
+                t_stat = butils.calculate_t_statistic(border,sulc_left)
+                cohen_d = butils.get_cohen_d_groups(border,sulc_left)
+
+                if to_onavg:
+                    p_value = 9
+                else:  
+                    print(f'{c.time()}: Do spin test start')
+                    sulc_both_nulls = butils.do_spin_test(sulc_both,mask,n_perm)
+                    print(f'{c.time()}: Do spin test done')
+                    sulc_left_nulls = sulc_both_nulls[0:ngrayl]
+                    p_value = butils.ttest_ind_with_nulldata_given(border,sulc_left,sulc_left_nulls)
+                
                 print(f"Sulcal depth at parcel borders {np.mean(sulc_border):.3f} vs non-border vertices {np.mean(sulc_nonborder):.3f}: cohens d {cohen_d:.3f}, t(29694)={t_stat:.3f}, spin test p={p_value:.3f}")
+                
+                """
                 import neuromaps
                 corr,pval = neuromaps.stats.compare_images(sulc_left,-border,nulls=sulc_left_nulls,metric='pearsonr')
                 print(f"Correlation is {corr:.3f}, spin test p={pval:.3f}")
+                """
                 assert(0)
         
         print(f'{c.time()}: Func parcellation. Sulcal depth in border vs. non-border vertices in each participant') 
@@ -242,7 +279,7 @@ if __name__=='__main__':
         if len(cohend_all_subjects)>1:
             result = stats.ttest_1samp(tstats_all_subjects,0,alternative='greater')
             print(f'T({result.df})={result.statistic:.3f}, p={result.pvalue:.3f}')
-        
+        assert(0)
         
         #x is "matched". y is "mismatched", where sulc and parcel borders belong to different participants
         """
@@ -273,7 +310,7 @@ if __name__=='__main__':
         print(f"How many components are gyral biased? {np.sum(np.array(corrs_with_sulc)>0)}/{len(corrs_with_sulc)}")
         assert(0)
 
-    get_vertex_areas = False
+    get_vertex_areas = True
     if get_vertex_areas:
         print(f'{c.time()}: Get vertex areas start')
         vertex_areas = Parallel(n_jobs=-1,prefer='threads')(delayed(bmutils.get_vertex_areas)(mesh) for mesh in meshes)
@@ -339,9 +376,42 @@ if __name__=='__main__':
         func = lambda subject,mesh: butils.get_subjects_neighbour_vertices(c, subject,surface,mesh,biasfmri_intermediates_path, which_neighbours, distance_range,load_neighbours, save_neighbours,MSMAll)
         print(f'{c.time()}: Get neighbour vertices')  
         temp = Parallel(n_jobs=-1,prefer='threads')(delayed(func)(subject,mesh) for subject,mesh in zip(subjects,meshes))
-        all_neighbour_vertices, all_neighbour_distances, all_neighbour_distances_mean = zip(*temp)
-        print(f'{c.time()}: Get corr neighbour start')   
-        ims_adjcorr, ims_adjcorr_full = zip(*Parallel(n_jobs=1,prefer='threads')(delayed(butils.get_corr_with_neighbours)(all_neighbour_vertices[i],ims[i],parallelize=True) for i in range(nsubjects)))
+        all_neighbour_vertices, all_neighbour_distances = zip(*temp)
+        if nearest_neighbour:
+            all_nearest_neighbour_index = [np.array([np.argmin(i) for i in j]) for j in all_neighbour_distances]
+            all_neighbour_distances_mean = [np.array([np.min(i) for i in j]) for j in all_neighbour_distances]
+        else:
+            all_neighbour_distances_mean = [np.array([np.mean(i) for i in j]) for j in all_neighbour_distances]
+
+        save_csv = False
+        if save_csv:
+            if to_normalize:
+                smoother = hutils.get_searchlight_smoother(sub=subjects[0],surface='midthickness',radius_mm=15)
+                normalize = lambda x: x - smoother(x)
+                sulcs = [normalize(i) for i in sulcs]
+                all_neighbour_distances_mean = [normalize(i) for i in all_neighbour_distances_mean]
+                vertex_areas = [normalize(i) for i in sulcs]
+            df = pd.DataFrame({'Sulcal depth':sulcs[0][29696:],'Vertex area':vertex_areas[0][29696:],'Inter-vertex distance':all_neighbour_distances_mean[0][29696:]})
+            df.to_csv(gutils.ospath(f'{intermediates_path}/R_hemi_vals_100610x.csv'),index=False)
+            assert(0)
+
+        print(f'{c.time()}: Get corr neighbour start')  
+
+        
+        if nearest_neighbour: 
+            ims_adjcorr, _ = zip(*Parallel(n_jobs=1,prefer='threads')(delayed(butils.get_corr_with_neighbours)(all_nearest_neighbour_index[i],ims[i],parallelize=True) for i in range(nsubjects)))
+        else:
+            ims_adjcorr, ims_adjcorr_full = zip(*Parallel(n_jobs=1,prefer='threads')(delayed(butils.get_corr_with_neighbours)(all_neighbour_vertices[i],ims[i],parallelize=True) for i in range(nsubjects)))
+
+        if nearest_neighbour:
+            ims_adjcorr2 = [np.array([ims_adjcorr_full[nsubject][i][all_nearest_neighbour_index[nsubject][i]] for i in range(nvertices)]) for nsubject in range(nsubjects)] #ceach vertex's correlation with its nearest neighbour
+        else:
+            ims_adjcorr2 = [np.array([np.mean(i) for i in j]) for j in ims_adjcorr_full]
+
+        print(ims_adjcorr[0][0:3]) #array([0.28437656, 0.63370944, 0.55178756]) for nearest_neighbour
+        print(ims_adjcorr2[0][0:3]) #[0.10354099 0.13455228 0.13815412] for mean of neighbours
+        assert(0)
+
         ims_adjcorr_parc = [butils.parcel_mean(im,parc_matrix) for im in ims_adjcorr] #subjects' parcel-mean local neighbourhood correlations (nparcels,)
         ims_adjcorr_singleparc = [im[parc_labels==1] for im in ims_adjcorr] #subjects' single-parcel local neighbourhood correlations (nverticesInParcel,)
         print(f'{c.time()}: Get corr neighbour end')   
@@ -428,7 +498,7 @@ if __name__=='__main__':
                 plt.show(block=False)
                 assert(0)
 
-            depth_vs_corrs_stats=True
+            depth_vs_corrs_stats=False
             if depth_vs_corrs_stats:
                 corrs = np.zeros((nsubjects,2)) #stores correlation between sulcal depth and local correlations. First column uses same subjects for both variables, second column uses different subjects (mismatched)
                 for i in range(nsubjects):
@@ -442,8 +512,6 @@ if __name__=='__main__':
                 #Stripplot of the correlation between sulcal depth and local correlations, for the same subjects and different subjects. Each column of variable "corrs" will be a different column in the stripplot
                 import seaborn as sns #need env nilearn with package seaborn
                 import pandas as pd
-                #columns = ['Same\nparticipants','Different\nparticipants']
-
                 columns = ['Same','Different']
                 corrs_df = pd.DataFrame(corrs,columns=columns)                   
                 corrs_df = corrs_df.melt(value_vars=columns,var_name='Participants',value_name='Correlation') #convert to single column format
@@ -536,7 +604,7 @@ if __name__=='__main__':
             print(corrs_sulc_adjcorr_singleparc)
 
     ### Analyse reliability and identifiability of functional connectivity
-    do_FC = True
+    do_FC = False
     if do_FC:
         print(f'{c.time()}: Calculate FC')   
 

@@ -4,6 +4,79 @@ Utility functions for parcs.py
 
 import numpy as np
 
+def get_parcellation_pan(parcs_dir,parcellation_name):
+    """
+    Get parcellation of fsLR 32k surface from pan
+    Separate all except: Mars82, Brainnetom210, Glasser360, Schaefer300, SchaeferHomotopic300, ??Craddock300??
+    Parameters:
+    --------
+    parcellation_name: str
+        Name of parcellation, e.g. 'Brodmann78'
+    Returns:
+    --------
+    array: np.ndarray
+        Parcellation of fsLR 32k surface with 59,412 vertices
+    """
+    filename_left = f"{parcs_dir}/pan/fsLR_32k_{parcellation_name}-lh.txt"
+    array_left = np.loadtxt(filename_left).astype(int)
+    filename_right = f"{parcs_dir}/pan/fsLR_32k_{parcellation_name}-rh.txt"
+    array_right = np.loadtxt(filename_right).astype(int)
+    array = np.hstack([array_left,array_right])
+    print(f"{parcellation_name}: n {len(np.unique(array))}, L {len(np.unique(array_left))} unique, max {array_left.max()}, R {len(np.unique(array_right))} unique, max {array_right.max()}")
+    return array
+
+def get_parcellation_geom(parcs_dir,nparcels):
+    """
+    Get parcellation of geometric fsLR 32k surface from pan
+    Parameters:
+    --------
+    nparcels: int
+    Returns:
+    --------
+    array: np.ndarray
+        Parcellation of fsLR 32k surface
+    """
+    filename_left = f"{parcs_dir}/pan/fsLR_32k_midthickness-lh_geometric_num_parcels={nparcels}.txt"
+    array_left = np.loadtxt(filename_left).astype(int)
+    #print(f"Geom {nparcels}: L {len(np.unique(array_left))} unique, max {array_left.max()}")
+    filename_right = f"{parcs_dir}/pan/fsLR_32k_midthickness-rh_geometric_num_parcels={nparcels}.txt"
+    array_right = np.loadtxt(filename_right).astype(int)
+    #print(f"Geom {nparcels}: R {len(np.unique(array_right))} unique, max {array_right.max()}")
+          
+    array_right = array_right + array_left.max() + 1
+    print(f"Geom {nparcels}: R {len(np.unique(array_right))} unique, max {array_right.max()}")
+
+    array = np.hstack([array_left,array_right])
+    #print(f"Geom {nparcels}: L {len(np.unique(array_left))} unique, max {array_left.max()}, R {len(np.unique(array_right))} unique, max {array_right.max()}")
+    return array
+
+def get_parcellation_EA(parcs_dir,name):
+    """
+    Get equal area parcellation
+    Parameters:
+    --------
+    name: str
+        Name of parcellation, e.g. 'EqualAreaPCA_150Parcels_2-5-5-3'
+    Returns:
+    --------
+    array: np.ndarray
+        Parcellation of fsLR 32k surface
+    """
+    filename_left = f"{parcs_dir}/equal_area/{name}_lh.txt"
+    array_left = np.loadtxt(filename_left).astype(int)
+    #print(f"{name}: L {len(np.unique(array_left))} unique, max {array_left.max()}")
+
+    filename_right = f"{parcs_dir}/equal_area/{name}_rh.txt"
+    array_right = np.loadtxt(filename_right).astype(int)
+    #print(f"{name}: R {len(np.unique(array_right))} unique, max {array_right.max()}")
+
+    array_right = array_right + array_left.max() + 1
+    print(f"{name}: R {len(np.unique(array_right))} unique, max {array_right.max()}")
+
+    array = np.hstack([array_left,array_right])
+    #print(f"{name}: L {len(np.unique(array_left))} unique, max {array_left.max()}, R {len(np.unique(array_right))} unique, max {array_right.max()}")
+    return array
+
 def homogeneity_meanFC(data):
     """
     Given fMRI data for vertices in a single parcel, compute parcel homogeneity using mean FC among all vertex pairs
@@ -39,10 +112,14 @@ def homogeneity_meanFC_min_distance(data, min_distance=0, gdists=None):
     mean_correlation: float
         Mean correlation among vertex pairs
     """
-    correlations = np.corrcoef(data.T)
-    np.fill_diagonal(correlations,0)
-    valid = (gdists > min_distance)
-    return correlations[valid].mean()
+
+    if data.shape[1]==1: #only 1 vertex in the parcel
+        return 1
+    else:
+        correlations = np.corrcoef(data.T)
+        np.fill_diagonal(correlations,0)
+        valid = (gdists > min_distance)
+        return correlations[valid].mean()
 
 def homogeneity_meanFC_interp(data,gdists=None):
     """
@@ -120,10 +197,13 @@ def dlabel_filepath_to_array(filepath,mask):
     Given a filepath to cifti dlabel.nii, return a numpy array of the data contained within
     """
     import nibabel as nib
+    """
     if type(filepath)==nib.nifti1.NiftiImage:
         x=filepath
     else:
         x=nib.load(filepath)
+    """
+    x=nib.load(filepath)
     return np.array(x.get_fdata()).squeeze()[mask].astype(int)
 
 

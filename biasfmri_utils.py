@@ -175,7 +175,6 @@ def get_subjects_neighbour_vertices(c, subject,surface,mesh, biasfmri_intermedia
     For each vertex belonging to this subject, find neighbouring vertices and distances, and optionally save to file
     Save neighbour vertex indices in verts.pkl (list (len 59412) of lists)
     Save neighbour vertex distances in dists.pkl (list (len 59412) of lists)
-    Save the mean distance to neighbours in dists.npy (np.array of shape 59412)
     """
     if MSMAll:
         MSMstring='_MSMAll'
@@ -219,8 +218,8 @@ def get_subjects_neighbour_vertices(c, subject,surface,mesh, biasfmri_intermedia
             with open(neighbour_dists_path,'wb') as f:
                 pickle.dump(neighbour_distances,f)
             #np.save(neighbour_dists_mean_path,neighbour_distances_mean)
-    neighbour_distances_mean = np.array([np.mean(i) for i in neighbour_distances])
-    return neighbour_vertices, neighbour_distances, neighbour_distances_mean
+    #neighbour_distances_mean = np.array([np.mean(i) for i in neighbour_distances])
+    return neighbour_vertices, neighbour_distances
 
 def get_vertices_in_distance_range(distance_range,csr_matrix):
     """
@@ -269,15 +268,17 @@ def get_corr_with_neighbours(nearest_vertices_array,time_series,parallelize=True
     """
 
     from joblib import Parallel, delayed
+    nvertices=len(nearest_vertices_array)
 
     if type(nearest_vertices_array[0]) in [np.ndarray,list]:
         scenario = 2
+        #corrs = [i[:] for i in nearest_vertices_array] #of same size as nearest_vertices_array. Stores correlations
     else:
         scenario = 1
+        #corrs = np.zeros(nvertices,dtype=np.float32)
 
-    nvertices=len(nearest_vertices_array)
-    corrs = [i[:] for i in nearest_vertices_array] #of same size as nearest_vertices_array. Stores correlations
-    corrs_mean = np.zeros(nvertices,dtype=np.float32)
+
+    #corrs_mean = np.zeros(nvertices,dtype=np.float32)
 
     if parallelize: 
         def yield_chunks(nearest_vertices_array,nchunks):
@@ -287,21 +288,23 @@ def get_corr_with_neighbours(nearest_vertices_array,time_series,parallelize=True
                 #print(chunk_indices)
                 yield chunk_indices
         def compute_correlation(time_series,nearest_vertices_array,scenario,chunk_indices):
-            chunked_corrs = [i[:] for i in nearest_vertices_array[slice(chunk_indices.start,chunk_indices.stop)]]
             chunked_corrs_mean = np.zeros(len(chunk_indices),dtype=np.float32)
+            if scenario==2:
+                chunked_corrs = [i[:] for i in nearest_vertices_array[slice(chunk_indices.start,chunk_indices.stop)]]
+            elif scenario==1:
+                chunked_corrs = np.zeros(len(chunk_indices),dtype=np.float32)
             for source_vertex_index,source_vertex in enumerate(chunk_indices):
                 source_vertex_time_series = time_series[:, source_vertex]
-                """
+                
                 if scenario == 1:
                     target_vertex_time_series = time_series[:, nearest_vertices_array[source_vertex]]
-                    result[source_vertex_index] = np.corrcoef(source_vertex_time_series, target_vertex_time_series)[0, 1]
-                
-                elif scenario == 2:
-                """
-                target_vertex_time_series = time_series[:, np.array(nearest_vertices_array[source_vertex])]
-                list_of_corrs = [np.corrcoef(source_vertex_time_series, target_vertex_time_series[:, j])[0, 1] for j in range(target_vertex_time_series.shape[1])]
-                chunked_corrs[source_vertex_index] = list_of_corrs
-                chunked_corrs_mean[source_vertex_index] = np.mean(list_of_corrs)
+                    chunked_corrs_mean[source_vertex_index] = np.corrcoef(source_vertex_time_series, target_vertex_time_series)[0, 1]
+                    chunked_corrs[source_vertex_index] = chunked_corrs_mean[source_vertex_index] #duplicate
+                elif scenario == 2:    
+                    target_vertex_time_series = time_series[:, np.array(nearest_vertices_array[source_vertex])]
+                    list_of_corrs = [np.corrcoef(source_vertex_time_series, target_vertex_time_series[:, j])[0, 1] for j in range(target_vertex_time_series.shape[1])]
+                    chunked_corrs[source_vertex_index] = list_of_corrs
+                    chunked_corrs_mean[source_vertex_index] = np.mean(list_of_corrs)
             return chunked_corrs_mean, chunked_corrs
         temp = Parallel(n_jobs=-1, prefer='processes')(delayed(compute_correlation)(time_series,nearest_vertices_array,scenario,chunk_indices) for chunk_indices in yield_chunks(nearest_vertices_array, 12))
         chunked_corrs_mean, chunked_corrs = zip(*temp)
@@ -516,9 +519,18 @@ def do_spin_test(x,mask,n_perm):
     from neuromaps import stats, nulls
     from brainmesh_utils import fillnongray
     print(f"Do spin test")
-    x2=fillnongray(x,mask)
-    x2_nulls = nulls.alexander_bloch(x2,atlas='fsLR',density='32k',n_perm=n_perm,seed=0)
-    return x2_nulls[mask]
+
+    if len(mask)>len(x):
+        use_mask=True
+    else:
+        use_mask=False
+
+    if use_mask:
+        x=fillnongray(x,mask)
+    x_nulls = nulls.alexander_bloch(x,atlas='fsLR',density='32k',n_perm=n_perm,seed=0)
+    if use_mask:
+        x_nulls = x_nulls[mask]
+    return x_nulls
 
 def corr_with_nulls(x,y,mask,method='spin_test',n_perm=100):
     """
@@ -662,17 +674,23 @@ def corr_dist_plot_samples(all_neighbour_distances_sub,ims_adjcorr_full_sub,dist
     return fig,axs
 
 
+def calculate_t_statistic(data, groups):
+    from scipy.stats import ttest_ind
+    group_names = np.unique(groups)
+    group_A = data[groups == group_names[0]]
+    group_B = data[groups == group_names[1]]
+    tstat, p_val = ttest_ind(group_A, group_B, equal_var=True)
+    return tstat
+
+def get_cohen_d_groups(groups,observed_data):
+    group_names = np.unique(groups)
+    cohen_d = get_cohen_d(observed_data[groups==group_names[0]],observed_data[groups==group_names[1]])
+    return cohen_d
+
 def ttest_ind_with_nulldata_given(groups,observed_data,null_data):
     """
     Vector "group" which contains group memberships of each individual, and another vector "data" which contains the values for each individual. I wish to compare the mean value in "data" across the two different groups. I wish to do the test non-parametrically. To this end, I have generated 100 randomized versions of "data" where the values are randomized across all individuals. This null dataset is given in variable "data_null", and it is a 2D matrix (number of individuals, number of surrogates). I wish do conduct a t-test for group differences in "data", and compare the t-statistic to the distribution of t-statistics when I do the same thing with "data_null", and hence derive a p-value for the deviation of the observed statistic from the expected distribution from the null
     """
-    from scipy.stats import ttest_ind
-    group_names = np.unique(groups)
-    def calculate_t_statistic(data, groups):
-        group_A = data[groups == group_names[0]]
-        group_B = data[groups == group_names[1]]
-        tstat, p_val = ttest_ind(group_A, group_B, equal_var=True)
-        return tstat
     observed_t_stat = calculate_t_statistic(observed_data,groups)
     n_perm = null_data.shape[1]
     null_t_stats = np.array([calculate_t_statistic(null_data[:,i],groups) for i in range(n_perm)])
@@ -680,8 +698,8 @@ def ttest_ind_with_nulldata_given(groups,observed_data,null_data):
     p_value = 2 * min(percentile, 1 - percentile)
     if p_value==0: 
         p_value = 1/n_perm
-    cohen_d = get_cohen_d(observed_data[groups==group_names[0]],observed_data[groups==group_names[1]])
-    return cohen_d, observed_t_stat, p_value
+    #cohen_d = get_cohen_d(observed_data[groups==group_names[0]],observed_data[groups==group_names[1]])
+    return p_value
 
 """
 def addfit(x,y,ax,linewidth=1,color='black'):
@@ -818,3 +836,76 @@ def identifiability(mat):
         correct_id = ideal_case==identified_F
         identifiability_F = 100*np.sum(correct_id,axis=0) / correct_id.shape[0]
     return identifiability_F
+
+def data_gii2array(mask,folder,filename):
+    """
+    Convert label data in .gii L and R hemisphere files into a masked numpy array
+    """
+    import nibabel as nib
+    thispath = ospath(f'{folder}/{filename}_L.midthickness.32k_fs_LR.func.gii')
+    dataL=nib.load(thispath).darrays[0].data
+    thispath = ospath(f'{folder}/{filename}_R.midthickness.32k_fs_LR.func.gii')
+    dataR=nib.load(thispath).darrays[0].data
+    im = np.concatenate([dataL,dataR])[mask]
+    im[im==0] = np.nan #Set zeros values (only medial parahippocampal area) to nans
+    valid = ~np.isnan(im) #The other nan values are those without a close-enough volume voxel
+    return im,valid
+
+def mni_to_fslr(img_path,mask,method='nearest'):
+    """
+    Load a .nii.gz file in MNI space, and convert it to fsLR 32k space
+    Parameters:
+    ----------
+    img_path: str
+        path to .nii.gz file
+    mask: np.array
+        mask of vertices to keep
+    method: str, 'nearest' or 'linear'
+        interpolation method
+    Returns:
+    ----------
+    im: np.array
+        image in fsLR 32k space
+    """
+    from neuromaps import transforms
+    import nibabel as nib
+    loaded_labels=nib.load(img_path) #load .nii.gz
+    result=transforms.mni152_to_fslr(loaded_labels,method=method)
+    im=np.concatenate([result[0].darrays[0].data,result[1].darrays[0].data])[mask]
+    im[im==0]=np.nan
+    im[np.isnan(im)] = np.nanmean(im)
+    return im
+
+def mapping_legacy_mask(lr,source,target,keep_sum=False):
+    """
+    Get mapping from source space to target space. Calls neuroboros.mapping with legacy source mask. 
+    """
+    import neuroboros as nb
+    source_mask = nb.spaces.get_mask(lr,space=source,legacy=True)
+    return nb.mapping(lr,source,target,mask=True,source_mask=source_mask,keep_sum=keep_sum)
+
+def get_onavg_mask(target_space):
+    import neuroboros as nb
+    mask_hemi = [nb.spaces.get_mask(lr,target_space) for lr in 'lr']
+    ngrayl = mask_hemi[0].sum()
+    mask = np.concatenate(mask_hemi)
+    return mask,ngrayl
+
+def get_onavg_mesh_std(surface,target_space):
+    import neuroboros as nb
+    mask,ngrayl = get_onavg_mask(target_space)
+    mesh_hemi = [nb.spaces.get_geometry(surface,lr,target_space) for lr in 'lr']
+    onavg_std_mesh = bmutils.surf_bihemispheric_to_mesh(mesh_hemi[0][0],mesh_hemi[0][1],mesh_hemi[1][0],mesh_hemi[1][1])
+    onavg_std_mesh = bmutils.reduce_mesh(onavg_std_mesh,mask)
+    return onavg_std_mesh
+
+'''
+def nverts(space='fslr-ico57',legacy=True):
+    """
+    Print the number of vertices in each surface space in neuroboros package
+    """
+    import neuroboros as nb
+    y = [nb.spaces.get_mask(lr,space=space,legacy=legacy) for lr in 'lr']
+    print(f'Unmasked vertices: {len(y[0])} x {len(y[1])}')
+    print(f'Masked vertices: {sum(y[0])} x {sum(y[1])}')
+'''

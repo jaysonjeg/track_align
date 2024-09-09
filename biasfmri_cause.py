@@ -41,6 +41,7 @@ MSMAll=False
 which_neighbours = 'local' #'local','nearest','distant'
 distance_range=(3,5) #Only relevant if which_neighbours=='distant'. Geodesic distance range in mm, e.g. (0,4), (2,4), (3,5), (4,6)
 subtract_parcelmeans_for_visual = False #whether surface plots will subtract parcel-specific mean values. This is useful for looking at within-parcel correlations and can improve visualization of gyral bias
+nearest_neighbour = True #True to use correlation/distance to nearest neighbouring vertex. False to use mean correlation/distance to all neighbours
 load_neighbours = False
 save_neighbours = False
 
@@ -80,10 +81,19 @@ p = hutils.surfplot('',mesh=(vertices_visual,faces_visual),plot_type = 'open_in_
 #mesh = (hutils.cortex_64kto59k(vertices),hutils.cortex_64kto59k_for_triangles(faces)) #downsample from 64k to 59k
 
 mesh = (vertices[mask],bmutils.triangles_removenongray(faces,mask))
+nvertices = len(mesh[0]) #number of vertices in the mesh
 
 ### Get neighbour distances ###
 
-neighbour_vertices, neighbour_distances, neighbour_distances_mean = butils.get_subjects_neighbour_vertices(c, which_subject,surface,mesh, biasfmri_intermediates_path, which_neighbours, distance_range, load_neighbours, save_neighbours,MSMAll)
+neighbour_vertices, neighbour_distances = butils.get_subjects_neighbour_vertices(c, which_subject,surface,mesh, biasfmri_intermediates_path, which_neighbours, distance_range, load_neighbours, save_neighbours,MSMAll)
+if nearest_neighbour:
+    nearest_neighbour_index = np.array([np.argmin(i) for i in neighbour_distances])
+    neighbour_distances_mean = np.array([np.min(i) for i in neighbour_distances])
+else:
+    neighbour_distances_mean = np.array([np.mean(i) for i in neighbour_distances])
+
+
+
 
 '''
 #See on other meshes other than fsLR32k (e.g. Native, 164k, T1w folder)
@@ -127,7 +137,14 @@ if smooth_data_fwhm>0:
 
 
 print(f'{c.time()}: Get corr with neighbours start')
-noise_adjcorr,_ = butils.get_corr_with_neighbours(neighbour_vertices,noise)
+_,noise_adjcorr_full = butils.get_corr_with_neighbours(neighbour_vertices,noise)
+
+if nearest_neighbour:
+    noise_adjcorr = np.array([noise_adjcorr_full[i][nearest_neighbour_index[i]] for i in range(nvertices)]) #each vertex's correlation with its nearest neighbour
+else:
+    noise_adjcorr = np.array([np.mean(i) for i in noise_adjcorr_full])
+
+
 noise_adjcorr[np.isnan(noise_adjcorr)] = 0 #replace NaNs with 0s
 #noise_adjcorr[noise_adjcorr<0] = 0 #set negative correlations to 0
 print(f'{c.time()}: Get corr with neighbours end')

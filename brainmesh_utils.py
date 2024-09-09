@@ -29,6 +29,33 @@ def surf_file_to_mesh(surface_gifti_filepath):
     return vertices,triangles
 
 
+def surf_bihemispheric_to_mesh(verts_left,triangles_left,verts_right,triangles_right):
+    """
+    Given vertices and triangles for left and right hemisphere surfaces, return the vertices and triangles as numpy arrays
+    Old name: get_mesh
+    Parameters:
+    ---------
+    verts_left: np.ndarray
+        (nvertices,3)
+    triangles_left: np.ndarray
+        (ntriangles,3)
+    verts_right: np.ndarray
+        (nvertices,3)
+    triangles_right: np.ndarray
+        (ntriangles,3)
+
+    Returns:
+    ---------
+    all_vertices: np.ndarray
+        (nvertices,3)
+    all_triangles: np.ndarray
+        (ntriangles,3)
+    """
+    triangles_right_new=triangles_right+verts_left.shape[0] #R triangles now numbered 32492 to 64983
+    all_vertices=np.vstack((verts_left,verts_right)) #array (64984,3)
+    all_triangles=np.vstack((triangles_left,triangles_right_new))
+    return all_vertices,all_triangles
+
 def surf_files_bihemispheric_to_mesh(surface_gifti_filepath_left,surface_gifti_filepath_right):
     """
     Given filepaths for left and right hemisphere .gii surface files, return the vertices and triangles as numpy arrays
@@ -47,10 +74,13 @@ def surf_files_bihemispheric_to_mesh(surface_gifti_filepath_left,surface_gifti_f
     """
     Lvertices,Ltriangles=surf_file_to_mesh(surface_gifti_filepath_left)
     Rvertices,Rtriangles=surf_file_to_mesh(surface_gifti_filepath_right)
+    return surf_bihemispheric_to_mesh(Lvertices,Ltriangles,Rvertices,Rtriangles)
+    """
     Rtriangles_new=Rtriangles+Lvertices.shape[0] #R triangles now numbered 32492 to 64983
     all_vertices=np.vstack((Lvertices,Rvertices)) #array (64984,3)
     all_triangles=np.vstack((Ltriangles,Rtriangles_new))
     return all_vertices,all_triangles
+    """
 
 def hcp_get_surf_file_hemi(sub,hemi,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k',hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"):
     """
@@ -99,7 +129,7 @@ def hcp_get_mesh_hemi(sub,hemi,surface_type,MSMAll=False,folder='MNINonLinear',v
     Parameters:
     ---------
     sub: str
-    hemi: 'L' or 'R'
+    hemi: 'L', 'R','both'
     surface_type: 'white', 'pial', 'midthickness' or 'inflated'
     MSMAll: bool
     folder: str
@@ -119,7 +149,7 @@ def hcp_get_mesh_hemi(sub,hemi,surface_type,MSMAll=False,folder='MNINonLinear',v
     vertices,triangles=surf_file_to_mesh(surface_filepath)
     return vertices,triangles
 
-def hcp_get_mesh(sub,surface_type,MSMAll=False,folder='MNINonLinear',version='fsaverage_LR32k',hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"):
+def hcp_get_mesh(sub,surface_type,MSMAll=False,hemi='both',folder='MNINonLinear',version='fsaverage_LR32k',hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"):
     """
     Get bi-hemispheric vertices and triangles for a subject-specific surface from HCP directory structure
     Old name: get_verts_and_triangles
@@ -129,10 +159,11 @@ def hcp_get_mesh(sub,surface_type,MSMAll=False,folder='MNINonLinear',version='fs
     surface_type: str
         'white', 'pial', 'midthickness' or 'inflated'
     MSMAll: bool
+    hemi: 'L','R', or 'both'
     folder: str
         'MNINonLinear' or 'T1w'
     version: str
-        'native', 'fsaverage_LR32k' or '164k'
+        'native', 'fsaverage_LR32k' or '164k', 'onavg-ico64','onavg-ico48'
     hcp_folder: str
 
     Returns:
@@ -142,10 +173,13 @@ def hcp_get_mesh(sub,surface_type,MSMAll=False,folder='MNINonLinear',version='fs
     all_triangles: np.ndarray
         (ntriangles,3)
     """
-    surface_filepath_left = hcp_get_surf_file_hemi(sub,'L',surface_type,MSMAll,folder,version,hcp_folder)
-    surface_filepath_right = hcp_get_surf_file_hemi(sub,'R',surface_type,MSMAll,folder,version,hcp_folder)
-    all_vertices,all_triangles=surf_files_bihemispheric_to_mesh(surface_filepath_left,surface_filepath_right)
-    return all_vertices,all_triangles
+    if hemi=='both':
+        surface_filepath_left = hcp_get_surf_file_hemi(sub,'L',surface_type,MSMAll,folder,version,hcp_folder)
+        surface_filepath_right = hcp_get_surf_file_hemi(sub,'R',surface_type,MSMAll,folder,version,hcp_folder)
+        all_vertices,all_triangles=surf_files_bihemispheric_to_mesh(surface_filepath_left,surface_filepath_right)
+        return all_vertices,all_triangles
+    else:
+        return hcp_get_mesh_hemi(sub,hemi,surface_type,MSMAll,folder,version,hcp_folder)
 
 ### MANIPULATING BRAIN SURFACE MESHES ###
 
@@ -347,8 +381,13 @@ def get_gdists(vertices,faces):
     r: np.array, shape (nvertices,nvertices)
         Geodesic distance matrix
     """
-    r_sparse=gdist.local_gdist_matrix(vertices.astype(np.float64),faces)
-    r = r_sparse.astype(np.float32).toarray()
+
+    if len(faces)==0: #if vertices are not connected, set all distances to infinity
+        r=np.zeros((len(vertices),len(vertices)),dtype=np.float32)
+        r[:]=np.inf
+    else:
+        r_sparse=gdist.local_gdist_matrix(vertices.astype(np.float64),faces)
+        r = r_sparse.astype(np.float32).toarray()
     return r
 
 

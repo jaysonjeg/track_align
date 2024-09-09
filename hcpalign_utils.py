@@ -44,7 +44,7 @@ rests=['REST1_7T_PA','REST2_7T_AP','REST3_7T_PA','REST4_7T_AP']
 rests_3T=['REST1_LR','REST1_RL','REST2_LR','REST2_RL']
 tasks=['WM','GAMBLING','RELATIONAL','MOTOR','EMOTION','LANGUAGE','SOCIAL']
 all_subs=['100610','102311','102816','104416','105923','108323','109123','111312','111514','114823','115017','115825','116726','118225','125525']
-all_subs=list(np.loadtxt('included_subs2.csv',dtype='str')) #made from findpts.py
+all_subs=list(np.loadtxt('included_subs3.csv',dtype='str')) #made from findpts.py
 
 logical2str={True:'t',False:'f'}
 MSMlogical2str={True:'_MSMAll',False:''}
@@ -1413,14 +1413,15 @@ def parc_char_matrix(parc):
     return list(set(parc)),sparse.csr_matrix(parcellation_matrix).astype(np.float32)            
 '''
 
-
+'''
 def reverse_parc_char_matrix(matrix):
     result = np.zeros(matrix.shape[1],dtype=int)
     matrix=matrix.astype(bool).toarray()
     for i in range(matrix.shape[1]):
         result[i]=np.argmax(matrix[:,i])
     return result
-
+'''
+    
 def replace_with_parcelmean(X,parcellation):
     #Replace each value in a functional activation map, with the mean of its parcel
     X2=np.copy(X)   

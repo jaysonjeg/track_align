@@ -14,61 +14,66 @@ import hcpalign_utils
 from hcpalign_utils import ospath
 import pickle
 from scipy.io import savemat
-c=hcpalign_utils.clock()
+import generic_utils as gutils
+import cortex_utils as cutils
+c=gutils.clock()
 
-save_folder= 'D:\FORSTORAGE\Data\Project_Hyperalignment\intermediates\kmeansparcellation'
+save_folder= 'D:\\FORSTORAGE\\Data\\Project_Hyperalignment\\AWS_studies\\files0\\intermediates\\kmeansparcellation'
 hcp_folder="/mnt/d/FORSTORAGE/Data/HCP_S1200"
 
 
 sub="100610"
-surface_type='midthickness' #default sphere. Otherwise 'midthickness', 'white'
 
 def get_kmean_labels_surf(hemisphere_sphere_file,n_clusters):
     from sklearn.cluster import KMeans, MiniBatchKMeans
     surface=nib.load(hemisphere_sphere_file)
     vertices = surface.darrays[0].data #array (nvertices,3)
     #kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(vertices)
-    kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=0).fit(vertices)
+    kmeans = MiniBatchKMeans(n_clusters=n_clusters).fit(vertices) #default random_state=0
     return(kmeans.labels_)
 
-for sub in ["100610"]: #["100610","102311","102816"]
-    for surface_type in ['midthickness']: #['sphere','very_inflated','inflated','midthickness','pial','white']:
-        for n_clusters in [300]: #[4,10,30,100,300,1000,3000,10000,20000]
-            print([sub,surface_type,n_clusters])
 
-            L_sphere_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.L.{surface_type}.32k_fs_LR.surf.gii")
-            R_sphere_file=ospath(f"{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.R.{surface_type}.32k_fs_LR.surf.gii")
-            n_clusters_per_hemi=int(n_clusters/2)
-            print(f'Clusters {n_clusters}')
-            print(c.time())
-            labels_L=get_kmean_labels_surf(L_sphere_file,n_clusters_per_hemi)
-            labels_R=get_kmean_labels_surf(R_sphere_file,n_clusters_per_hemi) + n_clusters_per_hemi
-            labels=hcpalign_utils.cortex_64kto59k(np.hstack((labels_L,labels_R)))
-            print(c.time())
+mask = cutils.get_fsLR32k_mask()
+for i in range(50):
+    for sub in ["100610"]: #["100610","102311","102816"]
+        for surface_type in ['sphere']: #['sphere' (default),'very_inflated','inflated','midthickness','pial','white']:
+            for n_clusters in [300]: #[4,10,30,100,300,1000,3000,10000,20000]
+                print([sub,surface_type,n_clusters])
 
-            
-            matrix=hcpalign_utils.parc_char_matrix(labels)[1]
-            assert(0)
-            #remove empty parcels
-            nonempty_parcels = np.array((matrix.sum(axis=1)!=0)).squeeze()
-            matrix2 = matrix[nonempty_parcels,:]
-            labels2=hcpalign_utils.reverse_parc_char_matrix(matrix2)
+                L_sphere_file=gutils.ospath(f"{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.L.{surface_type}.32k_fs_LR.surf.gii")
+                R_sphere_file=gutils.ospath(f"{hcp_folder}/{sub}/MNINonLinear/fsaverage_LR32k/{sub}.R.{surface_type}.32k_fs_LR.surf.gii")
+                n_clusters_per_hemi=int(n_clusters/2)
+                print(f'Clusters {n_clusters}')
+                print(c.time())
+                labels_L=get_kmean_labels_surf(L_sphere_file,n_clusters_per_hemi)
+                labels_R=get_kmean_labels_surf(R_sphere_file,n_clusters_per_hemi) + n_clusters_per_hemi
+                
+                #labels=hcpalign_utils.cortex_64kto59k(np.hstack((labels_L,labels_R)))
+                labels = np.hstack((labels_L,labels_R))[mask]
+                print(c.time())
+                
+                matrix=cutils.parc_char_matrix(labels)[1]
+                #remove empty parcels
+                nonempty_parcels = np.array((matrix.sum(axis=1)!=0)).squeeze()
+                matrix2 = matrix[nonempty_parcels,:]
+                labels2=cutils.reverse_parc_char_matrix(matrix2)
 
-            save=ospath(f'{save_folder}/kmeansparc_sub{sub}_{surface_type}_{n_clusters}parcs')
-            pickle.dump(labels2,open(f'{save}.p',"wb"))
-            pickle.dump(matrix2,open(f'{save}_matrix.p',"wb"))
-            #savemat(ospath(f'{save}.mat'),{'data':labels})
-            #savemat(ospath(f'{save}_matrix.mat'),{'data':char_matrix})
+                save=ospath(f'{save_folder}/kmeansparc_sub{sub}_{surface_type}_{n_clusters}parcs_{i}')
+                pickle.dump(labels2,open(f'{save}.p',"wb"))
+                #pickle.dump(matrix2,open(f'{save}_matrix.p',"wb"))
+                #savemat(ospath(f'{save}.mat'),{'data':labels})
+                #savemat(ospath(f'{save}_matrix.mat'),{'data':char_matrix})
           
 
 #Code to visualise a parcellation
-
-n_clusters=100
-save=ospath(f'{save_folder}/kmeansparc_sub{sub}_{surface_type}_{n_clusters}parcs.p')
-labels=pickle.load( open( ospath(save), "rb" ) )  
-p=hcpalign_utils.surfplot('/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/figures',mesh=hcp.mesh.inflated,plot_type='open_in_browser',cmap='prism')
-p.plot(labels,f'labels_sub{sub}_{surface_type}_{n_clusters}parcs')
-
+"""
+n_clusters=300
+for i in range(2):
+    save=ospath(f'{save_folder}/kmeansparc_sub{sub}_{surface_type}_{n_clusters}parcs_{i}.p')
+    labels=pickle.load( open( ospath(save), "rb" ) )  
+    p=cutils.surfplot('/mnt/d/FORSTORAGE/Data/Project_Hyperalignment/figures',mesh=hcp.mesh.inflated,plot_type='open_in_browser',cmap='prism')
+    p.plot(labels,f'labels_sub{sub}_{surface_type}_{n_clusters}parcs',cmap='prism')
+"""
 
 #Code to find mean diameter (max euc dist between two points) across parcels in a parcellation
 """
